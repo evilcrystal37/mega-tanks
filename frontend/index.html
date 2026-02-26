@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MEGA TANKS</title>
+  <meta name="description" content="Mega Tanks — Construction + Play mode." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <!-- ═══════════════════════ TITLE SCREEN ══════════════════════════ -->
+  <div id="title-screen" class="screen active">
+    <div class="title-inner">
+      <div class="title-logo">
+        <div class="title-line1">MEGA</div>
+        <div class="title-line2">TANKS</div>
+      </div>
+      <div class="title-tank-row" aria-hidden="true">
+        <span class="pixel-tank left">▶</span>
+        <span class="pixel-tank right">◀</span>
+      </div>
+      <div class="title-menu">
+        <button id="btn-title-construct" class="title-menu-item selected">CONSTRUCTION</button>
+        <button id="btn-title-play" class="title-menu-item">PLAY MAP</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ CONSTRUCTION SCREEN ══════════════════ -->
+  <div id="editor-screen" class="screen">
+
+    <!-- Top status bar removed as requested -->
+
+    <!-- Game-area frame -->
+    <div class="nes-frame">
+
+      <!-- Removed Left panel (redundant tiles HUD) -->
+
+      <!-- Canvas (main area) -->
+      <div class="canvas-frame">
+        <canvas id="editor-canvas"></canvas>
+      </div>
+
+      <!-- Right panel -->
+      <div class="nes-panel right-panel">
+        <div class="panel-title">MAP</div>
+        <div class="rp-row">
+          <label class="rp-label">NAME</label>
+          <input id="map-name-input" class="nes-input" type="text" placeholder="MY MAP" maxlength="12" />
+        </div>
+        <button id="btn-save-map" class="nes-btn">SAVE</button>
+        <button id="btn-clear-map" class="nes-btn nes-btn-red">CLEAR</button>
+        <div class="panel-title" style="margin-top:12px">SAVED</div>
+        <div id="map-list" class="nes-map-list"></div>
+
+        <div id="validation-banner" class="nes-validation" style="display:none"></div>
+        <button id="btn-launch-play" class="nes-btn nes-btn-gold" disabled>▶ PLAY</button>
+        <button id="btn-back-title" class="nes-btn" style="margin-top:6px">← TITLE</button>
+      </div>
+    </div>
+
+    <!-- Bottom controls legend -->
+    <div class="nes-legend">
+      <span>↑↓←→ MOVE</span>
+      <span>[C] NEXT TILE</span>
+      <span>[X] PREV TILE</span>
+      <span>[SPACE] ERASE</span>
+      <span>[S] SAVE</span>
+      <span>[P] PLAY</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ PLAY SCREEN ═══════════════════════════ -->
+  <div id="play-screen" class="screen">
+
+    <!-- Top status bar removed as requested -->
+
+    <div class="nes-frame">
+
+      <!-- Left HUD -->
+      <div class="nes-panel left-panel">
+        <div class="panel-title">SCORE</div>
+        <div id="hud-score" class="nes-score">000000</div>
+
+        <div class="panel-title" style="margin-top:14px">LIVES</div>
+        <div id="hud-lives" class="nes-lives"></div>
+
+        <div class="panel-title" style="margin-top:14px">STARS</div>
+        <div id="hud-upgrade" class="nes-stars">○○○</div>
+      </div>
+
+      <!-- Canvas -->
+      <div class="canvas-frame">
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Game Over / Victory overlay -->
+        <div id="game-overlay" class="nes-overlay" style="display:none">
+          <div id="overlay-title" class="overlay-title"></div>
+          <div id="overlay-score" class="overlay-score-text"></div>
+          <button id="btn-restart" class="nes-btn nes-btn-gold">PLAY AGAIN</button>
+          <button id="btn-back-editor" class="nes-btn" style="margin-top:8px">← EDITOR</button>
+        </div>
+      </div>
+
+      <!-- Right HUD -->
+      <div class="nes-panel right-panel">
+        <div class="panel-title">ENEMY</div>
+        <div id="hud-enemies" class="nes-enemy-grid"></div>
+
+        <div class="panel-title" style="margin-top:14px">MAP</div>
+        <div id="hud-map-name" class="nes-map-name">—</div>
+
+        <div class="panel-title" style="margin-top:14px">KEYS</div>
+        <div class="nes-key-guide">
+          <div>↑↓←→ MOVE</div>
+          <div>X/C FIRE</div>
+        </div>
+        <button id="btn-stop-game" class="nes-btn nes-btn-red" style="margin-top:auto">■ STOP</button>
+      </div>
+    </div>
+
+    <!-- Bottom controls legend -->
+    <div class="nes-legend">
+      <span>↑↓←→ MOVE</span>
+      <span>[X/C] FIRE</span>
+      <span>[M] MUTE</span>
+      <span>[ESC] STOP</span>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="api.js" type="module"></script>
+  <script src="editor.js" type="module"></script>
+  <script src="hud.js" type="module"></script>
+  <script src="game.js" type="module"></script>
+  <script src="app.js" type="module"></script>
+</body>
+
+</html>

@@ -1,0 +1,490 @@
+/* =====================================================================
+   style.css — Battle City NES Aesthetic
+   Black background, pixel font, orange/gray palette, retro sprite feel
+   ===================================================================== */
+
+/* ── Tokens ─────────────────────────────────────────────────────────── */
+:root {
+  /* NES Battle City palette */
+  --nes-black: #000000;
+  --nes-dark: #111111;
+  --nes-border: #808080;
+  --nes-gray: #585858;
+  --nes-white: #e8e8e8;
+  --nes-orange: #e87820;
+  --nes-yellow: #f8d818;
+  --nes-red: #d01010;
+  --nes-green: #38a800;
+  --nes-blue: #1060d0;
+  --nes-cyan: #60d8f8;
+  --nes-brick: #a83800;
+  --nes-steel: #909090;
+
+  /* Tile colors */
+  --tc-empty: #000000;
+  --tc-brick: #a83800;
+  --tc-steel: #808080;
+  --tc-water: #1060d0;
+  --tc-forest: #287800;
+  --tc-ice: #88d8f8;
+  --tc-base: #f8d818;
+
+  /* Layout */
+  --panel-w: 130px;
+  --font: 'Press Start 2P', monospace;
+  --legend-h: 32px;
+}
+
+/* ── Reset ───────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--nes-black);
+  color: var(--nes-white);
+  font-family: var(--font);
+  font-size: 8px;
+  overflow: hidden;
+  image-rendering: pixelated;
+}
+
+/* ── Screens ─────────────────────────────────────────────────────────── */
+.screen {
+  display: none;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.screen.active {
+  display: flex;
+}
+
+/* ═══════════════════ TITLE SCREEN ══════════════════════════════════ */
+#title-screen {
+  justify-content: center;
+  align-items: center;
+}
+
+.title-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 28px;
+}
+
+.title-logo {
+  text-align: center;
+  line-height: 1;
+}
+
+.title-line1 {
+  font-size: clamp(24px, 6vw, 52px);
+  color: var(--nes-orange);
+  text-shadow: 4px 4px 0 #5a1500, -2px -2px 0 #5a1500;
+  letter-spacing: clamp(4px, 2vw, 10px);
+}
+
+.title-line2 {
+  font-size: clamp(24px, 6vw, 52px);
+  color: var(--nes-yellow);
+  text-shadow: 4px 4px 0 #705000, -2px -2px 0 #705000;
+  letter-spacing: clamp(8px, 4vw, 20px);
+  margin-top: 4px;
+}
+
+.title-tank-row {
+  display: flex;
+  gap: 80px;
+  font-size: 28px;
+  animation: tank-patrol 3s ease-in-out infinite alternate;
+}
+
+@keyframes tank-patrol {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(-1);
+  }
+}
+
+.pixel-tank {
+  color: var(--nes-orange);
+}
+
+.title-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.title-menu-item {
+  background: none;
+  border: none;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--nes-white);
+  cursor: pointer;
+  padding: 8px 20px;
+  letter-spacing: 3px;
+  transition: color 0.1s;
+  position: relative;
+}
+
+.title-menu-item::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 10px solid var(--nes-orange);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.title-menu-item.selected {
+  color: var(--nes-yellow);
+}
+
+.title-menu-item.selected::before {
+  opacity: 1;
+}
+
+.title-menu-item:hover {
+  color: var(--nes-yellow);
+}
+
+/* ═══════════════════ NES FRAME (shared by editor + play) ═══════════ */
+#editor-screen,
+#play-screen {
+  flex-direction: column;
+}
+
+
+.nes-frame {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  background: var(--nes-black);
+}
+
+/* Panels */
+.nes-panel {
+  width: var(--panel-w);
+  flex-shrink: 0;
+  background: var(--nes-dark);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 8px;
+  overflow-y: auto;
+}
+
+.right-panel {
+  border-left: 2px solid var(--nes-border);
+}
+
+.panel-title {
+  font-size: 8px;
+  color: var(--nes-gray);
+  letter-spacing: 2px;
+  border-bottom: 2px solid var(--nes-gray);
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+}
+
+/* Canvas frame */
+.canvas-frame {
+  flex: 1;
+  display: block;
+  background: var(--nes-black);
+  position: relative;
+  overflow: auto;
+}
+
+#editor-canvas,
+#game-canvas {
+  image-rendering: pixelated;
+  display: block;
+  flex-shrink: 0;
+}
+
+/* Legend bar */
+.nes-legend {
+  width: 100%;
+  height: var(--legend-h);
+  background: var(--nes-dark);
+  border-top: 2px solid var(--nes-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  flex-shrink: 0;
+  font-size: 7px;
+  color: var(--nes-gray);
+  letter-spacing: 1px;
+}
+
+/* ── NES Inputs & Buttons ────────────────────────────────────────────── */
+.rp-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.rp-label {
+  font-size: 7px;
+  color: var(--nes-gray);
+  letter-spacing: 1px;
+}
+
+.nes-input {
+  width: 100%;
+  background: var(--nes-black);
+  border: 2px solid var(--nes-border);
+  color: var(--nes-yellow);
+  font-family: var(--font);
+  font-size: 8px;
+  padding: 5px 5px;
+  outline: none;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.nes-input::placeholder {
+  color: var(--nes-gray);
+}
+
+.nes-input:focus {
+  border-color: var(--nes-yellow);
+}
+
+.nes-btn {
+  width: 100%;
+  background: var(--nes-dark);
+  border: 2px solid var(--nes-border);
+  color: var(--nes-white);
+  font-family: var(--font);
+  font-size: 8px;
+  padding: 7px 4px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  text-align: center;
+  transition: background 0.08s, color 0.08s, border-color 0.08s;
+  margin-bottom: 2px;
+}
+
+.nes-btn:hover:not(:disabled) {
+  background: var(--nes-border);
+  color: var(--nes-black);
+}
+
+.nes-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.nes-btn-red {
+  border-color: var(--nes-red);
+  color: var(--nes-red);
+}
+
+.nes-btn-red:hover:not(:disabled) {
+  background: var(--nes-red);
+  color: var(--nes-black);
+}
+
+.nes-btn-gold {
+  border-color: var(--nes-yellow);
+  color: var(--nes-yellow);
+}
+
+.nes-btn-gold:hover:not(:disabled) {
+  background: var(--nes-yellow);
+  color: var(--nes-black);
+}
+
+/* ── NES Map list ────────────────────────────────────────────────────── */
+.nes-map-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 100px;
+  overflow-y: auto;
+  margin-bottom: 6px;
+}
+
+.nes-map-item {
+  font-size: 7px;
+  color: var(--nes-white);
+  padding: 4px 5px;
+  border: 1px solid var(--nes-gray);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: 1px;
+}
+
+.nes-map-item:hover {
+  border-color: var(--nes-yellow);
+  color: var(--nes-yellow);
+}
+
+.nes-map-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.nes-map-del {
+  background: none;
+  border: none;
+  color: var(--nes-red);
+  font-family: var(--font);
+  font-size: 7px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+/* ── Validation ──────────────────────────────────────────────────────── */
+.nes-validation {
+  font-size: 7px;
+  padding: 5px 4px;
+  border: 1px solid var(--nes-red);
+  color: var(--nes-red);
+  margin-bottom: 5px;
+  letter-spacing: 1px;
+  line-height: 1.6;
+}
+
+.nes-validation.ok {
+  border-color: var(--nes-green);
+  color: var(--nes-green);
+}
+
+/* ═══════════════════ PLAY HUD ══════════════════════════════════════ */
+.nes-score {
+  font-size: 11px;
+  color: var(--nes-white);
+  letter-spacing: 1px;
+  line-height: 1.5;
+}
+
+.nes-lives {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.nes-life-icon {
+  font-size: 11px;
+  color: var(--nes-orange);
+}
+
+.nes-stars {
+  font-size: 13px;
+  letter-spacing: 3px;
+}
+
+.star-on {
+  color: var(--nes-yellow);
+}
+
+.star-off {
+  color: var(--nes-gray);
+}
+
+.nes-enemy-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 14px);
+  gap: 3px;
+}
+
+.enemy-dot {
+  width: 14px;
+  height: 14px;
+  background: var(--nes-orange);
+}
+
+.enemy-dot.dead {
+  background: var(--nes-gray);
+  opacity: 0.3;
+}
+
+.nes-map-name {
+  font-size: 7px;
+  color: var(--nes-cyan);
+  word-break: break-all;
+  letter-spacing: 1px;
+  line-height: 1.8;
+}
+
+.nes-key-guide {
+  font-size: 7px;
+  color: var(--nes-gray);
+  line-height: 2.2;
+  letter-spacing: 1px;
+}
+
+/* ═══════════════════ GAME OVERLAY ══════════════════════════════════ */
+.nes-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: rgba(0, 0, 0, 0.82);
+}
+
+.overlay-title {
+  font-size: 22px;
+  letter-spacing: 4px;
+  text-align: center;
+}
+
+.overlay-score-text {
+  font-size: 10px;
+  color: var(--nes-yellow);
+  letter-spacing: 2px;
+}
+
+/* ═══════════════════ SCROLLBAR ═════════════════════════════════════ */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--nes-dark);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--nes-border);
+}
