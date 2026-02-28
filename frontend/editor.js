@@ -102,6 +102,37 @@ function _currentTileId() {
     return tileIds[tileIndex] ?? 1;
 }
 
+const MAX_TURRETS = 5;
+const TURRET_ID = 25;
+
+// Count logical turrets as 2×2 blocks — top-left corner at even row/col.
+// The 2×2 brush always lands on even positions, so each stroke = 1 logical turret.
+function _countTurrets() {
+    let count = 0;
+    for (let r = 0; r < GRID_H; r += 2) {
+        for (let c = 0; c < GRID_W; c += 2) {
+            if (grid[r][c] === TURRET_ID) count++;
+        }
+    }
+    return count;
+}
+
+function _updateTurretCycle() {
+    const full = _countTurrets() >= MAX_TURRETS;
+    const inCycle = tileIds.includes(TURRET_ID);
+    if (full && inCycle) {
+        const idx = tileIds.indexOf(TURRET_ID);
+        tileIds.splice(idx, 1);
+        if (tileIndex >= tileIds.length) tileIndex = 0;
+        _updateStatusBar();
+    } else if (!full && !inCycle) {
+        const insertAt = tileIds.findIndex(id => id > TURRET_ID);
+        if (insertAt === -1) tileIds.push(TURRET_ID);
+        else tileIds.splice(insertAt, 0, TURRET_ID);
+        _updateStatusBar();
+    }
+}
+
 function _updateStatusBar() {
     const cur = tiles.find(t => t.id === _currentTileId());
     if (tileName) tileName.textContent = cur ? cur.label.toUpperCase() : "BRICK";
@@ -276,12 +307,17 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             }
             ctx.stroke();
         } else if (tid === 25) {
+            // Base plate — spans full 2×2 block
+            ctx.fillStyle = "#546e7a";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            // Turret dome
             ctx.fillStyle = "#607d8b";
             ctx.beginPath();
-            ctx.arc(0, 0, ds * 0.6, 0, Math.PI * 2);
+            ctx.arc(0, 0, ds * 0.55, 0, Math.PI * 2);
             ctx.fill();
+            // Barrel
             ctx.fillStyle = "#37474f";
-            ctx.fillRect(-ds * 0.15, -ds * 0.8, ds * 0.3, ds * 0.8);
+            ctx.fillRect(-ds * 0.12, -ds * 0.9, ds * 0.24, ds * 0.75);
         } else if (tid >= 26 && tid <= 28) {
             // Mushroom glass box — big-type, centered at (0,0)
             ctx.fillStyle = "rgba(139, 195, 74, 0.2)";
@@ -732,6 +768,7 @@ function _bindEvents() {
     document.getElementById("btn-clear-map").addEventListener("click", () => {
         if (!confirm("CLEAR MAP?")) return;
         _initGrid();
+        _updateTurretCycle();
     });
 
     window.addEventListener("keydown", ev => {
@@ -761,6 +798,8 @@ function _onKeyUp(ev) {
 }
 
 function _applyBrush(value) {
+    // Turrets are big-type 2×2 blocks — block the whole stroke if cap is reached.
+    if (value === TURRET_ID && _countTurrets() >= MAX_TURRETS) return;
     for (let dr = 0; dr < BRUSH_SIZE; dr++) {
         for (let dc = 0; dc < BRUSH_SIZE; dc++) {
             const r = cursorRow + dr;
@@ -770,6 +809,7 @@ function _applyBrush(value) {
             }
         }
     }
+    _updateTurretCycle();
 }
 
     function _handlePaint(ev) {
@@ -909,6 +949,7 @@ async function _loadMap(name) {
         const data = await Api.loadMap(name);
         grid = data.grid;
         nameInput.value = data.name;
+        _updateTurretCycle();
     } catch (e) {
         alert("LOAD FAILED: " + e.message);
     }
