@@ -4,7 +4,7 @@
  * Screens: TITLE -> CONSTRUCTION -> PLAY -> SETTINGS
  */
 
-import { initEditor, focusEditor, blurEditor, refreshMapList, getCurrentMapName, resizeEditor } from "./editor.js";
+import { initEditor, focusEditor, blurEditor, refreshMapList, getCurrentMapName, resizeEditor, saveCurrentMap } from "./editor.js";
 import { gameRenderer } from "./game.js";
 
 const titleScreen = document.getElementById("title-screen");
@@ -211,8 +211,14 @@ async function init() {
         gameRenderer.stopGame();
         switchScreen("editor");
     });
-    btnLaunchPlay.addEventListener("click", () => {
-        const name = getCurrentMapName();
+    btnLaunchPlay.addEventListener("click", async () => {
+        let name = getCurrentMapName();
+        if (!name) {
+            name = await saveCurrentMap();
+        } else {
+            // Save it just in case there are modifications
+            await saveCurrentMap();
+        }
         if (name) launchGame(name);
     });
 

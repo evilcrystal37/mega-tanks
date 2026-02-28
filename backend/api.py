@@ -88,9 +88,11 @@ def get_maps():
 @router.post("/api/maps")
 def create_map(payload: MapPayload):
     """Save a new or updated map."""
-    if not payload.name.strip():
-        raise HTTPException(status_code=400, detail="Map name cannot be empty.")
-    m = Map(name=payload.name.strip(), grid=payload.grid)
+    name = payload.name.strip()
+    if not name:
+        import uuid
+        name = f"MAP_{uuid.uuid4().hex[:6].upper()}"
+    m = Map(name=name, grid=payload.grid)
     errors = m.validate()
     if errors:
         raise HTTPException(status_code=422, detail=errors)

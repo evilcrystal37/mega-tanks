@@ -704,11 +704,17 @@ function _handleKey(ev) {
 
 // ── Save / Load ───────────────────────────────────────────────────────
 
+export async function saveCurrentMap() {
+    return await _saveMap();
+}
+
 async function _saveMap() {
     const name = nameInput.value.trim().toUpperCase();
-    if (!name) { alert("ENTER MAP NAME!"); return; }
     try {
-        await Api.saveMap(name, grid);
+        const res = await Api.saveMap(name, grid);
+        if (res && res.saved) {
+            nameInput.value = res.saved;
+        }
         await refreshMapList();
         
         const btn = document.getElementById("btn-save-map");
@@ -723,8 +729,10 @@ async function _saveMap() {
                 btn.style.color = "";
             }, 2000);
         }
+        return res ? res.saved : name;
     } catch (e) {
         alert("SAVE FAILED: " + e.message);
+        return null;
     }
 }
 
