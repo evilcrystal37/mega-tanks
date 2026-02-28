@@ -282,70 +282,200 @@ class GameRenderer {
         // Sandworm
         if (this.state.sandworm && this.state.sandworm.active) {
             const sw = this.state.sandworm;
-            
-            // Pulsing animation
-            const pulse = (Math.sin(Date.now() / 200) + 1) / 2; // 0 to 1
-            
+            const swHp  = sw.hp ?? 5;
+            const swMaxHp = 5;
+            const now = Date.now();
+            const pulse = (Math.sin(now / 200) + 1) / 2;
+
+            // Opacity fades as HP drops: full HP = fully opaque, 1 HP = very transparent, 0 = gone
+            const hpRatio  = swHp / swMaxHp;           // 1.0 → 0.2
+            const wormAlpha = 0.15 + hpRatio * 0.85;   // 1.0 at full HP, 0.15 at last HP
+
+            const segSz = cell * 2; // big-tile rendering
+
+            ctx.save();
+            ctx.globalAlpha = wormAlpha;
+
             (sw.parts || []).forEach((part, index) => {
-                const cx = part.col * cell;
-                const cy = part.row * cell;
-                
+                const cx = part.col * cell + cell / 2;
+                const cy = part.row * cell + cell / 2;
+
                 ctx.save();
-                ctx.translate(cx + cell/2, cy + cell/2);
-                
-                // Add a slight wiggle based on index to make it look organic
-                const wiggle = Math.sin(Date.now() / 300 - index * 0.5) * (cell * 0.1);
-                
-                // Direction facing logic for the head
+                ctx.translate(cx, cy);
+
+                const wiggle = Math.sin(now / 300 - index * 0.5) * (segSz * 0.05);
+
+                // Head faces movement direction; body segments are unrotated
                 let angle = 0;
                 if (part.type === "head") {
-                    if (sw.direction === "up") angle = -Math.PI / 2;
-                    if (sw.direction === "down") angle = Math.PI / 2;
-                    if (sw.direction === "left") angle = Math.PI;
-                    if (sw.direction === "right") angle = 0;
+                    if (sw.direction === "up")    angle = -Math.PI / 2;
+                    if (sw.direction === "down")  angle =  Math.PI / 2;
+                    if (sw.direction === "left")  angle =  Math.PI;
+                    if (sw.direction === "right") angle =  0;
                 }
                 ctx.rotate(angle);
-                
-                ctx.fillStyle = part.type === "head" ? "#8b4513" : "#a0522d";
-                
-                // Organic sizes
-                const baseRadius = part.type === "head" ? (cell * 0.45) : (cell * 0.4);
-                const pulsingRadius = baseRadius + (pulse * cell * 0.05);
-                
-                ctx.beginPath();
+
+                // Yellow body colour stays constant (damage shown via transparency only)
+                const bodyLight = "rgb(255,220,60)";
+                const bodyMid   = "rgb(220,170,0)";
+                const bodyDark  = "rgb(160,110,0)";
+
+                const baseRadius   = part.type === "head" ? segSz * 0.44 : segSz * 0.38;
+                const pulsingRadius = baseRadius + pulse * segSz * 0.04;
+
                 if (part.type === "head") {
-                    // Head shape
-                    ctx.ellipse(wiggle, 0, pulsingRadius * 1.1, pulsingRadius, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                    
-                    // Eyes (facing forward now due to rotation)
-                    ctx.fillStyle = "#ffcc00";
+                    // ── Drop shadow ──────────────────────────────────────────
+                    ctx.fillStyle = "rgba(0,0,0,0.22)";
                     ctx.beginPath();
-                    ctx.arc(cell * 0.2 + wiggle, -cell * 0.2, cell * 0.1, 0, Math.PI * 2);
-                    ctx.arc(cell * 0.2 + wiggle, cell * 0.2, cell * 0.1, 0, Math.PI * 2);
+                    ctx.ellipse(wiggle + segSz * 0.04, segSz * 0.06,
+                                pulsingRadius * 1.1, pulsingRadius * 0.55, 0, 0, Math.PI * 2);
                     ctx.fill();
-                    
-                    // Dark pupils
-                    ctx.fillStyle = "#000";
+
+                    // ── Head body (bullet / tapered rear half) ───────────────
+                    // The front (right in rotated space) opens into the circular mouth.
+                    // We draw the rear cone/body first, then overlay the mouth ring.
+                    const hg = ctx.createRadialGradient(
+                        wiggle - pulsingRadius * 0.35, -pulsingRadius * 0.35, pulsingRadius * 0.04,
+                        wiggle, 0, pulsingRadius * 1.15);
+                    hg.addColorStop(0,   bodyLight);
+                    hg.addColorStop(0.5, bodyMid);
+                    hg.addColorStop(1,   bodyDark);
+                    ctx.fillStyle = hg;
                     ctx.beginPath();
-                    ctx.arc(cell * 0.25 + wiggle, -cell * 0.2, cell * 0.04, 0, Math.PI * 2);
-                    ctx.arc(cell * 0.25 + wiggle, cell * 0.2, cell * 0.04, 0, Math.PI * 2);
+                    // Tapered rear half: semicircle on the left (back), meet at mouth radius on right
+                    const mouthR = pulsingRadius * 0.82; // radius of the open mouth circle
+                    ctx.arc(wiggle, 0, pulsingRadius * 1.1, Math.PI * 0.5, Math.PI * 1.5); // back arc
+                    ctx.lineTo(wiggle + pulsingRadius * 0.3,  -mouthR); // taper to mouth top
+                    ctx.arc(wiggle + pulsingRadius * 0.3, 0, mouthR, -Math.PI * 0.5, Math.PI * 0.5, false); // front edge
+                    ctx.lineTo(wiggle, pulsingRadius * 1.1); // close
+                    ctx.closePath();
                     ctx.fill();
+
+                    // Scale rings on head
+                    ctx.strokeStyle = "rgba(0,0,0,0.15)";
+                    ctx.lineWidth = segSz * 0.025;
+                    for (let si = 1; si <= 2; si++) {
+                        ctx.beginPath();
+                        ctx.arc(wiggle - segSz * 0.08 * si, 0,
+                                pulsingRadius * (0.85 - si * 0.2), 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+
+                    // ── Dune-style circular mouth ────────────────────────────
+                    // Mouth is a forward-facing circle with concentric rings of teeth.
+                    const mouthCX = wiggle + pulsingRadius * 0.3;
+                    const mouthCY = 0;
+                    const mouthOpen = (Math.sin(now / 250) * 0.5 + 0.5); // 0–1 pulsing open/close
+                    const outerR   = mouthR;
+                    const numRings = 3;
+                    const toothRows = 12; // teeth per ring
+
+                    // Outer gum ring — dark red flesh
+                    const gumGrad = ctx.createRadialGradient(mouthCX, mouthCY, outerR * 0.5, mouthCX, mouthCY, outerR);
+                    gumGrad.addColorStop(0, "rgba(140,0,0,0.9)");
+                    gumGrad.addColorStop(0.6, "rgba(90,0,0,0.95)");
+                    gumGrad.addColorStop(1, "rgba(60,0,0,1)");
+                    ctx.fillStyle = gumGrad;
+                    ctx.beginPath();
+                    ctx.arc(mouthCX, mouthCY, outerR, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Concentric tooth rings from outside in
+                    for (let ring = 0; ring < numRings; ring++) {
+                        const ringFrac   = 1 - ring / numRings;           // 1.0 → 0.33
+                        const ringR      = outerR * ringFrac;
+                        const innerRingR = outerR * (ringFrac - 1 / numRings) * 0.7;
+                        const toothLen   = (ringR - innerRingR) * (0.65 + mouthOpen * 0.3);
+                        const toothBase  = ringR * 0.88;
+
+                        // Ring background flesh
+                        const fleshR = 100 + ring * 30;
+                        const fleshG = 0;
+                        ctx.fillStyle = `rgba(${fleshR},${fleshG},0,0.85)`;
+                        ctx.beginPath();
+                        ctx.arc(mouthCX, mouthCY, ringR * 0.92, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        // Radial teeth for this ring
+                        const count = toothRows - ring * 2;
+                        ctx.fillStyle = "rgba(230,220,180,0.97)";
+                        for (let t = 0; t < count; t++) {
+                            const a = (t / count) * Math.PI * 2;
+                            // Tooth tip moves inward when mouth opens
+                            const tipR  = toothBase - toothLen * (0.5 + mouthOpen * 0.5);
+                            const baseW = (ringR * 0.18) * (1 - ring * 0.15);
+
+                            const cos = Math.cos(a), sin = Math.sin(a);
+                            const cos90 = Math.cos(a + Math.PI / 2), sin90 = Math.sin(a + Math.PI / 2);
+
+                            // Tooth as a triangle pointing inward
+                            ctx.beginPath();
+                            ctx.moveTo(mouthCX + cos * toothBase + cos90 * baseW,
+                                       mouthCY + sin * toothBase + sin90 * baseW);
+                            ctx.lineTo(mouthCX + cos * toothBase - cos90 * baseW,
+                                       mouthCY + sin * toothBase - sin90 * baseW);
+                            ctx.lineTo(mouthCX + cos * tipR, mouthCY + sin * tipR);
+                            ctx.closePath();
+                            ctx.fill();
+                        }
+                    }
+
+                    // Deepest throat — black void center with red glow
+                    const throatGrad = ctx.createRadialGradient(
+                        mouthCX, mouthCY, 0,
+                        mouthCX, mouthCY, outerR * 0.28);
+                    throatGrad.addColorStop(0,   "rgba(0,0,0,1)");
+                    throatGrad.addColorStop(0.6, "rgba(60,0,0,0.9)");
+                    throatGrad.addColorStop(1,   "rgba(120,0,0,0)");
+                    ctx.fillStyle = throatGrad;
+                    ctx.beginPath();
+                    ctx.arc(mouthCX, mouthCY, outerR * 0.35, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Saliva / wet gloss on teeth ring edge
+                    ctx.strokeStyle = "rgba(255,255,200,0.25)";
+                    ctx.lineWidth = segSz * 0.02;
+                    ctx.beginPath();
+                    ctx.arc(mouthCX, mouthCY, outerR * 0.95, 0, Math.PI * 2);
+                    ctx.stroke();
+
                 } else {
-                    // Rounded body segments
+                    // ── Body segment ─────────────────────────────────────────
+                    ctx.fillStyle = "rgba(0,0,0,0.18)";
+                    ctx.beginPath();
+                    ctx.ellipse(wiggle + segSz * 0.03, segSz * 0.04,
+                                pulsingRadius, pulsingRadius * 0.55, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    const bg = ctx.createRadialGradient(
+                        wiggle - pulsingRadius * 0.3, -pulsingRadius * 0.3, pulsingRadius * 0.04,
+                        wiggle, 0, pulsingRadius);
+                    bg.addColorStop(0,   bodyLight);
+                    bg.addColorStop(0.6, bodyMid);
+                    bg.addColorStop(1,   bodyDark);
+                    ctx.fillStyle = bg;
+                    ctx.beginPath();
                     ctx.arc(wiggle, 0, pulsingRadius, 0, Math.PI * 2);
                     ctx.fill();
-                    
-                    // Add some segment ridges
-                    ctx.strokeStyle = "rgba(0,0,0,0.3)";
-                    ctx.lineWidth = 2;
+
+                    // Concentric scale rings
+                    ctx.strokeStyle = "rgba(0,0,0,0.16)";
+                    ctx.lineWidth = segSz * 0.025;
+                    ctx.beginPath(); ctx.arc(wiggle, 0, pulsingRadius * 0.72, 0, Math.PI * 2); ctx.stroke();
+                    ctx.lineWidth = segSz * 0.014;
+                    ctx.beginPath(); ctx.arc(wiggle, 0, pulsingRadius * 0.44, 0, Math.PI * 2); ctx.stroke();
+
+                    // Highlight shine
+                    ctx.fillStyle = "rgba(255,245,160,0.18)";
                     ctx.beginPath();
-                    ctx.arc(wiggle, 0, pulsingRadius * 0.7, -Math.PI/2, Math.PI/2);
-                    ctx.stroke();
+                    ctx.arc(wiggle - pulsingRadius * 0.28, -pulsingRadius * 0.28, pulsingRadius * 0.3, 0, Math.PI * 2);
+                    ctx.fill();
                 }
-                
+
                 ctx.restore();
             });
+
+            ctx.restore(); // end globalAlpha scope
         }
 
         ctx.restore();
@@ -606,19 +736,37 @@ class GameRenderer {
         }
 
         if (tid === 12) {
-            ctx.fillStyle = "#5d4037";
+            // Sandy base
+            ctx.fillStyle = "#c8a84b";
             ctx.fillRect(dx, dy, ds, ds);
-            ctx.fillStyle = "#3e2723";
-            
-            // Quicksand animation
-            const t = Date.now() / 400;
-            const o1 = Math.sin(t) * ds * 0.1;
-            const o2 = Math.cos(t * 1.3) * ds * 0.1;
-            const o3 = Math.sin(t * 0.8) * ds * 0.1;
-            
-            ctx.fillRect(dx + ds * 0.2 + o1, dy + ds * 0.2 + o2, ds * 0.2, ds * 0.2);
-            ctx.fillRect(dx + ds * 0.6 + o2, dy + ds * 0.5 + o3, ds * 0.2, ds * 0.2);
-            ctx.fillRect(dx + ds * 0.3 + o3, dy + ds * 0.7 + o1, ds * 0.2, ds * 0.2);
+
+            // Subtle grain texture — slightly darker dune streaks
+            const t = Date.now() / 500;
+            ctx.fillStyle = "rgba(160,120,30,0.35)";
+            for (let i = 0; i < 3; i++) {
+                const sx = dx + ds * (0.1 + i * 0.3) + Math.sin(t + i * 1.1) * ds * 0.06;
+                const sy = dy + ds * (0.15 + i * 0.28) + Math.cos(t * 0.9 + i) * ds * 0.06;
+                ctx.fillRect(sx, sy, ds * 0.45, ds * 0.07);
+            }
+
+            // Quicksand ripple circles — slow sink animation
+            const o1 = Math.sin(t)       * ds * 0.08;
+            const o2 = Math.cos(t * 1.3) * ds * 0.08;
+            const o3 = Math.sin(t * 0.8) * ds * 0.08;
+            ctx.strokeStyle = "rgba(140,100,20,0.5)";
+            ctx.lineWidth = Math.max(1, ds * 0.06);
+            [[0.35 + o1 / ds, 0.35 + o2 / ds],
+             [0.65 + o2 / ds, 0.55 + o3 / ds],
+             [0.4  + o3 / ds, 0.7  + o1 / ds]].forEach(([rx, ry]) => {
+                const r = ds * (0.09 + 0.04 * Math.abs(Math.sin(t + rx)));
+                ctx.beginPath();
+                ctx.ellipse(dx + rx * ds, dy + ry * ds, r, r * 0.45, 0, 0, Math.PI * 2);
+                ctx.stroke();
+            });
+
+            // Light highlight — sun glint on sand
+            ctx.fillStyle = "rgba(255,240,180,0.18)";
+            ctx.fillRect(dx, dy, ds, ds * 0.3);
             return;
         }
 
@@ -861,82 +1009,117 @@ class GameRenderer {
             ctx.save();
             ctx.rotate(dirAngle);
 
-            // Gun body / turret head
-            const headGrad = ctx.createLinearGradient(-sz*0.18, -sz*0.05, sz*0.18, sz*0.18);
-            headGrad.addColorStop(0, "#78909c");
-            headGrad.addColorStop(0.45, "#546e7a");
+            // Gun body / turret head — larger, more prominent dome
+            const headGrad = ctx.createRadialGradient(-sz*0.07, -sz*0.07, sz*0.02, 0, 0, sz*0.26);
+            headGrad.addColorStop(0, "#90a4ae");
+            headGrad.addColorStop(0.5, "#546e7a");
             headGrad.addColorStop(1, "#2e4050");
             ctx.fillStyle = headGrad;
             ctx.beginPath();
-            ctx.moveTo(-sz*0.18, sz*0.18);
-            ctx.lineTo(-sz*0.18,  sz*0.0);
-            ctx.bezierCurveTo(-sz*0.18, -sz*0.18, sz*0.18, -sz*0.18, sz*0.18, sz*0.0);
-            ctx.lineTo(sz*0.18, sz*0.18);
-            ctx.closePath();
+            ctx.arc(0, sz*0.04, sz*0.24, 0, Math.PI * 2);
             ctx.fill();
 
-            // Head highlight bevel
-            ctx.strokeStyle = "rgba(180,210,230,0.35)";
-            ctx.lineWidth = 1.5;
+            // Outer armor ring on dome
+            ctx.strokeStyle = "rgba(144,164,174,0.5)";
+            ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(-sz*0.16, sz*0.0);
-            ctx.bezierCurveTo(-sz*0.16, -sz*0.15, sz*0.16, -sz*0.15, sz*0.16, sz*0.0);
+            ctx.arc(0, sz*0.04, sz*0.24, -Math.PI * 0.9, Math.PI * 0.1);
             ctx.stroke();
 
-            // Vision slit
-            ctx.fillStyle = "rgba(0,0,0,0.7)";
-            ctx.fillRect(-sz*0.1, -sz*0.04, sz*0.2, sz*0.035);
-            ctx.fillStyle = "rgba(80,200,255,0.25)";
-            ctx.fillRect(-sz*0.1, -sz*0.04, sz*0.2, sz*0.035);
+            // Vision slit / sensor strip — glowing cyan
+            ctx.fillStyle = "rgba(0,0,0,0.75)";
+            ctx.fillRect(-sz*0.13, -sz*0.02, sz*0.26, sz*0.05);
+            const scanPulse = (Math.sin(ms / 120) + 1) * 0.5;
+            ctx.fillStyle = `rgba(0,220,255,${0.4 + scanPulse * 0.4})`;
+            ctx.fillRect(-sz*0.13, -sz*0.02, sz*0.26, sz*0.05);
+            // Tiny scope lens dots
+            ctx.fillStyle = `rgba(0,255,255,${0.6 + scanPulse * 0.4})`;
+            [-sz*0.08, 0, sz*0.08].forEach(ox => {
+                ctx.beginPath();
+                ctx.arc(ox, sz*0.005, sz*0.015, 0, Math.PI * 2);
+                ctx.fill();
+            });
 
-            // Barrel root / mantlet
-            const mantletGrad = ctx.createLinearGradient(-sz*0.09, 0, sz*0.09, 0);
-            mantletGrad.addColorStop(0, "#455a64");
+            // Barrel root / mantlet — wider, more solid
+            const mantletGrad = ctx.createLinearGradient(-sz*0.12, 0, sz*0.12, 0);
+            mantletGrad.addColorStop(0, "#37474f");
             mantletGrad.addColorStop(0.5, "#607d8b");
             mantletGrad.addColorStop(1, "#37474f");
             ctx.fillStyle = mantletGrad;
-            ctx.fillRect(-sz*0.09, -sz*0.22, sz*0.18, sz*0.12);
-
-            // Barrel — with muzzle recoil animation
-            const recoilPhase = (ms % 400) / 400; // 0-1 cycle
-            const recoilOffset = Math.max(0, Math.sin(recoilPhase * Math.PI) * sz * 0.06);
-            const barrelTop = -sz * 0.56 + recoilOffset;
-
-            const barrelGrad = ctx.createLinearGradient(-sz*0.06, 0, sz*0.06, 0);
-            barrelGrad.addColorStop(0, "#2e3d45");
-            barrelGrad.addColorStop(0.4, "#546e7a");
-            barrelGrad.addColorStop(0.7, "#37474f");
-            barrelGrad.addColorStop(1, "#1c2b33");
-            ctx.fillStyle = barrelGrad;
-            ctx.fillRect(-sz*0.055, barrelTop, sz*0.11, sz*0.38);
-
-            // Barrel ring bands
-            ctx.strokeStyle = "rgba(0,0,0,0.45)";
-            ctx.lineWidth = 1.5;
-            [-0.38, -0.28].forEach(off => {
-                ctx.strokeRect(-sz*0.055, barrelTop + sz*(-off - barrelTop/sz*0.1 + 0.02), sz*0.11, sz*0.028);
+            ctx.fillRect(-sz*0.12, -sz*0.20, sz*0.24, sz*0.18);
+            // Mantlet bolts
+            ctx.fillStyle = "#263238";
+            [[-sz*0.09, -sz*0.19], [sz*0.09, -sz*0.19]].forEach(([bx, by]) => {
+                ctx.beginPath(); ctx.arc(bx, by, sz*0.025, 0, Math.PI * 2); ctx.fill();
             });
 
-            // Muzzle brake
-            const muzzleGrad = ctx.createLinearGradient(-sz*0.08, 0, sz*0.08, 0);
-            muzzleGrad.addColorStop(0, "#1c2b33");
-            muzzleGrad.addColorStop(0.5, "#37474f");
-            muzzleGrad.addColorStop(1, "#1c2b33");
+            // Barrel — distinctly longer and wider with recoil animation
+            const recoilPhase = (ms % 400) / 400;
+            const recoilOffset = Math.max(0, Math.sin(recoilPhase * Math.PI) * sz * 0.07);
+            const barrelTop = -sz * 0.72 + recoilOffset;
+            const barrelLen = sz * 0.52;
+
+            // Barrel shadow (depth)
+            ctx.fillStyle = "rgba(0,0,0,0.4)";
+            ctx.fillRect(-sz*0.075 + sz*0.01, barrelTop + sz*0.01, sz*0.15, barrelLen);
+
+            const barrelGrad = ctx.createLinearGradient(-sz*0.075, 0, sz*0.075, 0);
+            barrelGrad.addColorStop(0, "#1c2b33");
+            barrelGrad.addColorStop(0.3, "#607d8b");
+            barrelGrad.addColorStop(0.65, "#455a64");
+            barrelGrad.addColorStop(1, "#1c2b33");
+            ctx.fillStyle = barrelGrad;
+            ctx.fillRect(-sz*0.075, barrelTop, sz*0.15, barrelLen);
+
+            // Bright highlight stripe on barrel (makes gun clearly visible)
+            ctx.fillStyle = "rgba(160,200,220,0.5)";
+            ctx.fillRect(-sz*0.055, barrelTop, sz*0.03, barrelLen);
+
+            // Barrel ring bands (3 rings for more detail)
+            ctx.strokeStyle = "rgba(0,0,0,0.5)";
+            ctx.lineWidth = 2;
+            [0.18, 0.32, 0.46].forEach(t => {
+                ctx.strokeRect(-sz*0.075, barrelTop + barrelLen * t, sz*0.15, sz*0.03);
+            });
+
+            // Muzzle brake — wider, pronounced
+            const muzzleGrad = ctx.createLinearGradient(-sz*0.11, 0, sz*0.11, 0);
+            muzzleGrad.addColorStop(0, "#0d1a20");
+            muzzleGrad.addColorStop(0.5, "#455a64");
+            muzzleGrad.addColorStop(1, "#0d1a20");
             ctx.fillStyle = muzzleGrad;
-            ctx.fillRect(-sz*0.08, barrelTop - sz*0.04, sz*0.16, sz*0.06);
-            // Muzzle holes
-            ctx.fillStyle = "#0d1a20";
-            ctx.fillRect(-sz*0.065, barrelTop - sz*0.035, sz*0.04, sz*0.04);
-            ctx.fillRect( sz*0.025, barrelTop - sz*0.035, sz*0.04, sz*0.04);
+            ctx.fillRect(-sz*0.11, barrelTop - sz*0.055, sz*0.22, sz*0.075);
+            // Muzzle vent holes
+            ctx.fillStyle = "#060f14";
+            ctx.fillRect(-sz*0.09, barrelTop - sz*0.048, sz*0.05, sz*0.055);
+            ctx.fillRect( sz*0.04, barrelTop - sz*0.048, sz*0.05, sz*0.055);
+            // Center bore
+            ctx.fillStyle = "#000";
+            ctx.beginPath();
+            ctx.ellipse(0, barrelTop - sz*0.02, sz*0.025, sz*0.025, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Muzzle flash glow
+            const flashAlpha = Math.max(0, Math.sin(recoilPhase * Math.PI) * 0.7);
+            if (flashAlpha > 0.05) {
+                const flashGrad = ctx.createRadialGradient(0, barrelTop - sz*0.04, 0, 0, barrelTop - sz*0.04, sz*0.18);
+                flashGrad.addColorStop(0, `rgba(255,220,80,${flashAlpha})`);
+                flashGrad.addColorStop(0.4, `rgba(255,120,20,${flashAlpha * 0.5})`);
+                flashGrad.addColorStop(1, "rgba(255,60,0,0)");
+                ctx.fillStyle = flashGrad;
+                ctx.beginPath();
+                ctx.arc(0, barrelTop - sz*0.04, sz*0.18, 0, Math.PI * 2);
+                ctx.fill();
+            }
 
             // Barrel heat glow (idle shimmer)
             const heatPulse = (Math.sin(ms / 180) + 1) * 0.5;
-            const heatGrad = ctx.createLinearGradient(0, barrelTop, 0, barrelTop + sz*0.38);
-            heatGrad.addColorStop(0, `rgba(255,120,30,${0.0})`);
-            heatGrad.addColorStop(0.5, `rgba(255,80,10,${heatPulse * 0.12})`);
-            heatGrad.addColorStop(1, `rgba(255,40,0,${0.0})`);
+            const heatGrad = ctx.createLinearGradient(0, barrelTop, 0, barrelTop + barrelLen);
+            heatGrad.addColorStop(0, `rgba(255,120,30,0)`);
+            heatGrad.addColorStop(0.5, `rgba(255,80,10,${heatPulse * 0.15})`);
+            heatGrad.addColorStop(1, `rgba(255,40,0,0)`);
             ctx.fillStyle = heatGrad;
-            ctx.fillRect(-sz*0.055, barrelTop, sz*0.11, sz*0.38);
+            ctx.fillRect(-sz*0.075, barrelTop, sz*0.15, barrelLen);
 
             ctx.restore(); // end rotating assembly
 

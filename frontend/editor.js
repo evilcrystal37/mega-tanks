@@ -277,14 +277,54 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             }
             ctx.stroke();
         } else if (tid === 25) {
-            // Turret dome (no background plate)
-            ctx.fillStyle = "#607d8b";
-            ctx.beginPath();
-            ctx.arc(0, 0, ds * 0.55, 0, Math.PI * 2);
-            ctx.fill();
-            // Barrel
-            ctx.fillStyle = "#37474f";
-            ctx.fillRect(-ds * 0.12, -ds * 0.9, ds * 0.24, ds * 0.75);
+            // Turret placement preview — sandbag ring + dome + prominent barrel (pointing up)
+            // Sandbag ring
+            const bagR = ds * 0.42;
+            for (let i = 0; i < 8; i++) {
+                const a = (i / 8) * Math.PI * 2;
+                const bx = Math.cos(a) * bagR;
+                const by = Math.sin(a) * bagR;
+                const bg = ctx.createRadialGradient(bx - ds*0.03, by - ds*0.03, ds*0.01, bx, by, ds*0.1);
+                bg.addColorStop(0, "#a89060"); bg.addColorStop(1, "#6b5030");
+                ctx.fillStyle = bg;
+                ctx.beginPath();
+                ctx.ellipse(bx, by, ds * 0.11, ds * 0.08, a, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            // Base plate
+            const bpg = ctx.createRadialGradient(-ds*0.06, -ds*0.06, ds*0.04, 0, 0, ds*0.33);
+            bpg.addColorStop(0, "#95918e"); bpg.addColorStop(0.7, "#706c69"); bpg.addColorStop(1, "#524f4c");
+            ctx.fillStyle = bpg;
+            ctx.beginPath(); ctx.arc(0, 0, ds * 0.33, 0, Math.PI * 2); ctx.fill();
+            // Dome
+            const dg = ctx.createRadialGradient(-ds*0.07, -ds*0.07, ds*0.02, 0, 0, ds*0.24);
+            dg.addColorStop(0, "#90a4ae"); dg.addColorStop(0.5, "#546e7a"); dg.addColorStop(1, "#2e4050");
+            ctx.fillStyle = dg;
+            ctx.beginPath(); ctx.arc(0, ds*0.04, ds * 0.23, 0, Math.PI * 2); ctx.fill();
+            // Sensor slit
+            const scanP = (Math.sin(Date.now() / 120) + 1) * 0.5;
+            ctx.fillStyle = "rgba(0,0,0,0.75)";
+            ctx.fillRect(-ds*0.13, ds*0.02, ds*0.26, ds*0.05);
+            ctx.fillStyle = `rgba(0,220,255,${0.4 + scanP * 0.4})`;
+            ctx.fillRect(-ds*0.13, ds*0.02, ds*0.26, ds*0.05);
+            // Mantlet
+            ctx.fillStyle = "#455a64";
+            ctx.fillRect(-ds*0.11, -ds*0.18, ds*0.22, ds*0.17);
+            // Barrel (prominent, points up)
+            const barrelGrad = ctx.createLinearGradient(-ds*0.07, 0, ds*0.07, 0);
+            barrelGrad.addColorStop(0, "#1c2b33"); barrelGrad.addColorStop(0.35, "#607d8b");
+            barrelGrad.addColorStop(0.65, "#455a64"); barrelGrad.addColorStop(1, "#1c2b33");
+            ctx.fillStyle = barrelGrad;
+            ctx.fillRect(-ds*0.07, -ds*0.95, ds*0.14, ds*0.77);
+            // Highlight stripe on barrel
+            ctx.fillStyle = "rgba(160,200,220,0.45)";
+            ctx.fillRect(-ds*0.05, -ds*0.95, ds*0.025, ds*0.77);
+            // Muzzle brake
+            ctx.fillStyle = "#263238";
+            ctx.fillRect(-ds*0.11, -ds*1.0, ds*0.22, ds*0.08);
+            ctx.fillStyle = "#000";
+            ctx.fillRect(-ds*0.085, -ds*0.98, ds*0.04, ds*0.055);
+            ctx.fillRect( ds*0.045, -ds*0.98, ds*0.04, ds*0.055);
         } else if (tid >= 26 && tid <= 28) {
             // Mushroom glass box — big-type, centered at (0,0)
             ctx.fillStyle = "rgba(139, 195, 74, 0.15)";
@@ -439,19 +479,37 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
     }
 
     if (tid === 12) {
-        ctx.fillStyle = "#5d4037";
+        // Sandy base
+        ctx.fillStyle = "#c8a84b";
         ctx.fillRect(dx, dy, ds, ds);
-        ctx.fillStyle = "#3e2723";
-        
-        // Quicksand animation
-        const t = Date.now() / 400;
-        const o1 = Math.sin(t) * ds * 0.1;
-        const o2 = Math.cos(t * 1.3) * ds * 0.1;
-        const o3 = Math.sin(t * 0.8) * ds * 0.1;
-        
-        ctx.fillRect(dx + ds * 0.2 + o1, dy + ds * 0.2 + o2, ds * 0.2, ds * 0.2);
-        ctx.fillRect(dx + ds * 0.6 + o2, dy + ds * 0.5 + o3, ds * 0.2, ds * 0.2);
-        ctx.fillRect(dx + ds * 0.3 + o3, dy + ds * 0.7 + o1, ds * 0.2, ds * 0.2);
+
+        // Subtle grain texture — slightly darker dune streaks
+        const t = Date.now() / 500;
+        ctx.fillStyle = "rgba(160,120,30,0.35)";
+        for (let i = 0; i < 3; i++) {
+            const sx = dx + ds * (0.1 + i * 0.3) + Math.sin(t + i * 1.1) * ds * 0.06;
+            const sy = dy + ds * (0.15 + i * 0.28) + Math.cos(t * 0.9 + i) * ds * 0.06;
+            ctx.fillRect(sx, sy, ds * 0.45, ds * 0.07);
+        }
+
+        // Quicksand ripple circles — slow sink animation
+        const o1 = Math.sin(t)       * ds * 0.08;
+        const o2 = Math.cos(t * 1.3) * ds * 0.08;
+        const o3 = Math.sin(t * 0.8) * ds * 0.08;
+        ctx.strokeStyle = "rgba(140,100,20,0.5)";
+        ctx.lineWidth = Math.max(1, ds * 0.06);
+        [[0.35 + o1 / ds, 0.35 + o2 / ds],
+         [0.65 + o2 / ds, 0.55 + o3 / ds],
+         [0.4  + o3 / ds, 0.7  + o1 / ds]].forEach(([rx, ry]) => {
+            const r = ds * (0.09 + 0.04 * Math.abs(Math.sin(t + rx)));
+            ctx.beginPath();
+            ctx.ellipse(dx + rx * ds, dy + ry * ds, r, r * 0.45, 0, 0, Math.PI * 2);
+            ctx.stroke();
+        });
+
+        // Light highlight — sun glint on sand
+        ctx.fillStyle = "rgba(255,240,180,0.18)";
+        ctx.fillRect(dx, dy, ds, ds * 0.3);
         return;
     }
 

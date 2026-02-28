@@ -94,8 +94,8 @@ TILE_REGISTRY: Dict[int, TileType] = {
         tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
     ),
     12: TileType(
-        id=12, name="mud", label="Mud",
-        color="#5d4037",
+        id=12, name="mud", label="Sand",
+        color="#c8a84b",
         tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
         speed_mult=0.25,
     ),

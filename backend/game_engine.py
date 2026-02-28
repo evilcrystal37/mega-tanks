@@ -74,7 +74,8 @@ class GameEngine:
             "despawning": False,
             "length": 4,
             "mud_immunity": 0,
-            "dir_timer": 0
+            "dir_timer": 0,
+            "hp": 5,
         }
         
         # Dropped items (reserved for future use)
@@ -166,7 +167,7 @@ class GameEngine:
                         tank_type="turret",
                         is_player=True,
                         speed=0.0,
-                        hp=3,
+                        hp=5,
                         color="#607d8b"
                     )
                     self.turrets[turret.id] = turret
@@ -302,39 +303,52 @@ class GameEngine:
 
                 # Buffs
                 if tid == 23:
-                    # Rainbow collected by driving over it (only after being freed from box)
-                    tank.rainbow_ticks = 300
+                    # Rainbow: 30s base (first pickup) + 10s per additional pickup
+                    bonus = 600 if tank.rainbow_ticks > 0 else 1800
+                    tank.rainbow_ticks = max(tank.rainbow_ticks, 0) + bonus
                     for gr, gc in self._find_box_group(r, c, 23, 23):
                         self.grid[gr][gc] = 0
                     self.events.append({"type": "sound", "sound": "powerup-pickup"})
                 elif tid == 24:
-                    # Mushroom collected by driving over it (only after being freed from box)
-                    tank.mushroom_ticks = 600
+                    # Mushroom collected by driving over it — stacks +10s each pickup
+                    tank.mushroom_ticks = max(tank.mushroom_ticks, 0) + 600
                     for gr, gc in self._find_box_group(r, c, 24, 24):
                         self.grid[gr][gc] = 0
                     self.events.append({"type": "sound", "sound": "powerup-pickup"})
                     self._clear_area_for_tank(tank, force=True)
+                    # Position correction: if tank can't fit in 2x size, nudge it to a clear spot
+                    if not self._can_move_to(tank.row, tank.col, tank):
+                        freed = False
+                        for dr, dc in [(-0.5, 0), (0.5, 0), (0, -0.5), (0, 0.5),
+                                       (-1.0, 0), (1.0, 0), (0, -1.0), (0, 1.0)]:
+                            nr2, nc2 = tank.row + dr, tank.col + dc
+                            if self._can_move_to(nr2, nc2, tank):
+                                tank.row = nr2
+                                tank.col = nc2
+                                freed = True
+                                break
+                        if not freed:
+                            tank.mushroom_ticks = max(0, tank.mushroom_ticks - 600)
 
             # Apply ticking buffs
             if tank.rainbow_ticks > 0:
                 tank.rainbow_ticks -= 1
                 # Store continuous trail points
                 if 0 <= tank.row < GRID_HEIGHT and 0 <= tank.col < GRID_WIDTH:
-                    # Create a unique key for this tank's trail
                     tank_key = tank.id
                     if tank_key not in self.rainbow_trails:
                         self.rainbow_trails[tank_key] = {"points": [], "ticks": 120}
-                    # Add current position (use float precision for smoothness)
                     self.rainbow_trails[tank_key]["points"].append({
                         "row": round(tank.row, 3),
                         "col": round(tank.col, 3),
                         "tick": self.tick_count
                     })
-                    # Limit trail length to avoid too much data
-                    max_points = 200
+                    # Limit trail: up to 3600 points (~60 seconds at 60Hz, covers max stacked duration)
+                    max_points = 3600
                     if len(self.rainbow_trails[tank_key]["points"]) > max_points:
                         self.rainbow_trails[tank_key]["points"] = self.rainbow_trails[tank_key]["points"][-max_points:]
-                    self.rainbow_trails[tank_key]["ticks"] = 120
+                    # Keep trail visible for full remaining rainbow duration + 2s fade-out
+                    self.rainbow_trails[tank_key]["ticks"] = tank.rainbow_ticks + 120
 
             if tank.mushroom_ticks > 0:
                 tank.mushroom_ticks -= 1
@@ -658,23 +672,23 @@ class GameEngine:
                                     self.grid[gr][gc] = 24
                             self.events.append({"type": "sound", "sound": "hit-brick"})
                         elif tid == 24:
-                            # Mushroom collected — clear entire 2×2 group
+                            # Mushroom collected — clear entire 2×2 group, stacks +10s
                             for gr, gc in self._find_box_group(r, c, 24, 24):
                                 self.grid[gr][gc] = 0
                             self.events.append({"type": "sound", "sound": "powerup-pickup"})
                             owner_id = bullet.owner_id
                             if self.player and self.player.id == owner_id:
-                                self.player.mushroom_ticks = 600
+                                self.player.mushroom_ticks = max(self.player.mushroom_ticks, 0) + 600
                                 self._clear_area_for_tank(self.player, force=True)
                             else:
                                 for enemy in self.enemies.values():
                                     if enemy.id == owner_id:
-                                        enemy.mushroom_ticks = 600
+                                        enemy.mushroom_ticks = max(enemy.mushroom_ticks, 0) + 600
                                         self._clear_area_for_tank(enemy, force=True)
                                         break
                                 for turret in self.turrets.values():
                                     if turret.id == owner_id:
-                                        turret.mushroom_ticks = 600
+                                        turret.mushroom_ticks = max(turret.mushroom_ticks, 0) + 600
                                         self._clear_area_for_tank(turret, force=True)
                                         break
                         elif 29 <= tid <= 31:
@@ -685,21 +699,24 @@ class GameEngine:
                                     self.grid[gr][gc] = 23
                             self.events.append({"type": "sound", "sound": "hit-brick"})
                         elif tid == 23:
-                            # Rainbow collected — clear entire 2×2 group
+                            # Rainbow collected — clear entire 2×2 group, stacks +10s per pickup
                             for gr, gc in self._find_box_group(r, c, 23, 23):
                                 self.grid[gr][gc] = 0
                             self.events.append({"type": "sound", "sound": "powerup-pickup"})
                             owner_id = bullet.owner_id
                             if self.player and self.player.id == owner_id:
-                                self.player.rainbow_ticks = 300
+                                bonus = 600 if self.player.rainbow_ticks > 0 else 1800
+                                self.player.rainbow_ticks = max(self.player.rainbow_ticks, 0) + bonus
                             else:
                                 for enemy in self.enemies.values():
                                     if enemy.id == owner_id:
-                                        enemy.rainbow_ticks = 300
+                                        bonus = 600 if enemy.rainbow_ticks > 0 else 1800
+                                        enemy.rainbow_ticks = max(enemy.rainbow_ticks, 0) + bonus
                                         break
                                 for turret in self.turrets.values():
                                     if turret.id == owner_id:
-                                        turret.rainbow_ticks = 300
+                                        bonus = 600 if turret.rainbow_ticks > 0 else 1800
+                                        turret.rainbow_ticks = max(turret.rainbow_ticks, 0) + bonus
                                         break
                         else:
                             self.grid[r][c] = 0
@@ -716,6 +733,30 @@ class GameEngine:
                 self._on_bullet_gone(bullet)
                 continue
 
+            # Sandworm collision — bullets can hit any body part (5 hits to kill)
+            if not bullet.alive:
+                continue
+            if self.sandworm.get("active"):
+                hit_worm = False
+                for part in self.sandworm["parts"]:
+                    px, py = part["col"] + 0.5, part["row"] + 0.5
+                    if abs(bullet.col - px) < 0.7 and abs(bullet.row - py) < 0.7:
+                        bullet.alive = False
+                        self._on_bullet_gone(bullet)
+                        self._add_explosion(bullet.row, bullet.col)
+                        self.sandworm["hp"] = max(0, self.sandworm.get("hp", 5) - 1)
+                        if self.sandworm["hp"] <= 0:
+                            self.sandworm["active"] = False
+                            self.sandworm["despawning"] = False
+                            self.sandworm["parts"] = []
+                            self.sandworm["timer"] = random.randint(300, 600)
+                            self.sandworm["hp"] = 5
+                            self.events.append({"type": "sound", "sound": "enemy-explosion"})
+                        hit_worm = True
+                        break
+                if hit_worm:
+                    continue
+
             # Tank collision
             self._check_bullet_tank_hit(bullet)
 
@@ -727,12 +768,15 @@ class GameEngine:
 
     def _check_bullet_tank_hit(self, bullet: Bullet) -> None:
         targets = []
+        is_friendly = getattr(self, "_friendly_mode", False)
         if not bullet.is_player:
             if self.player and self.player.alive:
                 targets.append(self.player)
+            # Enemy bullets can always damage turrets (even in friendly mode)
             targets.extend(t for t in self.turrets.values() if t.alive)
         if bullet.is_player:
             targets.extend(e for e in self.enemies.values() if e.alive)
+            # Player bullets can hit other turrets (not themselves); turrets destroyable in friendly mode too
             targets.extend(t for t in self.turrets.values() if t.alive and t.id != bullet.owner_id)
 
         for tank in targets:
@@ -742,14 +786,16 @@ class GameEngine:
                 bullet.alive = False
                 self._on_bullet_gone(bullet)
                 
-                if tank.is_player and getattr(self, "_friendly_mode", False):
-                    # In friendly mode, bullets don't damage the player
+                # In friendly mode, player body is invincible but turrets still take damage
+                if tank.is_player and tank.tank_type != "turret" and is_friendly:
                     break
                     
                 tank.hp -= 1
                 if tank.hp <= 0:
                     tank.alive = False
-                    if not tank.is_player:
+                    if tank.tank_type == "turret":
+                        self.events.append({"type": "sound", "sound": "enemy-explosion"})
+                    elif not tank.is_player:
                         self.events.append({"type": "sound", "sound": "enemy-explosion"})
                         self.score += 100 * (list(ENEMY_TYPES).index(tank.tank_type) + 1)
                         self.enemies_remaining -= 1
@@ -800,6 +846,26 @@ class GameEngine:
             exp["ticks"] -= 1
         self.explosions = [e for e in self.explosions if e["ticks"] > 0]
 
+    def _find_nearest_tank(self) -> Optional[tuple[float, float]]:
+        """Return (row, col) of the nearest alive tank (player or enemy) to the sandworm head."""
+        if not self.sandworm.get("parts"):
+            return None
+        head = self.sandworm["parts"][0]
+        hr, hc = head["row"] + 0.5, head["col"] + 0.5
+        best_dist = float("inf")
+        best_pos = None
+        candidates = list(self.enemies.values())
+        if self.player and self.player.alive:
+            candidates.append(self.player)
+        for t in candidates:
+            if not t.alive:
+                continue
+            d = math.hypot(t.row - hr, t.col - hc)
+            if d < best_dist:
+                best_dist = d
+                best_pos = (t.row, t.col)
+        return best_pos
+
     def _tick_sandworm(self) -> None:
         if not self.sandworm.get("active"):
             self.sandworm["timer"] -= 1
@@ -810,12 +876,12 @@ class GameEngine:
                     self.sandworm["active"] = True
                     self.sandworm["parts"] = [{"row": start_r, "col": start_c, "type": "head"}]
                     self.sandworm["direction"] = random.choice(["up", "down", "left", "right"])
-                    self.sandworm["timer"] = 15 # Used for movement cooldown
+                    self.sandworm["timer"] = 15
                     self.sandworm["length"] = random.randint(4, 8)
                     self.sandworm["despawning"] = False
-                    self.sandworm["mud_immunity"] = 240 # 4 seconds * 60 ticks
+                    self.sandworm["mud_immunity"] = 240
                     self.sandworm["dir_timer"] = random.randint(120, 300)
-                    
+                    self.sandworm["hp"] = 5
                     self.events.append({"type": "sound", "sound": "powerup-appear"})
                 else:
                     self.sandworm["timer"] = random.randint(300, 600)
@@ -824,16 +890,15 @@ class GameEngine:
         self.sandworm["timer"] -= 1
         self.sandworm["mud_immunity"] = max(0, self.sandworm.get("mud_immunity", 0) - 1)
         self.sandworm["dir_timer"] = max(0, self.sandworm.get("dir_timer", 0) - 1)
-        
+
         if self.sandworm["timer"] <= 0:
-            self.sandworm["timer"] = 15 # Move every 15 ticks (~0.25s)
-            
+            self.sandworm["timer"] = 15  # Move every 15 ticks (~0.25 s)
+
             parts = self.sandworm["parts"]
-            
+
             if self.sandworm.get("despawning"):
                 if parts:
-                    parts.pop() # remove tail
-                    
+                    parts.pop()
                 if not parts:
                     self.sandworm["active"] = False
                     self.sandworm["timer"] = random.randint(300, 600)
@@ -842,27 +907,49 @@ class GameEngine:
                     for i in range(1, len(parts)):
                         parts[i]["type"] = "body"
                 return
-            
-            # Random direction change
-            if self.sandworm["dir_timer"] <= 0:
-                dirs = ["up", "down", "left", "right"]
-                # Prevent immediate 180 turn
-                opposites = {"up": "down", "down": "up", "left": "right", "right": "left"}
-                dirs.remove(opposites[self.sandworm["direction"]])
-                self.sandworm["direction"] = random.choice(dirs)
-                self.sandworm["dir_timer"] = random.randint(120, 300) # 2-5 seconds (60 ticks/sec)
-            
+
             head = parts[0]
-            
+
+            # ── Escalator / conveyor carry ────────────────────────────────────
+            hr, hc = head["row"], head["col"]
+            if 0 <= hr < GRID_HEIGHT and 0 <= hc < GRID_WIDTH:
+                ctid = self.grid[hr][hc]
+                conveyor_map = {8: "up", 9: "down", 10: "left", 11: "right"}
+                if ctid in conveyor_map:
+                    self.sandworm["direction"] = conveyor_map[ctid]
+
+            # ── AI: steer toward nearest tank ~70% of the time ───────────────
+            if self.sandworm["dir_timer"] <= 0:
+                self.sandworm["dir_timer"] = random.randint(90, 210)
+                opposites = {"up": "down", "down": "up", "left": "right", "right": "left"}
+                target = self._find_nearest_tank()
+                if target and random.random() < 0.75:
+                    dr_t = target[0] - (head["row"] + 0.5)
+                    dc_t = target[1] - (head["col"] + 0.5)
+                    if abs(dr_t) > abs(dc_t):
+                        desired = "down" if dr_t > 0 else "up"
+                    else:
+                        desired = "right" if dc_t > 0 else "left"
+                    if desired != opposites.get(self.sandworm["direction"]):
+                        self.sandworm["direction"] = desired
+                    else:
+                        dirs = ["up", "down", "left", "right"]
+                        dirs.remove(opposites[self.sandworm["direction"]])
+                        self.sandworm["direction"] = random.choice(dirs)
+                else:
+                    dirs = ["up", "down", "left", "right"]
+                    dirs.remove(opposites[self.sandworm["direction"]])
+                    self.sandworm["direction"] = random.choice(dirs)
+
             dr, dc = 0, 0
             if self.sandworm["direction"] == "up": dr = -1
             elif self.sandworm["direction"] == "down": dr = 1
             elif self.sandworm["direction"] == "left": dc = -1
             elif self.sandworm["direction"] == "right": dc = 1
-            
+
             next_r = head["row"] + dr
             next_c = head["col"] + dc
-            
+
             hit_solid = False
             hit_mud = False
             if next_r < 0 or next_r >= GRID_HEIGHT or next_c < 0 or next_c >= GRID_WIDTH:
@@ -874,41 +961,39 @@ class GameEngine:
                     hit_mud = True
                 elif tile.tank_solid or tile.is_base:
                     hit_solid = True
-                    
+
             if any(p["row"] == next_r and p["col"] == next_c for p in parts):
                 hit_solid = True
-                    
+
             if hit_solid:
+                # Try to find any valid direction; prefer turning toward target
                 dirs = ["up", "right", "down", "left"]
                 idx = dirs.index(self.sandworm["direction"])
                 self.sandworm["direction"] = dirs[(idx + 1) % 4]
+                self.sandworm["dir_timer"] = 0  # re-evaluate AI next movement tick
                 return
-                
+
             if hit_mud and self.sandworm["mud_immunity"] <= 0:
                 self.sandworm["despawning"] = True
-                
-                # Still move forward into mud on the first tick of despawning
                 new_head = {"row": next_r, "col": next_c, "type": "head"}
                 parts.insert(0, new_head)
-                if parts: parts.pop()
-                
+                if parts:
+                    parts.pop()
                 for i in range(1, len(parts)):
                     parts[i]["type"] = "body"
                 return
-                
-            # Move forward by inserting a new head
+
+            # Move forward
             new_head = {"row": next_r, "col": next_c, "type": "head"}
             parts.insert(0, new_head)
-            
-            # Trim tail if we exceed length
+
             if len(parts) > self.sandworm.get("length", 4):
                 parts.pop()
-                
-            # Update types based on new positions
+
             for i in range(1, len(parts)):
                 parts[i]["type"] = "body"
-            
-            # Check collisions with tanks at the head
+
+            # Check collisions with tanks at the new head position
             for tank in list(self.enemies.values()) + ([self.player] if self.player and self.player.alive else []):
                 if not tank.alive:
                     continue
@@ -952,7 +1037,7 @@ class GameEngine:
                     if (nr, nc) != (r, c) and self.grid[nr][nc] == 0:
                         self._add_explosion(nr + 0.5, nc + 0.5)
                     
-                    # Tank damage
+                    # Tank damage (enemies + player)
                     for tank in list(self.enemies.values()) + ([self.player] if self.player and self.player.alive else []):
                         if not tank.alive:
                             continue
@@ -969,6 +1054,31 @@ class GameEngine:
                                 else:
                                     self.player_lives -= 1
                                     self._player_respawn_timer = 180
+
+                    # Turret damage from TNT blast
+                    for t_id, turret in list(self.turrets.items()):
+                        if not turret.alive:
+                            continue
+                        if abs(turret.row - (nr + 0.5)) < 1.5 and abs(turret.col - (nc + 0.5)) < 1.5:
+                            turret.hp -= 1
+                            self._add_explosion(turret.row, turret.col)
+                            if turret.hp <= 0:
+                                turret.alive = False
+                                self.events.append({"type": "sound", "sound": "enemy-explosion"})
+
+                    # Sandworm damage from TNT blast
+                    if self.sandworm.get("active"):
+                        for part in self.sandworm["parts"]:
+                            if abs((part["row"] + 0.5) - (nr + 0.5)) < 1.5 and abs((part["col"] + 0.5) - (nc + 0.5)) < 1.5:
+                                self.sandworm["hp"] = max(0, self.sandworm.get("hp", 5) - 1)
+                                if self.sandworm["hp"] <= 0:
+                                    self.sandworm["active"] = False
+                                    self.sandworm["despawning"] = False
+                                    self.sandworm["parts"] = []
+                                    self.sandworm["timer"] = random.randint(300, 600)
+                                    self.sandworm["hp"] = 5
+                                    self.events.append({"type": "sound", "sound": "enemy-explosion"})
+                                break
 
     def _find_box_group(self, r: int, c: int, low: int, high: int) -> list:
         """Return all tile positions belonging to the 2×2 box that contains (r, c),
@@ -1133,7 +1243,7 @@ class GameEngine:
             "rainbow_trails": self.rainbow_trails,
             "items": self.items,
             "events": list(self.events),
-            "sandworm": self.sandworm,
+            "sandworm": {**self.sandworm, "hp": self.sandworm.get("hp", 5)},
             "grid": self.grid,  # full grid on every tick
             "base_pos": {"row": self._base_pos[0], "col": self._base_pos[1]} if self._base_pos else None
         }
