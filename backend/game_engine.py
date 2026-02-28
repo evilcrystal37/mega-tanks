@@ -450,30 +450,38 @@ class GameEngine:
 
             turret.tick_cooldown()
 
-            # Find closest enemy within 10 tiles and always aim at it
+            # Find closest target (enemy tank or sandworm head) within 10 tiles
             best_dist = float('inf')
-            best_enemy = None
+            best_target_row = None
+            best_target_col = None
+
             for e in self.enemies.values():
                 if e.alive:
                     dist = math.hypot(e.row - turret.row, e.col - turret.col)
                     if dist < best_dist and dist < 10.0:
                         best_dist = dist
-                        best_enemy = e
+                        best_target_row = e.row
+                        best_target_col = e.col
 
-            # Also check player in friendly mode (turrets are friendly, so they target enemies)
-            # But if we're in a mode where player is enemy to turrets, target player too
-            # For now, turrets only target enemies
+            # Also target sandworm head if active and in range
+            if self.sandworm.get("active") and self.sandworm.get("parts"):
+                head = self.sandworm["parts"][0]
+                worm_row = head["row"] + 0.5
+                worm_col = head["col"] + 0.5
+                dist = math.hypot(worm_row - turret.row, worm_col - turret.col)
+                if dist < best_dist and dist < 10.0:
+                    best_dist = dist
+                    best_target_row = worm_row
+                    best_target_col = worm_col
 
-            if best_enemy:
-                # Always turn to face the closest enemy
-                dr = best_enemy.row - turret.row
-                dc = best_enemy.col - turret.col
+            if best_target_row is not None:
+                dr = best_target_row - turret.row
+                dc = best_target_col - turret.col
                 if abs(dr) > abs(dc):
                     turret.direction = "down" if dr > 0 else "up"
                 else:
                     turret.direction = "right" if dc > 0 else "left"
 
-                # Fire if cooldown is ready
                 if turret.can_fire():
                     self._try_fire(turret)
 
@@ -996,6 +1004,20 @@ class GameEngine:
 
             for i in range(1, len(parts)):
                 parts[i]["type"] = "body"
+
+            # Lava damages sandworm (1 hp per step onto lava)
+            if 0 <= next_r < GRID_HEIGHT and 0 <= next_c < GRID_WIDTH and self.grid[next_r][next_c] == 7:
+                self.sandworm["hp"] = max(0, self.sandworm.get("hp", 5) - 1)
+                self._add_explosion(next_r + 0.5, next_c + 0.5)
+                self.events.append({"type": "sound", "sound": "fire"})
+                if self.sandworm["hp"] <= 0:
+                    self.sandworm["active"] = False
+                    self.sandworm["despawning"] = False
+                    self.sandworm["parts"] = []
+                    self.sandworm["timer"] = random.randint(300, 600)
+                    self.sandworm["hp"] = 5
+                    self.events.append({"type": "sound", "sound": "enemy-explosion"})
+                    return
 
             # Check collisions with tanks at the new head position
             for tank in list(self.enemies.values()) + ([self.player] if self.player and self.player.alive else []):
