@@ -119,16 +119,27 @@ function _countTurrets() {
 
 function _updateTurretCycle() {
     const full = _countTurrets() >= MAX_TURRETS;
-    const inCycle = tileIds.includes(TURRET_ID);
+    const idx = tileIds.indexOf(TURRET_ID);
+    const inCycle = idx !== -1;
+
     if (full && inCycle) {
-        const idx = tileIds.indexOf(TURRET_ID);
         tileIds.splice(idx, 1);
+        // tileIndex === idx → next tile slides in automatically (switch to next ✓)
+        // tileIndex > idx  → element shifted left, decrement to stay on same tile
+        if (tileIndex > idx) tileIndex--;
         if (tileIndex >= tileIds.length) tileIndex = 0;
+        // Immediately show the new ghost tile (reset blink to visible)
+        _cursorVisible = true;
+        _lastBlink = performance.now();
         _updateStatusBar();
     } else if (!full && !inCycle) {
         const insertAt = tileIds.findIndex(id => id > TURRET_ID);
         if (insertAt === -1) tileIds.push(TURRET_ID);
-        else tileIds.splice(insertAt, 0, TURRET_ID);
+        else {
+            tileIds.splice(insertAt, 0, TURRET_ID);
+            // Elements at and after insertAt shifted right — keep tileIndex on same tile
+            if (tileIndex >= insertAt) tileIndex++;
+        }
         _updateStatusBar();
     }
 }
@@ -685,21 +696,35 @@ function _generateRandomMap() {
         }
     }
     
-    // ── Auto-turrets (tile 25) — placed as individual cells ──────────────
-    // Each turret is parsed into a live entity at game start, so a large
-    // filled shape would spawn too many.  Place 1-3 individual cells.
-    const numTurrets = 1 + Math.floor(Math.random() * 3);
-    for (let t = 0; t < numTurrets; t++) {
-        let tr = Math.floor(Math.random() * (maxR - 2));
-        let tc = Math.floor(Math.random() * (maxC - 1));
-        grid[tr][tc] = 25;
-        // Mirror
-        if (symMode === 2) {
-            grid[tr][GRID_W - 1 - tc] = 25;
-        } else if (symMode === 4) {
-            grid[tr][GRID_W - 1 - tc] = 25;
-            grid[GRID_H - 1 - tr][tc] = 25;
-            grid[GRID_H - 1 - tr][GRID_W - 1 - tc] = 25;
+    // ── Auto-turrets (tile 25) — placed as 2×2 blocks at even positions ──
+    // Each block spawns one turret entity; symmetry can multiply the count.
+    // Cap placements so the total logical turrets stay within MAX_TURRETS.
+    const turretsPerPlacement = symMode === 4 ? 4 : symMode === 2 ? 2 : 1;
+    const maxTurretPlacements = Math.max(1, Math.floor(MAX_TURRETS / turretsPerPlacement));
+    const numTurretPlacements = 1 + Math.floor(Math.random() * Math.min(2, maxTurretPlacements));
+    for (let t = 0; t < numTurretPlacements; t++) {
+        // Snap to even row/col so the 2×2 block aligns with the engine's scan
+        let tr = Math.floor(Math.random() * Math.max(1, Math.floor((maxR - 4) / 2))) * 2;
+        let tc = Math.floor(Math.random() * Math.max(1, Math.floor((maxC - 4) / 2))) * 2;
+        tr = Math.max(0, Math.min(tr, maxR - 2));
+        tc = Math.max(0, Math.min(tc, maxC - 2));
+        for (let dr = 0; dr < 2; dr++) {
+            for (let dc = 0; dc < 2; dc++) {
+                const r = tr + dr;
+                const c = tc + dc;
+                if (r < maxR && c < maxC) {
+                    grid[r][c] = 25;
+                    const mirrorC = GRID_W - 1 - c;
+                    const mirrorR = GRID_H - 1 - r;
+                    if (symMode === 2) {
+                        grid[r][mirrorC] = 25;
+                    } else if (symMode === 4) {
+                        grid[r][mirrorC] = 25;
+                        grid[mirrorR][c] = 25;
+                        grid[mirrorR][mirrorC] = 25;
+                    }
+                }
+            }
         }
     }
 
