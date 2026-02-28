@@ -68,7 +68,7 @@ class GameEngine:
         # Sandworm state (Snake-like)
         self.sandworm: dict = {
             "active": False,
-            "parts": [],  # List of dicts: [{"row": r, "col": c, "type": "head"|"body"|"tail"}]
+            "parts": [],  # List of dicts: [{"row": r, "col": c, "type": "head"|"body"}]
             "direction": "up",
             "timer": random.randint(300, 600),
             "despawning": False,
@@ -833,10 +833,8 @@ class GameEngine:
                     self.sandworm["timer"] = random.randint(300, 600)
                 else:
                     parts[0]["type"] = "head"
-                    if len(parts) > 1:
-                        parts[-1]["type"] = "tail"
-                        for i in range(1, len(parts)-1):
-                            parts[i]["type"] = "body"
+                    for i in range(1, len(parts)):
+                        parts[i]["type"] = "body"
                 return
             
             # Random direction change
@@ -886,12 +884,10 @@ class GameEngine:
                 # Still move forward into mud on the first tick of despawning
                 new_head = {"row": next_r, "col": next_c, "type": "head"}
                 parts.insert(0, new_head)
-                if parts: parts.pop() # remove tail to maintain length, will continue popping on next ticks
+                if parts: parts.pop()
                 
-                if len(parts) > 1:
-                    parts[-1]["type"] = "tail"
-                    for i in range(1, len(parts)-1):
-                        parts[i]["type"] = "body"
+                for i in range(1, len(parts)):
+                    parts[i]["type"] = "body"
                 return
                 
             # Move forward by inserting a new head
@@ -903,10 +899,8 @@ class GameEngine:
                 parts.pop()
                 
             # Update types based on new positions
-            if len(parts) > 1:
-                parts[-1]["type"] = "tail"
-                for i in range(1, len(parts)-1):
-                    parts[i]["type"] = "body"
+            for i in range(1, len(parts)):
+                parts[i]["type"] = "body"
             
             # Check collisions with tanks at the head
             for tank in list(self.enemies.values()) + ([self.player] if self.player and self.player.alive else []):

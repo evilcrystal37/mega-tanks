@@ -90,9 +90,9 @@ async function _loadTiles() {
         ];
     }
     // Cycling skips: Empty (0), Base (6), glass cracks (16, 17),
-    // sandworm parts (20, 21, 22), raw item pickups (23, 24 — must stay inside their boxes),
+    // sandworm parts (20, 21), raw item pickups (23, 24 — must stay inside their boxes),
     // mushroom cracks (26, 27), rainbow cracks (29, 30)
-    const NOT_ALLOWED = new Set([0, 6, 16, 17, 20, 21, 22, 23, 24, 26, 27, 29, 30]);
+    const NOT_ALLOWED = new Set([0, 6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30]);
     tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id)).map(t => t.id);
     tileIndex = 0;
     _updateStatusBar();

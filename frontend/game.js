@@ -306,7 +306,7 @@ class GameRenderer {
                 }
                 ctx.rotate(angle);
                 
-                ctx.fillStyle = part.type === "head" ? "#8b4513" : part.type === "body" ? "#a0522d" : "#cd853f";
+                ctx.fillStyle = part.type === "head" ? "#8b4513" : "#a0522d";
                 
                 // Organic sizes
                 const baseRadius = part.type === "head" ? (cell * 0.45) : (cell * 0.4);
@@ -330,12 +330,6 @@ class GameRenderer {
                     ctx.beginPath();
                     ctx.arc(cell * 0.25 + wiggle, -cell * 0.2, cell * 0.04, 0, Math.PI * 2);
                     ctx.arc(cell * 0.25 + wiggle, cell * 0.2, cell * 0.04, 0, Math.PI * 2);
-                    ctx.fill();
-                } else if (part.type === "tail") {
-                    // Pointy tail
-                    ctx.moveTo(wiggle - cell*0.4, 0);
-                    ctx.lineTo(wiggle + cell*0.3, -cell*0.25);
-                    ctx.lineTo(wiggle + cell*0.3, cell*0.25);
                     ctx.fill();
                 } else {
                     // Rounded body segments

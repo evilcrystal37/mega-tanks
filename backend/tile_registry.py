@@ -136,16 +136,13 @@ TILE_REGISTRY: Dict[int, TileType] = {
         id=20, name="sandworm_head", label="Worm H",
         color="#8b4513",
         tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
+        non_repeating=True,
     ),
     21: TileType(
         id=21, name="sandworm_body", label="Worm B",
         color="#a0522d",
         tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
-    ),
-    22: TileType(
-        id=22, name="sandworm_tail", label="Worm T",
-        color="#cd853f",
-        tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
+        non_repeating=True,
     ),
     23: TileType(
         id=23, name="rainbow_pad", label="Rainbow Pad",
