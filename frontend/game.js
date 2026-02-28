@@ -21,6 +21,76 @@ const TILE_COLORS = {
     6: "#000000", // Base
 };
 
+/**
+ * Draw a sand/quicksand tile with diagonal dune ripple pattern.
+ * Matches the diagonal sinusoidal wave look of real desert sand.
+ */
+function _drawSandTile(ctx, dx, dy, ds) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(dx, dy, ds, ds);
+    ctx.clip();
+
+    // Warm sandy base
+    ctx.fillStyle = "#d4bc8e";
+    ctx.fillRect(dx, dy, ds, ds);
+
+    // Rotate canvas ~32° around tile centre to produce diagonal waves
+    const cx = dx + ds / 2;
+    const cy = dy + ds / 2;
+    ctx.translate(cx, cy);
+    ctx.rotate(-0.56); // ≈ 32°
+    ctx.translate(-cx, -cy);
+
+    // How many wave bands across the (now rotated) tile
+    const numBands = 7;
+    const bandH = ds * 1.8 / numBands; // larger to cover rotated corners
+    const origin = dy - ds * 0.4;      // start above tile to cover corners
+    const left   = dx - ds * 0.4;
+    const right  = dx + ds * 1.4;
+    const steps  = Math.max(8, Math.ceil(ds * 1.8)); // horizontal sample points
+
+    for (let i = 0; i < numBands + 1; i++) {
+        const y0 = origin + i * bandH;
+
+        // Wave function: gentle sine ripple along the band
+        const wave = (x, yBase) =>
+            yBase + Math.sin(((x - left) / (right - left)) * Math.PI * 2.5) * bandH * 0.18;
+
+        // ── Dark trough (shadow between crests) ─────────────────────────
+        ctx.fillStyle = "rgba(168,130,72,0.38)";
+        ctx.beginPath();
+        ctx.moveTo(left, wave(left, y0));
+        for (let s = 1; s <= steps; s++) {
+            const x = left + (s / steps) * (right - left);
+            ctx.lineTo(x, wave(x, y0));
+        }
+        for (let s = steps; s >= 0; s--) {
+            const x = left + (s / steps) * (right - left);
+            ctx.lineTo(x, wave(x, y0) + bandH * 0.42);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        // ── Light crest (sunlit peak) ────────────────────────────────────
+        ctx.fillStyle = "rgba(255,242,200,0.22)";
+        ctx.beginPath();
+        ctx.moveTo(left, wave(left, y0) + bandH * 0.42);
+        for (let s = 1; s <= steps; s++) {
+            const x = left + (s / steps) * (right - left);
+            ctx.lineTo(x, wave(x, y0) + bandH * 0.42);
+        }
+        for (let s = steps; s >= 0; s--) {
+            const x = left + (s / steps) * (right - left);
+            ctx.lineTo(x, wave(x, y0) + bandH * 0.78);
+        }
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    ctx.restore();
+}
+
 class GameRenderer {
     constructor() {
         this.canvas = document.getElementById("game-canvas");
@@ -675,18 +745,71 @@ class GameRenderer {
         }
 
         if (tid === 7) {
-            const time = Date.now();
-            ctx.fillStyle = (Math.floor(time / 300) % 2 === 0) ? "#ff3300" : "#ff6600";
+            const t = Date.now() / 1200;
+            ctx.save();
+            ctx.beginPath(); ctx.rect(dx, dy, ds, ds); ctx.clip();
+
+            // Glowing crack base — pulses between deep orange and bright orange-red
+            const glow = (Math.sin(t * 1.8) + 1) / 2;
+            ctx.fillStyle = `rgb(${Math.round(200 + glow * 55)},${Math.round(35 + glow * 35)},0)`;
             ctx.fillRect(dx, dy, ds, ds);
-            
-            // Bubbles
-            ctx.fillStyle = "#ffcc00";
-            const b1 = Math.abs(Math.sin(time / 500)) * ds * 0.2;
-            const b2 = Math.abs(Math.cos(time / 400 + 1)) * ds * 0.15;
-            ctx.beginPath();
-            ctx.arc(dx + ds * 0.3, dy + ds * 0.7, b1, 0, Math.PI * 2);
-            ctx.arc(dx + ds * 0.7, dy + ds * 0.3, b2, 0, Math.PI * 2);
-            ctx.fill();
+
+            // Lava plates — large irregular dark-red polygons, thin glowing cracks between them.
+            // Each entry: [relX, relY, baseRadius, rotationSeed, driftPhase]
+            const plates = [
+                [0.22, 0.22, 0.21, 0.0,  0.0],
+                [0.68, 0.18, 0.20, 0.8,  1.3],
+                [0.88, 0.60, 0.18, 1.7,  2.5],
+                [0.14, 0.64, 0.19, 2.4,  0.7],
+                [0.50, 0.55, 0.23, 0.4,  1.9],
+                [0.40, 0.88, 0.17, 1.1,  3.1],
+                [0.78, 0.84, 0.16, 2.9,  0.4],
+            ];
+
+            plates.forEach(([bx, by, br, rot, phase]) => {
+                // Very slow gentle drift to simulate molten flow
+                const drift = Math.sin(t * 0.35 + phase) * 0.018;
+                const cx = dx + (bx + drift) * ds;
+                const cy = dy + (by + Math.cos(t * 0.28 + phase) * 0.012) * ds;
+                const r  = br * ds * (0.92 + Math.sin(t * 0.6 + phase) * 0.05);
+
+                // Irregular polygon — 8 sides with per-vertex radius variation
+                const sides = 8;
+                ctx.beginPath();
+                for (let i = 0; i <= sides; i++) {
+                    const a = (i / sides) * Math.PI * 2 + rot;
+                    // Deterministic variation per vertex for stable jagged shape
+                    const v = 0.72 + 0.28 * Math.sin(i * 2.7 + rot * 3.1 + phase);
+                    const pr = r * v;
+                    if (i === 0) ctx.moveTo(cx + Math.cos(a) * pr, cy + Math.sin(a) * pr);
+                    else         ctx.lineTo(cx + Math.cos(a) * pr, cy + Math.sin(a) * pr);
+                }
+                ctx.closePath();
+
+                // Dark plate — radial gradient: slightly lighter core, very dark rim
+                const pg = ctx.createRadialGradient(cx - r * 0.22, cy - r * 0.22, r * 0.04, cx, cy, r);
+                pg.addColorStop(0,   "#8c1500");
+                pg.addColorStop(0.5, "#660b00");
+                pg.addColorStop(0.82,"#420500");
+                pg.addColorStop(1,   "#220100");
+                ctx.fillStyle = pg;
+                ctx.fill();
+            });
+
+            // Inner glow bleed — subtle orange halo on each plate edge
+            plates.forEach(([bx, by, br, rot, phase]) => {
+                const drift = Math.sin(t * 0.35 + phase) * 0.018;
+                const cx = dx + (bx + drift) * ds;
+                const cy = dy + (by + Math.cos(t * 0.28 + phase) * 0.012) * ds;
+                const r  = br * ds * (0.92 + Math.sin(t * 0.6 + phase) * 0.05);
+                const eg = ctx.createRadialGradient(cx, cy, r * 0.6, cx, cy, r * 1.05);
+                eg.addColorStop(0, "rgba(180,30,0,0)");
+                eg.addColorStop(1, `rgba(255,${Math.round(80 + glow * 40)},0,0.18)`);
+                ctx.fillStyle = eg;
+                ctx.beginPath(); ctx.arc(cx, cy, r * 1.05, 0, Math.PI * 2); ctx.fill();
+            });
+
+            ctx.restore();
             return;
         }
 
@@ -736,37 +859,7 @@ class GameRenderer {
         }
 
         if (tid === 12) {
-            // Sandy base
-            ctx.fillStyle = "#c8a84b";
-            ctx.fillRect(dx, dy, ds, ds);
-
-            // Subtle grain texture — slightly darker dune streaks
-            const t = Date.now() / 500;
-            ctx.fillStyle = "rgba(160,120,30,0.35)";
-            for (let i = 0; i < 3; i++) {
-                const sx = dx + ds * (0.1 + i * 0.3) + Math.sin(t + i * 1.1) * ds * 0.06;
-                const sy = dy + ds * (0.15 + i * 0.28) + Math.cos(t * 0.9 + i) * ds * 0.06;
-                ctx.fillRect(sx, sy, ds * 0.45, ds * 0.07);
-            }
-
-            // Quicksand ripple circles — slow sink animation
-            const o1 = Math.sin(t)       * ds * 0.08;
-            const o2 = Math.cos(t * 1.3) * ds * 0.08;
-            const o3 = Math.sin(t * 0.8) * ds * 0.08;
-            ctx.strokeStyle = "rgba(140,100,20,0.5)";
-            ctx.lineWidth = Math.max(1, ds * 0.06);
-            [[0.35 + o1 / ds, 0.35 + o2 / ds],
-             [0.65 + o2 / ds, 0.55 + o3 / ds],
-             [0.4  + o3 / ds, 0.7  + o1 / ds]].forEach(([rx, ry]) => {
-                const r = ds * (0.09 + 0.04 * Math.abs(Math.sin(t + rx)));
-                ctx.beginPath();
-                ctx.ellipse(dx + rx * ds, dy + ry * ds, r, r * 0.45, 0, 0, Math.PI * 2);
-                ctx.stroke();
-            });
-
-            // Light highlight — sun glint on sand
-            ctx.fillStyle = "rgba(255,240,180,0.18)";
-            ctx.fillRect(dx, dy, ds, ds * 0.3);
+            _drawSandTile(ctx, dx, dy, ds);
             return;
         }
 
