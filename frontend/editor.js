@@ -325,10 +325,7 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             }
             ctx.stroke();
         } else if (tid === 25) {
-            // Base plate — spans full 2×2 block
-            ctx.fillStyle = "#546e7a";
-            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-            // Turret dome
+            // Turret dome (no background plate)
             ctx.fillStyle = "#607d8b";
             ctx.beginPath();
             ctx.arc(0, 0, ds * 0.55, 0, Math.PI * 2);
@@ -338,24 +335,24 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             ctx.fillRect(-ds * 0.12, -ds * 0.9, ds * 0.24, ds * 0.75);
         } else if (tid >= 26 && tid <= 28) {
             // Mushroom glass box — big-type, centered at (0,0)
-            ctx.fillStyle = "rgba(139, 195, 74, 0.2)";
+            ctx.fillStyle = "rgba(139, 195, 74, 0.15)";
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
             const cycle = (Date.now() % 2000) / 2000;
             const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
             const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
             shineGrad.addColorStop(0, "rgba(255,255,255,0)");
-            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.6)");
+            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.4)");
             shineGrad.addColorStop(1, "rgba(255,255,255,0)");
             ctx.fillStyle = shineGrad;
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            ctx.strokeStyle = "rgba(139, 195, 74, 0.7)";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(-ds + 0.5, -ds + 0.5, ds * 2 - 1, ds * 2 - 1);
             ctx.strokeStyle = "rgba(255,255,255,0.5)";
-            ctx.lineWidth = 3;
-            ctx.strokeRect(-ds + 3, -ds + 3, ds * 2 - 6, ds * 2 - 6);
-            ctx.strokeStyle = "rgba(255,255,255,0.8)";
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds); ctx.stroke();
-            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.strokeStyle = "rgba(0,0,0,0.15)";
             ctx.beginPath();
             ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
             const bounce = Math.sin(Date.now() / 200) * ds * 0.05;
@@ -382,24 +379,24 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             ctx.stroke();
         } else if (tid >= 29 && tid <= 31) {
             // Rainbow glass box — big-type, centered at (0,0)
-            ctx.fillStyle = "rgba(255, 105, 180, 0.2)";
+            ctx.fillStyle = "rgba(255, 105, 180, 0.15)";
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
             const cycle = ((Date.now() + 500) % 2000) / 2000;
             const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
             const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
             shineGrad.addColorStop(0, "rgba(255,255,255,0)");
-            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.6)");
+            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.4)");
             shineGrad.addColorStop(1, "rgba(255,255,255,0)");
             ctx.fillStyle = shineGrad;
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            ctx.strokeStyle = "rgba(255, 105, 180, 0.7)";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(-ds + 0.5, -ds + 0.5, ds * 2 - 1, ds * 2 - 1);
             ctx.strokeStyle = "rgba(255,255,255,0.5)";
-            ctx.lineWidth = 3;
-            ctx.strokeRect(-ds + 3, -ds + 3, ds * 2 - 6, ds * 2 - 6);
-            ctx.strokeStyle = "rgba(255,255,255,0.8)";
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds); ctx.stroke();
-            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.strokeStyle = "rgba(0,0,0,0.15)";
             ctx.beginPath();
             ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
             const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
