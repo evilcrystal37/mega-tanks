@@ -102,7 +102,7 @@ function _currentTileId() {
     return tileIds[tileIndex] ?? 1;
 }
 
-const MAX_TURRETS = 5;
+const MAX_TURRETS = 4;
 const TURRET_ID = 25;
 
 // Count logical turrets as 2×2 blocks — top-left corner at even row/col.
