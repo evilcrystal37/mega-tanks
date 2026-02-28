@@ -13,7 +13,6 @@ const playScreen = document.getElementById("play-screen");
 const settingsScreen = document.getElementById("settings-screen");
 
 const btnTitleConstruct = document.getElementById("btn-title-construct");
-const btnTitlePlay = document.getElementById("btn-title-play");
 const btnTitleSettings = document.getElementById("btn-title-settings");
 const btnEditorSettings = document.getElementById("btn-editor-settings");
 const btnBackTitle = document.getElementById("btn-back-title");
@@ -25,7 +24,7 @@ const btnSettingsBack = document.getElementById("btn-settings-back");
 const btnSettingsReset = document.getElementById("btn-settings-reset");
 
 let currentScreen = "title";
-let selectedMenuIndex = 0; // 0: construction, 1: play, 2: settings
+let selectedMenuIndex = 0; // 0: construction, 1: settings
 let settingsOrigin = "title";
 let editorReady = false;
 
@@ -193,11 +192,6 @@ async function init() {
 
     // Screen routing
     btnTitleConstruct.addEventListener("click", () => switchScreen("editor"));
-    btnTitlePlay.addEventListener("click", () => {
-        const name = getCurrentMapName();
-        if (name) launchGame(name);
-        else switchScreen("editor"); // Go to editor if no map
-    });
     btnTitleSettings.addEventListener("click", () => { settingsOrigin = "title"; switchScreen("settings"); });
     if (btnEditorSettings) btnEditorSettings.addEventListener("click", () => { settingsOrigin = "editor"; switchScreen("settings"); });
 
@@ -232,16 +226,10 @@ async function init() {
     window.addEventListener("keydown", (ev) => {
         if (currentScreen === "title") {
             if (ev.code === "ArrowUp") _updateMenuSelection(Math.max(0, selectedMenuIndex - 1));
-            if (ev.code === "ArrowDown") _updateMenuSelection(Math.min(2, selectedMenuIndex + 1));
+            if (ev.code === "ArrowDown") _updateMenuSelection(Math.min(1, selectedMenuIndex + 1));
             if (ev.code === "Enter") {
                 if (selectedMenuIndex === 0) switchScreen("editor");
-                else if (selectedMenuIndex === 1) {
-                    const name = getCurrentMapName();
-                    if (name) launchGame(name);
-                    else switchScreen("editor");
-                } else {
-                    switchScreen("settings");
-                }
+                else switchScreen("settings");
             }
         }
         if (currentScreen === "settings" && ev.code === "Escape") {
@@ -260,8 +248,7 @@ async function init() {
 function _updateMenuSelection(idx) {
     selectedMenuIndex = idx;
     btnTitleConstruct.classList.toggle("selected", idx === 0);
-    btnTitlePlay.classList.toggle("selected", idx === 1);
-    btnTitleSettings.classList.toggle("selected", idx === 2);
+    btnTitleSettings.classList.toggle("selected", idx === 1);
 }
 
 // ── Screen Switching ──────────────────────────────────────────────────
