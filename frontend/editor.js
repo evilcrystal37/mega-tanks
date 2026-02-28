@@ -588,21 +588,21 @@ function _generateRandomMap() {
     // Pick symmetry mode: 2-way (left-right) or 4-way (quadrants)
     const symMode = Math.random() > 0.5 ? 4 : 2;
     
-    // Choose tiles to place. Brick is most common.
-    // 1: Brick, 2: Steel, 3: Water, 4: Forest, 5: Ice, 7: Lava, 8-11: Arrows, 12: Mud, 13: Spring, 14: TNT, 15: Glass
+    // Weighted tile pool for regular (1×1 and repeating) tiles.
+    // Brick is most common; special/rare tiles appear once or twice.
     const placeableTiles = [
-        1, 1, 1, 1, 1, 1, 1, 1, 
-        2, 2, 2, 
-        3, 3, 
-        4, 4, 4, 
-        5, 5, 
-        7, 
-        8, 9, 10, 11, 
-        12, 
-        13, 
-        14, 
-        15,
-        18
+        1, 1, 1, 1, 1, 1, 1, 1,  // brick      — most common
+        2, 2, 2,                   // steel
+        3, 3,                      // water
+        4, 4, 4,                   // forest
+        5, 5,                      // ice
+        7,                         // lava
+        8, 9, 10, 11,              // conveyors (all four directions)
+        12,                        // mud
+        13,                        // spring / ramp
+        14,                        // TNT
+        15,                        // glass brick
+        18,                        // sunflower (passable cover)
     ];
     
     const isDense = Math.random() > 0.5; // 50% chance for a more packed map
@@ -649,6 +649,55 @@ function _generateRandomMap() {
         }
     }
     
+    // ── Auto-turrets (tile 25) — placed as individual cells ──────────────
+    // Each turret is parsed into a live entity at game start, so a large
+    // filled shape would spawn too many.  Place 1-3 individual cells.
+    const numTurrets = 1 + Math.floor(Math.random() * 3);
+    for (let t = 0; t < numTurrets; t++) {
+        let tr = Math.floor(Math.random() * (maxR - 2));
+        let tc = Math.floor(Math.random() * (maxC - 1));
+        grid[tr][tc] = 25;
+        // Mirror
+        if (symMode === 2) {
+            grid[tr][GRID_W - 1 - tc] = 25;
+        } else if (symMode === 4) {
+            grid[tr][GRID_W - 1 - tc] = 25;
+            grid[GRID_H - 1 - tr][tc] = 25;
+            grid[GRID_H - 1 - tr][GRID_W - 1 - tc] = 25;
+        }
+    }
+
+    // ── Power-up glass boxes (28 = mushroom, 31 = rainbow) ───────────────
+    // These are non-repeating big-type tiles that must be placed as exact
+    // 2×2 blocks aligned to even row/col (matches the editor cursor grid).
+    const numBoxes = 1 + Math.floor(Math.random() * 3); // 1-3 boxes
+    for (let b = 0; b < numBoxes; b++) {
+        const boxTid = Math.random() < 0.5 ? 28 : 31;
+        // Pick a random even top-left, staying away from the bottom rows
+        let br = Math.floor(Math.random() * Math.max(1, Math.floor((maxR - 4) / 2))) * 2;
+        let bc = Math.floor(Math.random() * Math.max(1, Math.floor((maxC - 2) / 2))) * 2;
+        br = Math.max(0, Math.min(br, maxR - 2));
+        bc = Math.max(0, Math.min(bc, maxC - 2));
+        for (let dr = 0; dr < 2; dr++) {
+            for (let dc = 0; dc < 2; dc++) {
+                const r = br + dr;
+                const c = bc + dc;
+                if (r < maxR && c < maxC) {
+                    grid[r][c] = boxTid;
+                    const mirrorC = GRID_W - 1 - c;
+                    const mirrorR = GRID_H - 1 - r;
+                    if (symMode === 2) {
+                        grid[r][mirrorC] = boxTid;
+                    } else if (symMode === 4) {
+                        grid[r][mirrorC] = boxTid;
+                        grid[mirrorR][c] = boxTid;
+                        grid[mirrorR][mirrorC] = boxTid;
+                    }
+                }
+            }
+        }
+    }
+
     // Base protection: Clear area around base and place base struct
     const mid = Math.floor(GRID_W / 2);
     const bottom = GRID_H - 1;
