@@ -8,7 +8,7 @@ import asyncio
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .map_model import Map
 from .map_store import save_map, load_map, list_maps, delete_map
@@ -30,10 +30,24 @@ class MapPayload(BaseModel):
     grid: list[list[int]]
 
 
+class GameSettings(BaseModel):
+    tank_speed: float = Field(default=0.025, ge=0.005, le=0.15)
+    enemy_speed_mult: float = Field(default=1.0, ge=0.1, le=5.0)
+    bullet_speed: float = Field(default=0.28, ge=0.05, le=1.0)
+    player_fire_rate: int = Field(default=25, ge=3, le=120)
+    enemy_fire_rate: int = Field(default=40, ge=5, le=200)
+    player_lives: int = Field(default=3, ge=1, le=9)
+    total_enemies: int = Field(default=20, ge=1, le=100)
+    max_active_enemies: int = Field(default=4, ge=1, le=12)
+    spawn_interval: int = Field(default=90, ge=10, le=600)
+    friendly_mode: int = Field(default=0)
+
+
 class StartGamePayload(BaseModel):
     map_name: str
     mode: str = "construction_play"
     session_id: str = "default"
+    settings: Optional[GameSettings] = None
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +69,7 @@ def get_tiles():
             "transparent": t.transparent,
             "slippery": t.slippery,
             "is_base": t.is_base,
+            "non_repeating": t.non_repeating,
         }
         for t in all_tiles()
     ]
@@ -131,9 +146,14 @@ async def start_game(payload: StartGamePayload):
     if errors:
         raise HTTPException(status_code=422, detail=errors)
 
-    engine = GameEngine(map_obj=m, mode_name=payload.mode)
+    settings_dict = payload.settings.model_dump() if payload.settings else None
+    engine = GameEngine(map_obj=m, mode_name=payload.mode, settings=settings_dict)
     _active_engines[payload.session_id] = engine
     await engine.start()
+    speed = engine.player.speed if engine.player else None
+    lives = engine.player_lives
+    enemies = engine.total_enemies
+    print(f"[GAME START] map={payload.map_name} speed={speed} lives={lives} enemies={enemies}")
     return {"started": True, "session_id": payload.session_id}
 
 

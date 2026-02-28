@@ -29,8 +29,8 @@ export const Api = {
     deleteMap: (name) => apiFetch(`/api/maps/${encodeURIComponent(name)}`, { method: "DELETE" }),
 
     // Game
-    startGame: (mapName, mode = "construction_play", sessionId = "default") =>
-        apiFetch("/api/game/start", { method: "POST", body: JSON.stringify({ map_name: mapName, mode, session_id: sessionId }) }),
+    startGame: (mapName, mode = "construction_play", sessionId = "default", settings = null) =>
+        apiFetch("/api/game/start", { method: "POST", body: JSON.stringify({ map_name: mapName, mode, session_id: sessionId, ...(settings ? { settings } : {}) }) }),
     stopGame: (sessionId = "default") =>
         apiFetch(`/api/game/stop?session_id=${encodeURIComponent(sessionId)}`, { method: "POST" }),
 };
@@ -71,6 +71,12 @@ export class GameSocket {
     sendInput(direction, fire) {
         if (this._ws?.readyState === WebSocket.OPEN) {
             this._ws.send(JSON.stringify({ type: "input", direction, fire }));
+        }
+    }
+
+    sendPause() {
+        if (this._ws?.readyState === WebSocket.OPEN) {
+            this._ws.send(JSON.stringify({ type: "pause" }));
         }
     }
 

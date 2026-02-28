@@ -41,9 +41,22 @@ class Tank:
     tank_type: str = "basic"
     color: str = "#e0e0e0"
 
+    # Custom bullet speed override (set by engine when using game settings)
+    custom_bullet_speed: Optional[float] = None
+
     # Ice sliding
     slide_dir: Optional[str] = None
     slide_ticks: int = 0
+
+    # AI state
+    ai_dir: str = "down"
+    ai_timer: int = 0
+    
+    # Mechanics states
+    lava_ticks: int = 0
+    airborne_ticks: int = 0
+    paint_ticks: int = 0
+    paint_color: Optional[str] = None
 
     def can_fire(self) -> bool:
         return self.fire_cooldown <= 0 and self.active_bullets < self.bullet_limit
@@ -55,13 +68,17 @@ class Tank:
         self.fire_cooldown = self.fire_rate
         self.active_bullets += 1
         power = 2 if self.upgrade_level >= 3 else 1
-        speed = FAST_BULLET_SPEED if self.upgrade_level >= 1 else BULLET_SPEED
+        if self.custom_bullet_speed is not None:
+            speed = self.custom_bullet_speed * (FAST_BULLET_SPEED / BULLET_SPEED) if self.upgrade_level >= 1 else self.custom_bullet_speed
+        else:
+            speed = FAST_BULLET_SPEED if self.upgrade_level >= 1 else BULLET_SPEED
         # Bullet spawns at front-center of tank
+        muzzle = 0.6
         offsets = {
-            "up":    (-1.0,  0.0),
-            "down":  ( 1.0,  0.0),
-            "left":  ( 0.0, -1.0),
-            "right": ( 0.0,  1.0),
+            "up":    (-muzzle,  0.0),
+            "down":  ( muzzle,  0.0),
+            "left":  ( 0.0, -muzzle),
+            "right": ( 0.0,  muzzle),
         }
         dr, dc = offsets.get(self.direction, (-1.0, 0.0))
         return Bullet(
@@ -98,6 +115,9 @@ class Tank:
             "upgrade_level": self.upgrade_level,
             "tank_type": self.tank_type,
             "color": self.color,
+            "lava_ticks": self.lava_ticks,
+            "airborne_ticks": self.airborne_ticks,
+            "paint_color": self.paint_color if self.paint_ticks > 0 else None,
         }
 
 

@@ -8,6 +8,7 @@ to all connected WebSocket clients every tick (~60Hz target via 16ms sleep).
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 import time
 from typing import Callable, Dict, List, Optional, Awaitable
@@ -20,19 +21,25 @@ from .tile_registry import get_tile
 # Tick interval — ~60 FPS
 TICK_INTERVAL = 1 / 60
 
+# Tank collision half-extent (≈1×1 box) — tile-sized, fits exactly in 1-tile gaps
+TANK_HALF = 0.499
+
 # Enemy spawn columns (top row spawn points)
-SPAWN_COLS = [0, 31, 63]
+SPAWN_COLS = [0.5, GRID_WIDTH // 2 + 0.5, GRID_WIDTH - 0.5]
 
 # Enemy type progression (repeating pattern, like the original)
 ENEMY_SEQUENCE = ["basic", "basic", "fast", "basic", "armor", "power", "fast", "armor"]
 
 
 class GameEngine:
-    def __init__(self, map_obj: Map, mode_name: str = "construction_play") -> None:
+    def __init__(self, map_obj: Map, mode_name: str = "construction_play", settings: Optional[dict] = None) -> None:
         from .mode_registry import get_mode
+        from .word_logic import PrefixIndex, GameState as WordGameState, Params as WordParams
+        
         self.map = map_obj
         self.mode = get_mode(mode_name)
         self.grid: List[List[int]] = [row[:] for row in map_obj.grid]  # mutable copy
+        self._settings: dict = settings or {}
 
         # State — set by mode.on_start()
         self.total_enemies: int = 20
@@ -47,7 +54,33 @@ class GameEngine:
         self.score: int = 0
         self.tick_count: int = 0
         self.running: bool = False
+        self.paused: bool = False
         self.result: Optional[str] = None  # "victory" | "defeat"
+        
+        # Defeat sequence state
+        self._defeat_ticks: int = 0
+        self._defeat_bricks: List[tuple[int, int]] = []
+        
+        # TNT chain explosion queue
+        self._pending_tnt: List[tuple[int, int, int]] = []  # (row, col, ticks)
+        
+        # Sandworm state (Snake-like)
+        self.sandworm: dict = {
+            "active": False,
+            "parts": [],  # List of dicts: [{"row": r, "col": c, "type": "head"|"body"|"tail"}]
+            "direction": "up",
+            "timer": random.randint(300, 600),
+            "despawning": False,
+            "length": 4,
+            "mud_immunity": 0,
+            "dir_timer": 0
+        }
+        
+        # Dropped items
+        self.items: List[dict] = []  # {"type": "letter_a", "row": r, "col": c}
+
+        # Events to broadcast
+        self.events: List[dict] = []
 
         # Callbacks
         self._state_callbacks: List[Callable[[dict], Awaitable[None]]] = []
@@ -56,6 +89,7 @@ class GameEngine:
         self._enemies_spawned: int = 0
         self._spawn_cooldown: int = 0
         self._max_active_enemies: int = 4
+        self._spawn_interval: int = 90
 
         # Player respawn
         self._player_respawn_timer: int = 0
@@ -66,6 +100,25 @@ class GameEngine:
         # Player input (stored for continuous movement each tick)
         self._player_direction: Optional[str] = None
         self._player_fire: bool = False
+
+        # Word Overlay System
+        SAMPLE_WORDS = [
+            "ANT", "ART", "BAG", "BAT", "BED", "BEE", "BOX", "BOY", "BUS", "CAT", "COW", "CUP",
+            "DOG", "EAR", "EGG", "FAN", "FLY", "FOG", "GAS", "HAT", "HEN", "ICE", "INK", "JAM",
+            "JAR", "KEY", "KID", "LEG", "LIP", "LOG", "MAP", "MUG", "NET",
+            "BALL", "BARK", "BARN", "BEAR", "BIKE", "BIRD", "BLUE", "BOAT", "BOOK", "BOSS",
+            "CAKE", "CAMP", "CARD", "CORN", "CRAB", "CROW", "DOOR", "DUCK", "FARM", "FISH",
+            "FLAG", "FROG", "GAME", "GIFT", "GIRL", "GOLD", "HAND", "HEAD", "HOME", "JUMP",
+            "KITE", "KING", "LION", "MOON", "NEST"
+        ]
+        self.word_index = PrefixIndex(SAMPLE_WORDS)
+        self.word_state = WordGameState(width=GRID_WIDTH, height=GRID_HEIGHT, current_prefix="", overlays=[])
+        self.word_params = WordParams(
+            spawn_choices_k=3,
+            max_overlays=5,
+            prefer_complete_at_3=True,
+            allow_extend_to_4=True
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -80,6 +133,7 @@ class GameEngine:
     async def start(self) -> None:
         self._setup()
         self.mode.on_start(self)
+        self._apply_settings()
         self.running = True
         asyncio.create_task(self._loop())
 
@@ -94,19 +148,57 @@ class GameEngine:
         self._player_direction = primary_dir
         self._player_fire = fire
 
+    def toggle_pause(self) -> None:
+        if self.result is None:
+            self.paused = not self.paused
+
     # ------------------------------------------------------------------
     # Setup
     # ------------------------------------------------------------------
 
     def _setup(self) -> None:
+        from .word_logic import ensureContinuationOverlays
         base = self.map.find_base()
         if base:
             self._base_pos = base
             # Battle City style: base at bottom center, player to its left
-            self.player = make_player_tank(float(base[0]), float(base[1] - 4))
+            self.player = make_player_tank(float(base[0]) + 0.5, float(base[1] - 4) + 0.5)
         else:
             # Fallback for rectangular
-            self.player = make_player_tank(float(GRID_HEIGHT - 1), float(GRID_WIDTH // 2 - 4))
+            self.player = make_player_tank(float(GRID_HEIGHT - 1) + 0.5, float(GRID_WIDTH // 2 - 4) + 0.5)
+        self._clear_area_for_tank(self.player)
+        
+        # Initial spawn for word overlays
+        self.word_state, w_events = ensureContinuationOverlays(self.word_state, self.word_index, self.word_params, random.Random())
+        for e in w_events:
+            if e.__class__.__name__ == "OverlaySpawned":
+                self.events.append({"type": "sound", "sound": "powerup-appear"})
+
+    def _apply_settings(self) -> None:
+        """Apply user-provided settings after mode defaults are set."""
+        s = self._settings
+        if not s:
+            return
+
+        if "total_enemies" in s:
+            self.total_enemies = s["total_enemies"]
+            self.enemies_remaining = s["total_enemies"]
+        if "player_lives" in s:
+            self.player_lives = s["player_lives"]
+        if "max_active_enemies" in s:
+            self._max_active_enemies = s["max_active_enemies"]
+        if "spawn_interval" in s:
+            self._spawn_interval = s["spawn_interval"]
+        if "friendly_mode" in s:
+            self._friendly_mode = bool(s["friendly_mode"])
+
+        if self.player:
+            if "tank_speed" in s:
+                self.player.speed = s["tank_speed"]
+            if "player_fire_rate" in s:
+                self.player.fire_rate = s["player_fire_rate"]
+            if "bullet_speed" in s:
+                self.player.custom_bullet_speed = s["bullet_speed"]
 
     # ------------------------------------------------------------------
     # Main loop
@@ -117,6 +209,7 @@ class GameEngine:
             t0 = time.monotonic()
             self._tick()
             state = self._build_state()
+            self.events.clear()
             await self._emit(state)
             elapsed = time.monotonic() - t0
             await asyncio.sleep(max(0.0, TICK_INTERVAL - elapsed))
@@ -124,7 +217,14 @@ class GameEngine:
     def _tick(self) -> None:
         if not self.running:
             return
+        if self.paused:
+            return
         self.tick_count += 1
+        
+        # Handle defeat sequence
+        if self.result == "defeat":
+            self._tick_defeat_sequence()
+            return
 
         # Player cooldowns and continuous movement
         if self.player and self.player.alive:
@@ -133,6 +233,7 @@ class GameEngine:
                 self._move_tank(self.player, self._player_direction)
             if self._player_fire:
                 self._try_fire(self.player)
+            self._check_item_collection(self.player)
         else:
             self._handle_player_respawn()
 
@@ -142,17 +243,108 @@ class GameEngine:
                 enemy.tick_cooldown()
                 self._ai_tick(enemy)
 
+        # Tile effects on tanks (Lava, Jump ramp etc)
+        for tank in list(self.enemies.values()) + ([self.player] if self.player and self.player.alive else []):
+            if not tank.alive:
+                continue
+                
+            was_airborne = tank.airborne_ticks > 0
+            if tank.airborne_ticks > 0:
+                tank.airborne_ticks -= 1
+                if tank.airborne_ticks == 0:
+                    # Just landed! Destroy any destructible solid tiles under the tank so it doesn't get stuck.
+                    self._clear_area_for_tank(tank, force=True)
+
+            r, c = int(tank.row), int(tank.col)
+            if 0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH:
+                tid = self.grid[r][c]
+                # Lava check
+                if tid == 7:
+                    tank.lava_ticks += 1
+                    if tank.lava_ticks == 1:
+                        self.events.append({"type": "sound", "sound": "fire"})
+                        
+                    if tank.lava_ticks > 120:
+                        tank.hp = 0
+                        tank.alive = False
+                        self._add_explosion(tank.row, tank.col)
+                        if not tank.is_player:
+                            self.events.append({"type": "sound", "sound": "enemy-explosion"})
+                            self.score += 100 * (list(ENEMY_TYPES).index(tank.tank_type) + 1)
+                            self.enemies_remaining -= 1
+                        else:
+                            self.events.append({"type": "sound", "sound": "player-explosion"})
+                            self.player_lives -= 1
+                            self._player_respawn_timer = 180
+                else:
+                    tank.lava_ticks = 0
+                    
+                # Ice check (skating sound when moving)
+                if tid == 5 and tank.speed > 0 and self.tick_count % 30 == 0 and tank.is_player:
+                    self.events.append({"type": "sound", "sound": "ice"})
+                    
+                # Ramp check
+                if tid == 13 and tank.airborne_ticks <= 0:
+                    tank.airborne_ticks = 45
+                    self.events.append({"type": "sound", "sound": "unknown-3"}) # Jump sound
+                    
+                # Conveyor check
+                if tid in (8, 9, 10, 11):
+                    conv_speed = 0.02
+                    cdr, cdc = 0.0, 0.0
+                    if tid == 8: cdr = -conv_speed
+                    elif tid == 9: cdr = conv_speed
+                    elif tid == 10: cdc = -conv_speed
+                    elif tid == 11: cdc = conv_speed
+                    
+                    new_row = tank.row + cdr
+                    new_col = tank.col + cdc
+                    if self._can_move_to(new_row, new_col, tank):
+                        tank.row = max(TANK_HALF, min(float(GRID_HEIGHT) - TANK_HALF, new_row))
+                        tank.col = max(TANK_HALF, min(float(GRID_WIDTH) - TANK_HALF, new_col))
+                        
+                # Paint Roller check
+                if tid == 19:
+                    if tank.paint_ticks <= 0:
+                        colors = ["#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff"]
+                        tank.paint_color = random.choice(colors)
+                        tank.paint_ticks = 180  # 3 seconds
+                        self.events.append({"type": "sound", "sound": "powerup-pickup"})
+
+            if tank.paint_ticks > 0:
+                tank.paint_ticks -= 1
+
         # Move bullets
         self._tick_bullets()
 
         # Update explosions
         self._tick_explosions()
+        
+        # Update TNT chain reactions
+        self._tick_tnt()
+
+        # Update sandworm
+        self._tick_sandworm()
 
         # Spawn enemies
         self._tick_spawner()
 
         # Check win/loss
         self._check_end_conditions()
+
+    def _check_item_collection(self, tank: Tank) -> None:
+        remaining_items = []
+        for item in self.items:
+            # Check collision with item
+            if abs(tank.row - item["row"]) < 0.8 and abs(tank.col - item["col"]) < 0.8:
+                # Collected! 
+                # For now just grant score
+                if item["type"].startswith("letter_"):
+                    self.score += 500
+                self.events.append({"type": "sound", "sound": "powerup-pickup"})
+            else:
+                remaining_items.append(item)
+        self.items = remaining_items
 
     # ------------------------------------------------------------------
     # Spawner
@@ -166,13 +358,32 @@ class GameEngine:
         if self._spawn_cooldown > 0:
             self._spawn_cooldown -= 1
             return
-
-        col = SPAWN_COLS[self._enemies_spawned % len(SPAWN_COLS)]
         enemy_type = ENEMY_SEQUENCE[self._enemies_spawned % len(ENEMY_SEQUENCE)]
-        enemy = make_enemy_tank(0.0, float(col), enemy_type)
-        self.enemies[enemy.id] = enemy
-        self._enemies_spawned += 1
-        self._spawn_cooldown = 90  # ~1.5 seconds between spawns
+
+        # Try each spawn column; skip if blocked by solid tiles (e.g., water) or tanks.
+        spawn_row = 0.5
+        start_idx = self._enemies_spawned % len(SPAWN_COLS)
+        col = SPAWN_COLS[start_idx]
+
+        enemy = make_enemy_tank(spawn_row, float(col), enemy_type)
+
+        # Apply per-enemy settings overrides (affects speed / bullet speed used in movement checks).
+        s = self._settings
+        if "enemy_speed_mult" in s:
+            enemy.speed *= s["enemy_speed_mult"]
+        if "enemy_fire_rate" in s:
+            enemy.fire_rate = s["enemy_fire_rate"]
+        if "bullet_speed" in s:
+            enemy.custom_bullet_speed = s["bullet_speed"]
+
+        self._clear_area_for_tank(enemy)
+        if self._can_move_to(enemy.row, enemy.col, enemy):
+            self.enemies[enemy.id] = enemy
+            self._enemies_spawned += 1
+            self._spawn_cooldown = self._spawn_interval
+        else:
+            # Nothing free right now (e.g., all spawn points blocked); try again soon.
+            self._spawn_cooldown = min(self._spawn_interval, 20)
 
     # ------------------------------------------------------------------
     # AI
@@ -180,69 +391,115 @@ class GameEngine:
 
     def _ai_tick(self, enemy: Tank) -> None:
         # Build mini game state for agent
-        game_state = {
-            "tanks": [t.to_dict() for t in list(self.enemies.values()) + ([self.player] if self.player else [])],
-            "bullets": [b.to_dict() for b in self.bullets.values()],
-            "grid": self.grid,
-            "agent_id": enemy.id,
-            "base_pos": {"row": self._base_pos[0], "col": self._base_pos[1]} if self._base_pos else None,
-        }
+        base_pos = self._base_pos
 
-        # Use PatrolAgent logic inline for performance
-        base_pos = game_state["base_pos"]
-        if base_pos:
-            dr = base_pos["row"] - enemy.row
-            dc = base_pos["col"] - enemy.col
-            if abs(dr) > abs(dc):
-                preferred = "down" if dr > 0 else "up"
+        # Update AI timer
+        enemy.ai_timer -= 1
+
+        # Determine new direction if timer expired or occasionally randomly
+        if enemy.ai_timer <= 0 or random.random() < 0.02:
+            enemy.ai_timer = random.randint(60, 180) # 1 to 3 seconds at 60Hz
+            
+            is_friendly = getattr(self, "_friendly_mode", False)
+            if base_pos and not is_friendly and random.random() < 0.6: # 60% chance to target base
+                dr = base_pos[0] - enemy.row
+                dc = base_pos[1] - enemy.col
+                if abs(dr) > abs(dc):
+                    enemy.ai_dir = "down" if dr > 0 else "up"
+                else:
+                    enemy.ai_dir = "right" if dc > 0 else "left"
             else:
-                preferred = "right" if dc > 0 else "left"
-        else:
-            preferred = "down"
+                enemy.ai_dir = random.choice(["up", "down", "left", "right"])
 
-        # Occasionally randomize
-        if random.random() < 0.08:
-            preferred = random.choice(["up", "down", "left", "right"])
+        # Try to move
+        moved = self._move_tank(enemy, enemy.ai_dir)
+        
+        # If blocked, immediately pick a new direction
+        if not moved:
+            enemy.ai_timer = 0
 
-        self._move_tank(enemy, preferred)
-
-        if random.random() < 0.025:
+        # Only attempt to fire if a bullet isn't already in flight
+        if enemy.active_bullets < enemy.bullet_limit and random.random() < 0.025:
             self._try_fire(enemy)
 
     # ------------------------------------------------------------------
     # Movement
     # ------------------------------------------------------------------
 
-    def _move_tank(self, tank: Tank, direction: str) -> None:
-        # If turning, snap to the grid to avoid getting stuck in half-tiles
-        if direction != tank.direction:
-            # Snap the "off-axis" coordinate
-            if direction in ["up", "down"]:
-                tank.col = round(tank.col)
-            else:
-                tank.row = round(tank.row)
-            tank.direction = direction
+    def _move_tank(self, tank: Tank, direction: str) -> bool:
+        tank.direction = direction
 
         deltas = {"up": (-1, 0), "down": (1, 0), "left": (0, -1), "right": (0, 1)}
         dr, dc = deltas.get(direction, (0, 0))
-        
-        # Calculate proposed new position
-        new_row = tank.row + dr * tank.speed
-        new_col = tank.col + dc * tank.speed
 
+        # Check speed mult from tile beneath
+        speed_mult = 1.0
+        r_int, c_int = int(tank.row), int(tank.col)
+        if 0 <= r_int < GRID_HEIGHT and 0 <= c_int < GRID_WIDTH:
+            speed_mult = get_tile(self.grid[r_int][c_int]).speed_mult
+
+        actual_speed = tank.speed * speed_mult
+        new_row = tank.row + dr * actual_speed
+        new_col = tank.col + dc * actual_speed
+
+        moved = False
         if self._can_move_to(new_row, new_col, tank):
-            tank.row = max(0.0, min(float(GRID_HEIGHT - 1), new_row))
-            tank.col = max(0.0, min(float(GRID_WIDTH - 1), new_col))
+            tank.row = max(TANK_HALF, min(float(GRID_HEIGHT) - TANK_HALF, new_row))
+            tank.col = max(TANK_HALF, min(float(GRID_WIDTH) - TANK_HALF, new_col))
+            moved = True
+        else:
+            if self._hit_bumper(new_row, new_col, tank):
+                bounce_speed = actual_speed * 12
+                b_row = tank.row - dr * bounce_speed
+                b_col = tank.col - dc * bounce_speed
+                if self._can_move_to(b_row, b_col, tank):
+                    tank.row = max(TANK_HALF, min(float(GRID_HEIGHT) - TANK_HALF, b_row))
+                    tank.col = max(TANK_HALF, min(float(GRID_WIDTH) - TANK_HALF, b_col))
+                    self.events.append({"type": "sound", "sound": "hit-steel"})
+
+        # Smooth perpendicular auto-alignment toward tile center
+        if dr != 0:
+            target_col = math.floor(tank.col) + 0.5
+            diff = target_col - tank.col
+            if abs(diff) > 0.001:
+                step = math.copysign(min(abs(diff), actual_speed), diff)
+                if self._can_move_to(tank.row, tank.col + step, tank):
+                    tank.col += step
+        if dc != 0:
+            target_row = math.floor(tank.row) + 0.5
+            diff = target_row - tank.row
+            if abs(diff) > 0.001:
+                step = math.copysign(min(abs(diff), actual_speed), diff)
+                if self._can_move_to(tank.row + step, tank.col, tank):
+                    tank.row += step
+        
+        return moved
+
+    def _hit_bumper(self, row: float, col: float, mover: Tank) -> bool:
+        """Check if the given bounding box intersects a bumper tile."""
+        size = TANK_HALF
+        r1, r2 = row - size, row + size
+        c1, c2 = col - size, col + size
+        for r in range(int(r1), int(r2) + 1):
+            for c in range(int(c1), int(c2) + 1):
+                if 0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH:
+                    if self.grid[r][c] == 18:
+                        return True
+        return False
 
     def _can_move_to(self, row: float, col: float, mover: Tank) -> bool:
-        """AABB Collision check (0.98x0.98 bounding box)."""
-        size = 0.49
+        """AABB collision check (~1×1 tile-sized bounding box)."""
+        size = TANK_HALF
         r1, r2 = row - size, row + size
         c1, c2 = col - size, col + size
 
         # 1. Boundary check — strict to grid limits
         if r1 < 0 or c1 < 0 or r2 > GRID_HEIGHT or c2 > GRID_WIDTH:
             return False
+
+        # Airborne bypasses tile and tank collisions
+        if mover.airborne_ticks > 0:
+            return True
 
         # 2. Tile collision
         for r in range(int(r1), int(r2) + 1):
@@ -252,11 +509,11 @@ class GameEngine:
                     if tile.tank_solid:
                         return False
 
-        # 3. Tank-tank collision
+        # 3. Tank-tank collision (same box as tile check)
         for other in list(self.enemies.values()) + ([self.player] if self.player else []):
             if other is mover or not other.alive:
                 continue
-            if abs(other.row - row) < 0.98 and abs(other.col - col) < 0.98:
+            if abs(other.row - row) < 2 * size and abs(other.col - col) < 2 * size:
                 return False
         return True
 
@@ -268,6 +525,7 @@ class GameEngine:
         bullet = tank.fire()
         if bullet:
             self.bullets[bullet.id] = bullet
+            self.events.append({"type": "sound", "sound": "fire"})
 
     def _tick_bullets(self) -> None:
         for bullet in list(self.bullets.values()):
@@ -275,6 +533,21 @@ class GameEngine:
                 continue
 
             bullet.tick()
+            
+            # Apply conveyor to bullet
+            r_int, c_int = int(bullet.row), int(bullet.col)
+            if 0 <= r_int < GRID_HEIGHT and 0 <= c_int < GRID_WIDTH:
+                tid = self.grid[r_int][c_int]
+                if tid in (8, 9, 10, 11):
+                    conv_speed = 0.02
+                    if tid == 8: bullet.row -= conv_speed
+                    elif tid == 9: bullet.row += conv_speed
+                    elif tid == 10: bullet.col -= conv_speed
+                    elif tid == 11: bullet.col += conv_speed
+
+            if not bullet.alive:
+                self._on_bullet_gone(bullet)
+                continue
 
             # Out of bounds
             r, c = int(bullet.row), int(bullet.col)
@@ -282,28 +555,93 @@ class GameEngine:
                 bullet.alive = False
                 self._on_bullet_gone(bullet)
                 continue
+                
+            # Check Word Overlay Collisions
+            if bullet.is_player:
+                hit_overlay = None
+                for ov in self.word_state.overlays:
+                    if ov.x == c and ov.y == r:
+                        hit_overlay = ov
+                        break
+                
+                if hit_overlay:
+                    from .word_logic import handleLetterShot
+                    
+                    # Prevent multiple bullets hitting the same overlay in the same tick if already handled
+                    result = handleLetterShot(self.word_state, self.word_index, c, r, self.word_params, random.Random())
+                    self.word_state = result.new_state
+                    
+                    for event in result.events:
+                        evt_type = event.__class__.__name__
+                        if evt_type == "LetterAccepted":
+                            self.events.append({"type": "sound", "sound": "powerup-pickup"})
+                            self.score += 100
+                        elif evt_type == "LetterRejected":
+                            self.events.append({"type": "sound", "sound": "hit-steel"})
+                        elif evt_type == "WordCompleted":
+                            self.events.append({"type": "sound", "sound": "powerup-appear"})
+                            self.score += 500 * len(event.word)
+                        elif evt_type == "OverlaySpawned":
+                            self.events.append({"type": "sound", "sound": "powerup-appear"})
+                            
+                    self._add_explosion(bullet.row, bullet.col)
+                    bullet.alive = False
+                    self._on_bullet_gone(bullet)
+                    continue
 
             # Tile collision
             tile = get_tile(self.grid[r][c])
             if tile.bullet_solid:
-                if tile.destructible:
+                if self.grid[r][c] == 18:
+                    # Bumper reflection
+                    if bullet.direction == "up":
+                        bullet.direction = "down"
+                        bullet.row += bullet.speed * 2
+                    elif bullet.direction == "down":
+                        bullet.direction = "up"
+                        bullet.row -= bullet.speed * 2
+                    elif bullet.direction == "left":
+                        bullet.direction = "right"
+                        bullet.col += bullet.speed * 2
+                    elif bullet.direction == "right":
+                        bullet.direction = "left"
+                        bullet.col -= bullet.speed * 2
+                    self.events.append({"type": "sound", "sound": "hit-steel"})
+                    continue
+                elif tile.is_explosive:
+                    self._detonate_tile(r, c)
+                elif tile.destructible:
                     if tile.is_base:
-                        # Base destroyed = immediate defeat
+                        # Base destroyed = begin defeat sequence
                         self.grid[r][c] = 0
-                        self.result = "defeat"
-                        self.running = False
-                    elif bullet.power >= 2 or self.grid[r][c] == 1:
-                        # Destroy brick or steel (if power bullet)
-                        self.grid[r][c] = 0
+                        self._trigger_defeat()
+                    elif bullet.power >= 2 or self.grid[r][c] == 1 or self.grid[r][c] >= 100 or 15 <= self.grid[r][c] <= 17:
+                        # Destroy brick or steel (if power bullet) or letter tile or glass
+                        tid = self.grid[r][c]
+                        
+                        if tid >= 100:
+                            self._destroy_letter_group(r, c, tid)
+                        elif 15 <= tid <= 16:
+                            self.grid[r][c] += 1
+                            self.events.append({"type": "sound", "sound": "hit-brick"})
+                        else:
+                            self.grid[r][c] = 0
+                            self.events.append({"type": "sound", "sound": "hit-brick"})
+                else:
+                    self.events.append({"type": "sound", "sound": "hit-steel"})
                 
                 # Explosion effect
-                self._add_explosion(bullet.row, bullet.col)
+                if not (tid >= 100 if 'tid' in locals() else False):
+                    self._add_explosion(bullet.row, bullet.col)
                 bullet.alive = False
                 self._on_bullet_gone(bullet)
                 continue
 
             # Tank collision
             self._check_bullet_tank_hit(bullet)
+
+        # Bullet-bullet collision (after all bullets have moved this tick)
+        self._check_bullet_bullet_collisions()
 
         # Clean up dead bullets
         self.bullets = {bid: b for bid, b in self.bullets.items() if b.alive}
@@ -316,20 +654,43 @@ class GameEngine:
             targets.extend(e for e in self.enemies.values() if e.alive)
 
         for tank in targets:
-            if abs(tank.row - bullet.row) < 0.8 and abs(tank.col - bullet.col) < 0.8:
+            if abs(tank.row - bullet.row) < 0.55 and abs(tank.col - bullet.col) < 0.55:
                 self._add_explosion(tank.row, tank.col)
                 bullet.alive = False
                 self._on_bullet_gone(bullet)
+                
+                if tank.is_player and getattr(self, "_friendly_mode", False):
+                    # In friendly mode, bullets don't damage the player
+                    break
+                    
                 tank.hp -= 1
                 if tank.hp <= 0:
                     tank.alive = False
                     if not tank.is_player:
+                        self.events.append({"type": "sound", "sound": "enemy-explosion"})
                         self.score += 100 * (list(ENEMY_TYPES).index(tank.tank_type) + 1)
                         self.enemies_remaining -= 1
                     else:
+                        self.events.append({"type": "sound", "sound": "player-explosion"})
                         self.player_lives -= 1
                         self._player_respawn_timer = 180  # 3 seconds
                 break
+
+    def _check_bullet_bullet_collisions(self) -> None:
+        """Destroy both bullets when two bullets meet (regardless of team)."""
+        alive_bullets = [b for b in self.bullets.values() if b.alive]
+        for i, b1 in enumerate(alive_bullets):
+            for b2 in alive_bullets[i + 1:]:
+                if not b2.alive:
+                    continue
+                if abs(b1.row - b2.row) < 0.6 and abs(b1.col - b2.col) < 0.6:
+                    mid_row = (b1.row + b2.row) / 2
+                    mid_col = (b1.col + b2.col) / 2
+                    self._add_explosion(mid_row, mid_col)
+                    b1.alive = False
+                    b2.alive = False
+                    self._on_bullet_gone(b1)
+                    self._on_bullet_gone(b2)
 
     def _on_bullet_gone(self, bullet: Bullet) -> None:
         """Decrement active bullet counter for the owning tank."""
@@ -352,6 +713,205 @@ class GameEngine:
             exp["ticks"] -= 1
         self.explosions = [e for e in self.explosions if e["ticks"] > 0]
 
+    def _tick_sandworm(self) -> None:
+        if not self.sandworm.get("active"):
+            self.sandworm["timer"] -= 1
+            if self.sandworm["timer"] <= 0:
+                mud_tiles = [(r, c) for r in range(GRID_HEIGHT) for c in range(GRID_WIDTH) if self.grid[r][c] == 12]
+                if mud_tiles:
+                    start_r, start_c = random.choice(mud_tiles)
+                    self.sandworm["active"] = True
+                    self.sandworm["parts"] = [{"row": start_r, "col": start_c, "type": "head"}]
+                    self.sandworm["direction"] = random.choice(["up", "down", "left", "right"])
+                    self.sandworm["timer"] = 15 # Used for movement cooldown
+                    self.sandworm["length"] = random.randint(4, 8)
+                    self.sandworm["despawning"] = False
+                    self.sandworm["mud_immunity"] = 240 # 4 seconds * 60 ticks
+                    self.sandworm["dir_timer"] = random.randint(120, 300)
+                    
+                    self.events.append({"type": "sound", "sound": "powerup-appear"})
+                else:
+                    self.sandworm["timer"] = random.randint(300, 600)
+            return
+
+        self.sandworm["timer"] -= 1
+        self.sandworm["mud_immunity"] = max(0, self.sandworm.get("mud_immunity", 0) - 1)
+        self.sandworm["dir_timer"] = max(0, self.sandworm.get("dir_timer", 0) - 1)
+        
+        if self.sandworm["timer"] <= 0:
+            self.sandworm["timer"] = 15 # Move every 15 ticks (~0.25s)
+            
+            parts = self.sandworm["parts"]
+            
+            if self.sandworm.get("despawning"):
+                if parts:
+                    parts.pop() # remove tail
+                    
+                if not parts:
+                    self.sandworm["active"] = False
+                    self.sandworm["timer"] = random.randint(300, 600)
+                else:
+                    parts[0]["type"] = "head"
+                    if len(parts) > 1:
+                        parts[-1]["type"] = "tail"
+                        for i in range(1, len(parts)-1):
+                            parts[i]["type"] = "body"
+                return
+            
+            # Random direction change
+            if self.sandworm["dir_timer"] <= 0:
+                dirs = ["up", "down", "left", "right"]
+                # Prevent immediate 180 turn
+                opposites = {"up": "down", "down": "up", "left": "right", "right": "left"}
+                dirs.remove(opposites[self.sandworm["direction"]])
+                self.sandworm["direction"] = random.choice(dirs)
+                self.sandworm["dir_timer"] = random.randint(120, 300) # 2-5 seconds (60 ticks/sec)
+            
+            head = parts[0]
+            
+            dr, dc = 0, 0
+            if self.sandworm["direction"] == "up": dr = -1
+            elif self.sandworm["direction"] == "down": dr = 1
+            elif self.sandworm["direction"] == "left": dc = -1
+            elif self.sandworm["direction"] == "right": dc = 1
+            
+            next_r = head["row"] + dr
+            next_c = head["col"] + dc
+            
+            hit_solid = False
+            hit_mud = False
+            if next_r < 0 or next_r >= GRID_HEIGHT or next_c < 0 or next_c >= GRID_WIDTH:
+                hit_solid = True
+            else:
+                tid = self.grid[next_r][next_c]
+                tile = get_tile(tid)
+                if tid == 12:
+                    hit_mud = True
+                elif tile.tank_solid or tile.is_base:
+                    hit_solid = True
+                    
+            if any(p["row"] == next_r and p["col"] == next_c for p in parts):
+                hit_solid = True
+                    
+            if hit_solid:
+                dirs = ["up", "right", "down", "left"]
+                idx = dirs.index(self.sandworm["direction"])
+                self.sandworm["direction"] = dirs[(idx + 1) % 4]
+                return
+                
+            if hit_mud and self.sandworm["mud_immunity"] <= 0:
+                self.sandworm["despawning"] = True
+                
+                # Still move forward into mud on the first tick of despawning
+                new_head = {"row": next_r, "col": next_c, "type": "head"}
+                parts.insert(0, new_head)
+                if parts: parts.pop() # remove tail to maintain length, will continue popping on next ticks
+                
+                if len(parts) > 1:
+                    parts[-1]["type"] = "tail"
+                    for i in range(1, len(parts)-1):
+                        parts[i]["type"] = "body"
+                return
+                
+            # Move forward by inserting a new head
+            new_head = {"row": next_r, "col": next_c, "type": "head"}
+            parts.insert(0, new_head)
+            
+            # Trim tail if we exceed length
+            if len(parts) > self.sandworm.get("length", 4):
+                parts.pop()
+                
+            # Update types based on new positions
+            if len(parts) > 1:
+                parts[-1]["type"] = "tail"
+                for i in range(1, len(parts)-1):
+                    parts[i]["type"] = "body"
+            
+            # Check collisions with tanks at the head
+            for tank in list(self.enemies.values()) + ([self.player] if self.player and self.player.alive else []):
+                if not tank.alive:
+                    continue
+                if abs(tank.row - (next_r + 0.5)) < 1.0 and abs(tank.col - (next_c + 0.5)) < 1.0:
+                    tank.hp = 0
+                    tank.alive = False
+                    self._add_explosion(tank.row, tank.col)
+                    if not tank.is_player:
+                        self.events.append({"type": "sound", "sound": "enemy-explosion"})
+                        self.score += 100 * (list(ENEMY_TYPES).index(tank.tank_type) + 1)
+                        self.enemies_remaining -= 1
+                    else:
+                        self.events.append({"type": "sound", "sound": "player-explosion"})
+                        self.player_lives -= 1
+                        self._player_respawn_timer = 180
+
+    def _detonate_tile(self, r: int, c: int) -> None:
+        if not (0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH):
+            return
+            
+        self.grid[r][c] = 0
+        self._add_explosion(r + 0.5, c + 0.5)
+        
+        for nr in range(r - 2, r + 3):
+            for nc in range(c - 2, c + 3):
+                if 0 <= nr < GRID_HEIGHT and 0 <= nc < GRID_WIDTH:
+                    # Tile destruction
+                    ntile = get_tile(self.grid[nr][nc])
+                    if ntile.is_explosive:
+                        # Add to pending instead of instant recursion
+                        self.grid[nr][nc] = 0 # Prevent re-queueing
+                        self._pending_tnt.append((nr, nc, 10)) # 10 tick delay (~160ms)
+                    elif ntile.destructible:
+                        if ntile.is_base:
+                            self.grid[nr][nc] = 0
+                            self._trigger_defeat()
+                        else:
+                            tid = self.grid[nr][nc]
+                            if tid >= 100:
+                                self._destroy_letter_group(nr, nc, tid)
+                            else:
+                                self.grid[nr][nc] = 0
+                    
+                    if (nr, nc) != (r, c) and self.grid[nr][nc] == 0:
+                        self._add_explosion(nr + 0.5, nc + 0.5)
+                    
+                    # Tank damage
+                    for tank in list(self.enemies.values()) + ([self.player] if self.player and self.player.alive else []):
+                        if not tank.alive:
+                            continue
+                        if abs(tank.row - (nr + 0.5)) < 1.0 and abs(tank.col - (nc + 0.5)) < 1.0:
+                            if tank.is_player and getattr(self, "_friendly_mode", False):
+                                continue
+                            tank.hp -= 1
+                            if tank.hp <= 0:
+                                tank.alive = False
+                                if not tank.is_player:
+                                    self.score += 100 * (list(ENEMY_TYPES).index(tank.tank_type) + 1)
+                                    self.enemies_remaining -= 1
+                                else:
+                                    self.player_lives -= 1
+                                    self._player_respawn_timer = 180
+
+    def _destroy_letter_group(self, r: int, c: int, tid: int) -> None:
+        """Destroys a single letter tile and drops exactly one item."""
+        if not (0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH):
+            return
+            
+        self.grid[r][c] = 0
+        self._add_explosion(r + 0.5, c + 0.5)
+            
+        # Spawn exactly one item
+        char = chr(tid - 100 + 65)
+        self.items.append({"type": f"letter_{char.lower()}", "row": r + 0.5, "col": c + 0.5})
+
+    def _tick_tnt(self) -> None:
+        new_pending = []
+        for r, c, ticks in self._pending_tnt:
+            if ticks <= 0:
+                self._detonate_tile(r, c)
+            else:
+                new_pending.append((r, c, ticks - 1))
+        self._pending_tnt = new_pending
+
     # ------------------------------------------------------------------
     # Player respawn
     # ------------------------------------------------------------------
@@ -361,10 +921,31 @@ class GameEngine:
             self._player_respawn_timer -= 1
             if self._player_respawn_timer == 0 and self.player_lives > 0:
                 base = self._base_pos or (GRID_HEIGHT - 1, GRID_WIDTH // 2)
-                self.player.row = float(base[0])
-                self.player.col = float(base[1] - 4)
+                self.player.row = float(base[0]) + 0.5
+                self.player.col = float(base[1] - 4) + 0.5
                 self.player.hp = 1
                 self.player.alive = True
+                self._clear_area_for_tank(self.player)
+
+    def _clear_area_for_tank(self, tank: Tank, force: bool = False) -> None:
+        """Destroys any destructible blocks directly under the tank to allow spawning/movement."""
+        size = TANK_HALF
+        r1, r2 = tank.row - size, tank.row + size
+        c1, c2 = tank.col - size, tank.col + size
+        for nr in range(int(r1), int(r2) + 1):
+            for nc in range(int(c1), int(c2) + 1):
+                if 0 <= nr < GRID_HEIGHT and 0 <= nc < GRID_WIDTH:
+                    ntile = get_tile(self.grid[nr][nc])
+                    if ntile.tank_solid and (ntile.destructible or force):
+                        if ntile.is_base:
+                            self.grid[nr][nc] = 0
+                            self._trigger_defeat()
+                        else:
+                            if self.grid[nr][nc] >= 100:
+                                self._destroy_letter_group(nr, nc, self.grid[nr][nc])
+                            else:
+                                self.grid[nr][nc] = 0
+                                self._add_explosion(nr + 0.5, nc + 0.5)
 
     # ------------------------------------------------------------------
     # End conditions
@@ -377,7 +958,60 @@ class GameEngine:
             self.result = "victory"
             self.running = False
         elif self.player_lives <= 0 and (self.player is None or not self.player.alive):
-            self.result = "defeat"
+            self._trigger_defeat()
+
+    def _trigger_defeat(self) -> None:
+        """Begin the defeat explosion sequence instead of immediately stopping."""
+        if self.result == "defeat":
+            return
+            
+        self.result = "defeat"
+        self._defeat_ticks = 0
+        
+        # Kill all tanks to stop game logic
+        if self.player:
+            self.player.alive = False
+        for enemy in self.enemies.values():
+            enemy.alive = False
+            
+        # Collect all bricks
+        self._defeat_bricks = []
+        for r in range(GRID_HEIGHT):
+            for c in range(GRID_WIDTH):
+                if self.grid[r][c] == 1:
+                    self._defeat_bricks.append((r, c))
+                    
+        # Shuffle bricks for random explosions
+        random.shuffle(self._defeat_bricks)
+        
+        # Trigger initial base explosion if we have the base pos
+        if self._base_pos:
+            r, c = self._base_pos
+            self._add_explosion(r + 0.5, c + 0.5)
+            self._add_explosion(r, c)
+            self._add_explosion(r + 1, c + 1)
+            self._add_explosion(r + 1, c)
+            self._add_explosion(r, c + 1)
+
+    def _tick_defeat_sequence(self) -> None:
+        """Process explosions until all bricks are gone."""
+        self._defeat_ticks += 1
+        
+        # Tick existing explosions
+        self._tick_explosions()
+        
+        # Every few ticks, explode some bricks
+        if self._defeat_ticks % 3 == 0:
+            # Pop up to 5 bricks at a time
+            for _ in range(5):
+                if not self._defeat_bricks:
+                    break
+                r, c = self._defeat_bricks.pop()
+                self.grid[r][c] = 0
+                self._add_explosion(r + 0.5, c + 0.5)
+                
+        # Once all bricks are exploded and explosions finish animating, stop the game
+        if not self._defeat_bricks and not self.explosions:
             self.running = False
 
     # ------------------------------------------------------------------
@@ -388,6 +1022,7 @@ class GameEngine:
         return {
             "tick": self.tick_count,
             "running": self.running,
+            "paused": self.paused,
             "result": self.result,
             "score": self.score,
             "lives": self.player_lives,
@@ -397,7 +1032,13 @@ class GameEngine:
             "enemies": [e.to_dict() for e in self.enemies.values()],
             "bullets": [b.to_dict() for b in self.bullets.values()],
             "explosions": self.explosions,
+            "items": self.items,
+            "events": list(self.events),
+            "sandworm": self.sandworm,
             "grid": self.grid,  # full grid on every tick
+            "base_pos": {"row": self._base_pos[0], "col": self._base_pos[1]} if self._base_pos else None,
+            "word_prefix": self.word_state.current_prefix,
+            "word_overlays": [{"x": ov.x, "y": ov.y, "letter": ov.letter} for ov in self.word_state.overlays]
         }
 
     async def _emit(self, state: dict) -> None:

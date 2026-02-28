@@ -5,11 +5,11 @@ ASSETS_DIR = "frontend/assets"
 if not os.path.exists(ASSETS_DIR):
     os.makedirs(ASSETS_DIR)
 
-CELL_SIZE = 40
+CELL_SIZE = 32
 
-def create_sprite(filename, text_grid, palette, scale_to=None):
+def _img_from_text_grid(text_grid, palette, scale_to=None):
     """
-    Creates a PNG image from a text grid and a color palette, scaled up.
+    Creates a PIL image from a text grid and a color palette, scaled up.
     """
     h = len(text_grid)
     w = len(text_grid[0]) if h > 0 else 0
@@ -25,9 +25,17 @@ def create_sprite(filename, text_grid, palette, scale_to=None):
     target = scale_to if scale_to is not None else CELL_SIZE
     if target and (target != w or target != h):
         img = img.resize((target, target), Image.NEAREST)
-        
+    return img
+
+
+def _save_img(filename, img):
     img.save(os.path.join(ASSETS_DIR, filename))
     print(f"Generated {filename}")
+
+
+def create_sprite(filename, text_grid, palette, scale_to=None):
+    img = _img_from_text_grid(text_grid, palette, scale_to=scale_to)
+    _save_img(filename, img)
 
 # --- Palettes ---
 # Brick: Oranges and dark shadows
@@ -60,6 +68,14 @@ C_BASE = {
     '2': (188, 188, 188, 255), # Gray wings/details
     '3': (252, 152, 56, 255),  # Orange beak/legs
     '4': (252, 252, 252, 255), # White body
+}
+
+# Base defeated: Skull
+C_SKULL = {
+    '0': (0, 0, 0, 255),        # Black background
+    '1': (252, 252, 252, 255),  # Bone
+    '2': (188, 188, 188, 255),  # Shadow
+    '3': (252, 152, 56, 255),   # Accent (eyes)
 }
 
 # Tanks - New design for better "coolness"
@@ -166,20 +182,39 @@ WATER2_MAP = [
 
 BASE_MAP = [
     "0000000000000000",
+    "0000000220000000",
+    "0000002442000000",
+    "0000022442200000",
+    "0000224444422000",
+    "0002244222442200",
+    "0022442442424420",
+    "0244424444424442",
+    "0244444444444442",
+    "0024444334444420",
+    "0002444334444200",
+    "0000222442220000",
+    "0000002442000000",
+    "0000000303000000",
+    "0000000333000000",
     "0000000000000000",
-    "0004400002440000",
-    "0024420024442000",
-    "0224422244242200",
-    "0444444444444400",
-    "0444444444444400",
-    "0444444444444400",
-    "0244444444444200",
-    "0044443344444000",
-    "0024443344442000",
-    "0000222222000000",
-    "0000220022000000",
-    "0000040040000000",
-    "0000040040000000",
+]
+
+SKULL_MAP = [
+    "0000000000000000",
+    "0000001111000000",
+    "0000111111110000",
+    "0001111111111000",
+    "0011112222111100",
+    "0011122222211100",
+    "0011122332211100",
+    "0011112222111100",
+    "0001111111111000",
+    "0000111111110000",
+    "0000011111100000",
+    "0000011211200000",
+    "0000011111100000",
+    "0000001111000000",
+    "0000000000000000",
     "0000000000000000",
 ]
 
@@ -227,6 +262,39 @@ C_TANK_E = {
     't': (50, 50, 50, 255),
     '1': (10, 10, 10, 255),
 }
+
+def _tank_palette(body, dark, hi, t1, t2):
+    return {
+        '0': (0, 0, 0, 0),
+        'B': body,
+        'D': dark,
+        'H': hi,
+        'T': t1,
+        't': t2,
+        '1': (10, 10, 10, 255),
+    }
+
+
+ENEMY_TANK_PALETTES = {
+    "basic": C_TANK_E,
+    "fast": _tank_palette((128, 203, 196, 255), (60, 140, 132, 255), (210, 255, 250, 255), (20, 20, 20, 255), (50, 50, 50, 255)),
+    "power": _tank_palette((239, 154, 154, 255), (180, 90, 90, 255), (255, 230, 230, 255), (20, 20, 20, 255), (50, 50, 50, 255)),
+    "armor": _tank_palette((255, 224, 130, 255), (200, 152, 0, 255), (255, 250, 210, 255), (20, 20, 20, 255), (50, 50, 50, 255)),
+}
+
+
+def _rotate_and_save(base_img, filename_prefix):
+    angles = {"up": 0, "right": -90, "down": 180, "left": 90}
+    for d, a in angles.items():
+        img = base_img.rotate(a, resample=Image.NEAREST, expand=False)
+        _save_img(f"{filename_prefix}_{d}.png", img)
+
+
+def _rotate_and_save_frames(img_f1, img_f2, filename_prefix):
+    angles = {"up": 0, "right": -90, "down": 180, "left": 90}
+    for d, a in angles.items():
+        _save_img(f"{filename_prefix}_{d}_f1.png", img_f1.rotate(a, resample=Image.NEAREST, expand=False))
+        _save_img(f"{filename_prefix}_{d}_f2.png", img_f2.rotate(a, resample=Image.NEAREST, expand=False))
 
 # Explosion maps — 16x16 for dramatic effect
 EXP_1 = [
@@ -311,14 +379,19 @@ def main():
     create_sprite("water1.png", WATER_MAP, C_WATER)
     create_sprite("water2.png", WATER2_MAP, C_WATER)
     create_sprite("base.png", BASE_MAP, C_BASE)
+    create_sprite("base_defeated.png", SKULL_MAP, C_SKULL)
     create_sprite("ice.png", ICE_MAP, {"1":(230,255,255,255), "2":(180,240,255,255)})
     create_sprite("forest.png", FOREST_MAP, {"0":(0,0,0,0), "1":(34,139,34,200), "2":(0,100,0,200)})
 
-    # Tanks (animated frames)
-    create_sprite("tank_player_f1.png", TANK_MAP_F1, C_TANK_P)
-    create_sprite("tank_player_f2.png", TANK_MAP_F2, C_TANK_P)
-    create_sprite("tank_enemy_f1.png", TANK_MAP_F1, C_TANK_E)
-    create_sprite("tank_enemy_f2.png", TANK_MAP_F2, C_TANK_E)
+    # Tanks (animated frames, rotated into 4 directions)
+    p_f1 = _img_from_text_grid(TANK_MAP_F1, C_TANK_P)
+    p_f2 = _img_from_text_grid(TANK_MAP_F2, C_TANK_P)
+    _rotate_and_save_frames(p_f1, p_f2, "tank_player")
+
+    for tank_type, pal in ENEMY_TANK_PALETTES.items():
+        e_f1 = _img_from_text_grid(TANK_MAP_F1, pal)
+        e_f2 = _img_from_text_grid(TANK_MAP_F2, pal)
+        _rotate_and_save_frames(e_f1, e_f2, f"tank_enemy_{tank_type}")
 
     # Explosions
     create_sprite("exp_f1.png", EXP_1, C_EXP)

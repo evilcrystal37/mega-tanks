@@ -71,6 +71,9 @@ async def game_websocket(websocket: WebSocket, session_id: str = "default"):
                 fire = bool(msg.get("fire", False))
                 engine.player_input(direction, fire)
 
+            elif msg_type == "pause":
+                engine.toggle_pause()
+
             elif msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
 
