@@ -150,14 +150,19 @@ class GameEngine:
             self.player = make_player_tank(float(GRID_HEIGHT - 1) + 0.5, float(GRID_WIDTH // 2 - 4) + 0.5)
         self._clear_area_for_tank(self.player)
         
-        # Parse Auto-Turrets
-        for r in range(GRID_HEIGHT):
-            for c in range(GRID_WIDTH):
-                if self.grid[r][c] == 25: # Auto-Turret
-                    self.grid[r][c] = 0
+        # Parse Auto-Turrets — treated as 2×2 blocks.
+        # Scan only even positions so each block is registered once.
+        for r in range(0, GRID_HEIGHT, 2):
+            for c in range(0, GRID_WIDTH, 2):
+                if self.grid[r][c] == 25:
+                    # Clear all 4 cells of the block
+                    for dr in range(2):
+                        for dc in range(2):
+                            if r + dr < GRID_HEIGHT and c + dc < GRID_WIDTH:
+                                self.grid[r + dr][c + dc] = 0
                     turret = Tank(
-                        row=r + 0.5,
-                        col=c + 0.5,
+                        row=r + 1.0,   # centre of the 2×2 block
+                        col=c + 1.0,
                         tank_type="turret",
                         is_player=True,
                         speed=0.0,

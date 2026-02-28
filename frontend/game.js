@@ -424,12 +424,14 @@ class GameRenderer {
             ctx.textBaseline = "middle";
             ctx.fillText("🍄", 0, ds * 0.1);
         } else if (tid === 25) {
+            ctx.fillStyle = "#546e7a";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
             ctx.fillStyle = "#607d8b";
             ctx.beginPath();
-            ctx.arc(0, 0, ds * 0.6, 0, Math.PI * 2);
+            ctx.arc(0, 0, ds * 0.55, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = "#37474f";
-            ctx.fillRect(-ds * 0.15, -ds * 0.8, ds * 0.3, ds * 0.8);
+            ctx.fillRect(-ds * 0.12, -ds * 0.9, ds * 0.24, ds * 0.75);
         } else if (tid >= 26 && tid <= 28) {
             // Mushroom glass box — green, big-type centered at (0,0)
             ctx.fillStyle = "rgba(139, 195, 74, 0.2)";
@@ -757,7 +759,7 @@ class GameRenderer {
 
         let spriteId = null;
         if (tank.tank_type === "turret") {
-            const sz = Math.round(CELL * scaleExtra * 0.85);
+            const sz = Math.round(CELL * 2 * scaleExtra * 0.85);
             const halfSz = sz / 2;
 
             // Helper function for rounded rectangles using arcs
