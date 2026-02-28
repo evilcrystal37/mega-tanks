@@ -972,10 +972,18 @@ class GameEngine:
 
     def _find_box_group(self, r: int, c: int, low: int, high: int) -> list:
         """Return all tile positions belonging to the 2×2 box that contains (r, c),
-        where every tile's ID is within [low, high].  Falls back to [(r, c)] alone."""
+        where every tile's ID is within [low, high].  Falls back to [(r, c)] alone.
+
+        Boxes are always placed at even (row, col) in the editor, so we only
+        consider candidate top-left corners that are both even.  This prevents
+        adjacent same-type boxes from being mistakenly merged into a single group.
+        """
         for dr in range(2):
             for dc in range(2):
                 ar, ac = r - dr, c - dc
+                # Boxes are placed at even-row, even-col grid positions
+                if ar % 2 != 0 or ac % 2 != 0:
+                    continue
                 group = [
                     (ar + nr, ac + nc)
                     for nr in range(2) for nc in range(2)

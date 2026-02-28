@@ -438,7 +438,7 @@ class GameRenderer {
             ctx.fillRect(-ds * 0.15, -ds * 0.8, ds * 0.3, ds * 0.8);
         } else if (tid >= 26 && tid <= 28) {
             // Mushroom glass box — green, big-type centered at (0,0)
-            ctx.fillStyle = "rgba(139, 195, 74, 0.45)";
+            ctx.fillStyle = "rgba(139, 195, 74, 0.2)";
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
 
             // Animated shine sweep across full 2x2 area
@@ -492,7 +492,7 @@ class GameRenderer {
             ctx.stroke();
         } else if (tid >= 29 && tid <= 31) {
             // Rainbow glass box — pink, big-type centered at (0,0)
-            ctx.fillStyle = "rgba(255, 105, 180, 0.45)";
+            ctx.fillStyle = "rgba(255, 105, 180, 0.2)";
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
 
             // Animated shine sweep (offset from mushroom)
