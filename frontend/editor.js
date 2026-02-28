@@ -144,6 +144,9 @@ function _updateTurretCycle() {
             // Elements at and after insertAt shifted right — keep tileIndex on same tile
             if (tileIndex >= insertAt) tileIndex++;
         }
+        // Invalidate lastPlaced so the next C press places rather than cycles
+        lastPlacedRow = -1;
+        lastPlacedCol = -1;
         _updateStatusBar();
     }
 }
