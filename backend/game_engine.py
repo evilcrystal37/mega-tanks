@@ -325,12 +325,14 @@ class GameEngine:
                 if tid == 23:
                     # Rainbow collected by driving over it (only after being freed from box)
                     tank.rainbow_ticks = 300
-                    self.grid[r][c] = 0
+                    for gr, gc in self._find_box_group(r, c, 23, 23):
+                        self.grid[gr][gc] = 0
                     self.events.append({"type": "sound", "sound": "powerup-pickup"})
                 elif tid == 24:
-                    # Mushroom now collected by shooting, but just in case:
+                    # Mushroom collected by driving over it (only after being freed from box)
                     tank.mushroom_ticks = 600
-                    self.grid[r][c] = 0
+                    for gr, gc in self._find_box_group(r, c, 24, 24):
+                        self.grid[gr][gc] = 0
                     self.events.append({"type": "sound", "sound": "powerup-pickup"})
                     self._clear_area_for_tank(tank, force=True)
 
@@ -587,8 +589,8 @@ class GameEngine:
                 if 0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH:
                     tile = get_tile(self.grid[r][c])
                     if tile.tank_solid:
-                        if mover.mushroom_ticks > 0:
-                            pass # Big tank can move through and destroy solid tiles
+                        if mover.mushroom_ticks > 0 and not (26 <= self.grid[r][c] <= 31):
+                            pass # Big tank can move through and destroy solid tiles (but not glass boxes)
                         else:
                             return False
 
@@ -709,16 +711,18 @@ class GameEngine:
                             self.grid[r][c] += 1
                             self.events.append({"type": "sound", "sound": "hit-brick"})
                         elif 26 <= tid <= 28:
-                            self.grid[r][c] -= 1
-                            if self.grid[r][c] == 25:
-                                self.grid[r][c] = 24
+                            # Crack the whole 2×2 mushroom box together
+                            for gr, gc in self._find_box_group(r, c, 26, 28):
+                                self.grid[gr][gc] -= 1
+                                if self.grid[gr][gc] == 25:
+                                    self.grid[gr][gc] = 24
                             self.events.append({"type": "sound", "sound": "hit-brick"})
                         elif tid == 24:
-                            self.grid[r][c] = 0
+                            # Mushroom collected — clear entire 2×2 group
+                            for gr, gc in self._find_box_group(r, c, 24, 24):
+                                self.grid[gr][gc] = 0
                             self.events.append({"type": "sound", "sound": "powerup-pickup"})
-                            # find owner tank
                             owner_id = bullet.owner_id
-                            # If we hit mushroom we give the buff to whoever shot it
                             if self.player and self.player.id == owner_id:
                                 self.player.mushroom_ticks = 600
                                 self._clear_area_for_tank(self.player, force=True)
@@ -734,17 +738,18 @@ class GameEngine:
                                         self._clear_area_for_tank(turret, force=True)
                                         break
                         elif 29 <= tid <= 31:
-                            # Rainbow box progression: 31 -> 30 -> 29 -> 23
-                            self.grid[r][c] -= 1
-                            if self.grid[r][c] == 28:
-                                self.grid[r][c] = 23
+                            # Crack the whole 2×2 rainbow box together: 31→30→29→23
+                            for gr, gc in self._find_box_group(r, c, 29, 31):
+                                self.grid[gr][gc] -= 1
+                                if self.grid[gr][gc] == 28:
+                                    self.grid[gr][gc] = 23
                             self.events.append({"type": "sound", "sound": "hit-brick"})
                         elif tid == 23:
-                            # Rainbow powerup collected - give buff and use once
-                            self.grid[r][c] = 0
+                            # Rainbow collected — clear entire 2×2 group
+                            for gr, gc in self._find_box_group(r, c, 23, 23):
+                                self.grid[gr][gc] = 0
                             self.events.append({"type": "sound", "sound": "powerup-pickup"})
                             owner_id = bullet.owner_id
-                            # Give rainbow buff to whoever shot it
                             if self.player and self.player.id == owner_id:
                                 self.player.rainbow_ticks = 300
                             else:
@@ -1035,6 +1040,22 @@ class GameEngine:
                                     self.player_lives -= 1
                                     self._player_respawn_timer = 180
 
+    def _find_box_group(self, r: int, c: int, low: int, high: int) -> list:
+        """Return all tile positions belonging to the 2×2 box that contains (r, c),
+        where every tile's ID is within [low, high].  Falls back to [(r, c)] alone."""
+        for dr in range(2):
+            for dc in range(2):
+                ar, ac = r - dr, c - dc
+                group = [
+                    (ar + nr, ac + nc)
+                    for nr in range(2) for nc in range(2)
+                    if 0 <= ar + nr < GRID_HEIGHT and 0 <= ac + nc < GRID_WIDTH
+                    and low <= self.grid[ar + nr][ac + nc] <= high
+                ]
+                if len(group) == 4:
+                    return group
+        return [(r, c)]
+
     def _destroy_letter_group(self, r: int, c: int, tid: int) -> None:
         """Destroys a single letter tile and drops exactly one item."""
         if not (0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH):
@@ -1082,7 +1103,11 @@ class GameEngine:
                     ntile = get_tile(self.grid[nr][nc])
                     can_destroy = ntile.tank_solid and (ntile.destructible or force)
                     if tank.mushroom_ticks > 0 and ntile.tank_solid:
-                        can_destroy = True
+                        # Glass boxes can only be broken by shooting, not by running over
+                        if 26 <= self.grid[nr][nc] <= 31:
+                            can_destroy = False
+                        else:
+                            can_destroy = True
                         
                     if can_destroy:
                         if ntile.is_base:

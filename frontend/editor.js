@@ -90,8 +90,9 @@ async function _loadTiles() {
         ];
     }
     // Cycling skips: Empty (0), Base (6), Letter tiles (>=100), glass cracks (16, 17),
-    // sandworm parts (20, 21, 22), mushroom cracks (26, 27, 28), rainbow cracks (29, 30, 31)
-    const NOT_ALLOWED = new Set([0, 6, 16, 17, 20, 21, 22, 26, 27, 28, 29, 30, 31]);
+    // sandworm parts (20, 21, 22), raw item pickups (23, 24 — must stay inside their boxes),
+    // mushroom cracks (26, 27), rainbow cracks (29, 30)
+    const NOT_ALLOWED = new Set([0, 6, 16, 17, 20, 21, 22, 23, 24, 26, 27, 29, 30]);
     tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id) && t.id < 100).map(t => t.id);
     tileIndex = 0;
     _updateStatusBar();
@@ -228,7 +229,7 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
     const gridC = Math.round(x / sz);
     const gridR = Math.round(y / sz);
 
-    if (tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 25) {
+    if (tid === 14 || tid === 18 || tid === 25 || (tid >= 26 && tid <= 31)) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(dx, dy, ds, ds);
@@ -274,20 +275,6 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
                 ctx.lineTo(ds * i, ds);
             }
             ctx.stroke();
-        } else if (tid === 23) {
-            ctx.fillStyle = "rgba(170, 221, 255, 0.4)";
-            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
-            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("🌈", 0, ds * 0.1);
-        } else if (tid === 24) {
-            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
-            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("🍄", 0, ds * 0.1);
         } else if (tid === 25) {
             ctx.fillStyle = "#607d8b";
             ctx.beginPath();
@@ -295,6 +282,88 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             ctx.fill();
             ctx.fillStyle = "#37474f";
             ctx.fillRect(-ds * 0.15, -ds * 0.8, ds * 0.3, ds * 0.8);
+        } else if (tid >= 26 && tid <= 28) {
+            // Mushroom glass box — big-type, centered at (0,0)
+            ctx.fillStyle = "rgba(139, 195, 74, 0.95)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            const cycle = (Date.now() % 2000) / 2000;
+            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
+            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
+            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
+            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.6)");
+            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            ctx.strokeStyle = "rgba(255,255,255,0.5)";
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-ds + 3, -ds + 3, ds * 2 - 6, ds * 2 - 6);
+            ctx.strokeStyle = "rgba(255,255,255,0.8)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds); ctx.stroke();
+            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.beginPath();
+            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
+            const bounce = Math.sin(Date.now() / 200) * ds * 0.05;
+            ctx.fillStyle = "#f5f5dc";
+            ctx.fillRect(-ds * 0.12, ds * 0.1 + bounce, ds * 0.24, ds * 0.5);
+            ctx.fillStyle = "#e52521";
+            ctx.beginPath();
+            ctx.arc(0, ds * 0.1 + bounce, ds * 0.5, Math.PI, 0);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath(); ctx.arc(-ds * 0.25, -ds * 0.1 + bounce, ds * 0.1, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(ds * 0.25, -ds * 0.1 + bounce, ds * 0.1, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, -ds * 0.35 + bounce, ds * 0.12, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = "rgba(255,255,255,0.9)";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            if (tid <= 27) {
+                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
+            }
+            if (tid === 26) {
+                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
+                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
+            }
+            ctx.stroke();
+        } else if (tid >= 29 && tid <= 31) {
+            // Rainbow glass box — big-type, centered at (0,0)
+            ctx.fillStyle = "rgba(255, 105, 180, 0.95)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            const cycle = ((Date.now() + 500) % 2000) / 2000;
+            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
+            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
+            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
+            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.6)");
+            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            ctx.strokeStyle = "rgba(255,255,255,0.5)";
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-ds + 3, -ds + 3, ds * 2 - 6, ds * 2 - 6);
+            ctx.strokeStyle = "rgba(255,255,255,0.8)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds); ctx.stroke();
+            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.beginPath();
+            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
+            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
+            ctx.font = `${ds * 1.2 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🌈", 0, ds * 0.05);
+            ctx.strokeStyle = "rgba(255,255,255,0.9)";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            if (tid <= 30) {
+                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
+            }
+            if (tid === 29) {
+                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
+                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
+            }
+            ctx.stroke();
         }
 
         ctx.restore();

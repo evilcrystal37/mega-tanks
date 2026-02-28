@@ -427,7 +427,7 @@ class GameRenderer {
         const gridC = Math.round(x / sz);
         const gridR = Math.round(y / sz);
 
-    if (tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 25 || tid === 29 || tid === 30 || tid === 31) {
+    if (tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 25 || (tid >= 26 && tid <= 31)) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(dx, dy, ds, ds);
@@ -440,29 +440,21 @@ class GameRenderer {
         if (tid === 18) {
             // Big Sunflower Emoji
             const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
-            
             ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText("🌼", 0, ds * 0.1); // Slight offset for better centering
+            ctx.fillText("🌼", 0, ds * 0.1);
         } else if (tid === 14) {
-            // Minecraft TNT look
-            // Background red
+            // Minecraft TNT look — centered at (0,0), spans (-ds,-ds)→(ds,ds)
             ctx.fillStyle = "#d32f2f";
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-            
-            // White band across the middle
             ctx.fillStyle = "#eeeeee";
             ctx.fillRect(-ds, -ds * 0.3, ds * 2, ds * 0.6);
-            
-            // TNT text in black on the white band
             ctx.fillStyle = "#000000";
             ctx.font = `bold ${Math.max(6, ds * 0.5)}px monospace`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("TNT", 0, 0);
-            
-            // Some subtle vertical lines to look like dynamite sticks
             ctx.strokeStyle = "rgba(0,0,0,0.3)";
             ctx.lineWidth = ds * 0.05;
             ctx.beginPath();
@@ -474,8 +466,6 @@ class GameRenderer {
             }
             ctx.stroke();
         } else if (tid === 23) {
-            ctx.fillStyle = "rgba(170, 221, 255, 0.4)";
-            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
             const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
             ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = "center";
@@ -494,6 +484,108 @@ class GameRenderer {
             ctx.fill();
             ctx.fillStyle = "#37474f";
             ctx.fillRect(-ds * 0.15, -ds * 0.8, ds * 0.3, ds * 0.8);
+        } else if (tid >= 26 && tid <= 28) {
+            // Mushroom glass box — green, big-type centered at (0,0)
+            ctx.fillStyle = "rgba(139, 195, 74, 0.95)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+
+            // Animated shine sweep across full 2x2 area
+            const cycle = (Date.now() % 2000) / 2000;
+            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
+            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
+            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
+            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.6)");
+            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+
+            // Inner border & 3D edges
+            ctx.strokeStyle = "rgba(255,255,255,0.5)";
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-ds + 3, -ds + 3, ds * 2 - 6, ds * 2 - 6);
+            ctx.strokeStyle = "rgba(255,255,255,0.8)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds);
+            ctx.stroke();
+            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.beginPath();
+            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds);
+            ctx.stroke();
+
+            // Mushroom icon centered at (0,0)
+            const bounce = Math.sin(Date.now() / 200) * ds * 0.05;
+            ctx.fillStyle = "#f5f5dc";
+            ctx.fillRect(-ds * 0.12, ds * 0.1 + bounce, ds * 0.24, ds * 0.5);
+            ctx.fillStyle = "#e52521";
+            ctx.beginPath();
+            ctx.arc(0, ds * 0.1 + bounce, ds * 0.5, Math.PI, 0);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath(); ctx.arc(-ds * 0.25, -ds * 0.1 + bounce, ds * 0.1, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(ds * 0.25, -ds * 0.1 + bounce, ds * 0.1, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, -ds * 0.35 + bounce, ds * 0.12, 0, Math.PI * 2); ctx.fill();
+
+            // Cracks
+            ctx.strokeStyle = "rgba(255,255,255,0.9)";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            if (tid <= 27) {
+                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
+            }
+            if (tid === 26) {
+                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
+                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
+            }
+            ctx.stroke();
+        } else if (tid >= 29 && tid <= 31) {
+            // Rainbow glass box — pink, big-type centered at (0,0)
+            ctx.fillStyle = "rgba(255, 105, 180, 0.95)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+
+            // Animated shine sweep (offset from mushroom)
+            const cycle = ((Date.now() + 500) % 2000) / 2000;
+            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
+            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
+            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
+            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.6)");
+            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+
+            // Inner border & 3D edges
+            ctx.strokeStyle = "rgba(255,255,255,0.5)";
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-ds + 3, -ds + 3, ds * 2 - 6, ds * 2 - 6);
+            ctx.strokeStyle = "rgba(255,255,255,0.8)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds);
+            ctx.stroke();
+            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.beginPath();
+            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds);
+            ctx.stroke();
+
+            // Rainbow icon centered at (0,0)
+            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
+            ctx.font = `${ds * 1.2 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🌈", 0, ds * 0.05);
+
+            // Cracks
+            ctx.strokeStyle = "rgba(255,255,255,0.9)";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            if (tid <= 30) {
+                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
+            }
+            if (tid === 29) {
+                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
+                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
+            }
+            ctx.stroke();
         }
 
         ctx.restore();
@@ -683,204 +775,6 @@ class GameRenderer {
             ctx.lineTo(dx + ds * 0.6, dy + ds * 0.9);
         }
         ctx.stroke();
-        return;
-    }
-
-    if (tid === 24) {
-        // Powerup Mushroom
-        const time = Date.now() / 200;
-        const bounce = Math.sin(time) * ds * 0.1;
-        
-        // Stem
-        ctx.fillStyle = "#f5f5dc";
-        ctx.fillRect(dx + ds * 0.4, dy + ds * 0.5 + bounce, ds * 0.2, ds * 0.4);
-        
-        // Cap
-        ctx.fillStyle = "#e52521";
-        ctx.beginPath();
-        ctx.arc(dx + ds * 0.5, dy + ds * 0.5 + bounce, ds * 0.4, Math.PI, 0);
-        ctx.fill();
-        
-        // Spots
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath(); ctx.arc(dx + ds * 0.3, dy + ds * 0.4 + bounce, ds * 0.08, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(dx + ds * 0.7, dy + ds * 0.4 + bounce, ds * 0.08, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(dx + ds * 0.5, dy + ds * 0.2 + bounce, ds * 0.1, 0, Math.PI * 2); ctx.fill();
-        return;
-    }
-
-    if (tid >= 26 && tid <= 28) {
-        // Mushroom glass block box with shining effect
-        // Glass base with gradient
-        const baseGradient = ctx.createLinearGradient(dx, dy, dx + ds, dy + ds);
-        baseGradient.addColorStop(0, "rgba(139, 195, 74, 0.9)");
-        baseGradient.addColorStop(0.5, "rgba(139, 195, 74, 0.7)");
-        baseGradient.addColorStop(1, "rgba(139, 195, 74, 0.9)");
-        ctx.fillStyle = baseGradient;
-        ctx.fillRect(dx, dy, ds, ds);
-
-        // Glass shine effect - sharp diagonal sweep every 2 seconds
-        const cycle = (Date.now() % 2000) / 2000; 
-        const shinePos = cycle * 2 - 0.5; // Sweep from left to right
-
-        const shineGradient = ctx.createLinearGradient(
-            dx + ds * (shinePos - 0.2), dy,
-            dx + ds * (shinePos + 0.2), dy + ds
-        );
-        shineGradient.addColorStop(0, "rgba(255, 255, 255, 0)");
-        shineGradient.addColorStop(0.4, "rgba(255, 255, 255, 0)");
-        shineGradient.addColorStop(0.5, "rgba(255, 255, 255, 0.9)");
-        shineGradient.addColorStop(0.6, "rgba(255, 255, 255, 0)");
-        shineGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
-        
-        ctx.fillStyle = shineGradient;
-        ctx.fillRect(dx, dy, ds, ds);
-
-        // Inner glow
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(dx + 2, dy + 2, ds - 4, ds - 4);
-
-        // Draw a faint mushroom icon in the middle
-        ctx.globalAlpha = 0.6;
-        ctx.fillStyle = "#e52521";
-        ctx.beginPath();
-        ctx.arc(dx + ds * 0.5, dy + ds * 0.5, ds * 0.25, Math.PI, 0);
-        ctx.fill();
-        ctx.globalAlpha = 1.0;
-
-        // Glass border highlight
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(dx, dy + ds);
-        ctx.lineTo(dx, dy);
-        ctx.lineTo(dx + ds, dy);
-        ctx.stroke();
-
-        // Darker bottom-right edge for 3D effect
-        ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
-        ctx.beginPath();
-        ctx.moveTo(dx + ds, dy);
-        ctx.lineTo(dx + ds, dy + ds);
-        ctx.lineTo(dx, dy + ds);
-        ctx.stroke();
-
-        // Cracks
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        if (tid <= 27) { // 27 and 26 have first crack
-            ctx.moveTo(dx + ds * 0.2, dy);
-            ctx.lineTo(dx + ds * 0.5, dy + ds * 0.5);
-            ctx.lineTo(dx + ds, dy + ds * 0.3);
-        }
-        if (tid === 26) { // 26 has second crack too
-            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
-            ctx.lineTo(dx + ds * 0.8, dy + ds * 0.8);
-            ctx.moveTo(dx, dy + ds * 0.7);
-            ctx.lineTo(dx + ds * 0.3, dy + ds * 0.5);
-        }
-        ctx.stroke();
-        return;
-    }
-
-    if (tid >= 29 && tid <= 31) {
-        // Rainbow glass block box with shining effect
-        // Glass base with gradient
-        const baseGradient = ctx.createLinearGradient(dx, dy, dx + ds, dy + ds);
-        baseGradient.addColorStop(0, "rgba(255, 105, 180, 0.9)");
-        baseGradient.addColorStop(0.5, "rgba(255, 105, 180, 0.7)");
-        baseGradient.addColorStop(1, "rgba(255, 105, 180, 0.9)");
-        ctx.fillStyle = baseGradient;
-        ctx.fillRect(dx, dy, ds, ds);
-
-        // Glass shine effect - sharp diagonal sweep every 2 seconds, offset from mushroom
-        const cycle = ((Date.now() + 500) % 2000) / 2000; 
-        const shinePos = cycle * 2 - 0.5; // Sweep from left to right
-
-        const shineGradient = ctx.createLinearGradient(
-            dx + ds * (shinePos - 0.2), dy,
-            dx + ds * (shinePos + 0.2), dy + ds
-        );
-        shineGradient.addColorStop(0, "rgba(255, 255, 255, 0)");
-        shineGradient.addColorStop(0.4, "rgba(255, 255, 255, 0)");
-        shineGradient.addColorStop(0.5, "rgba(255, 255, 255, 0.9)");
-        shineGradient.addColorStop(0.6, "rgba(255, 255, 255, 0)");
-        shineGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
-        
-        ctx.fillStyle = shineGradient;
-        ctx.fillRect(dx, dy, ds, ds);
-
-        // Inner glow
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(dx + 2, dy + 2, ds - 4, ds - 4);
-
-        // Draw a faint rainbow icon in the middle
-        ctx.globalAlpha = 0.6;
-        ctx.font = `${ds * 0.8}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("🌈", dx + ds * 0.5, dy + ds * 0.5);
-        ctx.globalAlpha = 1.0;
-
-        // Glass border highlight
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(dx, dy + ds);
-        ctx.lineTo(dx, dy);
-        ctx.lineTo(dx + ds, dy);
-        ctx.stroke();
-
-        // Darker bottom-right edge for 3D effect
-        ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
-        ctx.beginPath();
-        ctx.moveTo(dx + ds, dy);
-        ctx.lineTo(dx + ds, dy + ds);
-        ctx.lineTo(dx, dy + ds);
-        ctx.stroke();
-
-        // Cracks
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        if (tid <= 30) { // 30 and 29 have first crack
-            ctx.moveTo(dx + ds * 0.2, dy);
-            ctx.lineTo(dx + ds * 0.5, dy + ds * 0.5);
-            ctx.lineTo(dx + ds, dy + ds * 0.3);
-        }
-        if (tid === 29) { // 29 has second crack too
-            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
-            ctx.lineTo(dx + ds * 0.8, dy + ds * 0.8);
-            ctx.moveTo(dx, dy + ds * 0.7);
-            ctx.lineTo(dx + ds * 0.3, dy + ds * 0.5);
-        }
-        ctx.stroke();
-        return;
-    }
-
-    if (tid === 24) {
-        // Powerup Mushroom
-        const time = Date.now() / 200;
-        const bounce = Math.sin(time) * ds * 0.1;
-        
-        // Stem
-        ctx.fillStyle = "#f5f5dc";
-        ctx.fillRect(dx + ds * 0.4, dy + ds * 0.5 + bounce, ds * 0.2, ds * 0.4);
-        
-        // Cap
-        ctx.fillStyle = "#e52521";
-        ctx.beginPath();
-        ctx.arc(dx + ds * 0.5, dy + ds * 0.5 + bounce, ds * 0.4, Math.PI, 0);
-        ctx.fill();
-        
-        // Spots
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath(); ctx.arc(dx + ds * 0.3, dy + ds * 0.4 + bounce, ds * 0.08, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(dx + ds * 0.7, dy + ds * 0.4 + bounce, ds * 0.08, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(dx + ds * 0.5, dy + ds * 0.2 + bounce, ds * 0.1, 0, Math.PI * 2); ctx.fill();
         return;
     }
 
