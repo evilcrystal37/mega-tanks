@@ -89,8 +89,10 @@ async function _loadTiles() {
             { id: 6, label: "BASE", color: "#f8d818" },
         ];
     }
-    // Cycling skips Empty (id 0), Base (id 6), and Letter tiles (id >= 100), also glass crack states (16, 17)
-    tileIds = tiles.filter(t => t.id !== 0 && t.id !== 6 && t.id !== 16 && t.id !== 17 && t.id < 100 && t.id < 20).map(t => t.id);
+    // Cycling skips: Empty (0), Base (6), Letter tiles (>=100), glass cracks (16, 17),
+    // sandworm parts (20, 21, 22), mushroom cracks (26, 27, 28), rainbow cracks (29, 30, 31)
+    const NOT_ALLOWED = new Set([0, 6, 16, 17, 20, 21, 22, 26, 27, 28, 29, 30, 31]);
+    tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id) && t.id < 100).map(t => t.id);
     tileIndex = 0;
     _updateStatusBar();
 }
@@ -226,7 +228,7 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
     const gridC = Math.round(x / sz);
     const gridR = Math.round(y / sz);
 
-    if (tid === 18 || tid === 19 || tid === 23) {
+    if (tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 25) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(dx, dy, ds, ds);
@@ -244,6 +246,55 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🌼", 0, ds * 0.1); // Slight offset for better centering
+        } else if (tid === 14) {
+            // Minecraft TNT look
+            // Background red
+            ctx.fillStyle = "#d32f2f";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            
+            // White band across the middle
+            ctx.fillStyle = "#eeeeee";
+            ctx.fillRect(-ds, -ds * 0.3, ds * 2, ds * 0.6);
+            
+            // TNT text in black on the white band
+            ctx.fillStyle = "#000000";
+            ctx.font = `bold ${Math.max(6, ds * 0.5)}px monospace`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("TNT", 0, 0);
+            
+            // Some subtle vertical lines to look like dynamite sticks
+            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.lineWidth = ds * 0.05;
+            ctx.beginPath();
+            for (let i = -0.6; i <= 0.6; i += 0.4) {
+                ctx.moveTo(ds * i, -ds);
+                ctx.lineTo(ds * i, -ds * 0.3);
+                ctx.moveTo(ds * i, ds * 0.3);
+                ctx.lineTo(ds * i, ds);
+            }
+            ctx.stroke();
+        } else if (tid === 23) {
+            ctx.fillStyle = "rgba(170, 221, 255, 0.4)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
+            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🌈", 0, ds * 0.1);
+        } else if (tid === 24) {
+            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
+            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🍄", 0, ds * 0.1);
+        } else if (tid === 25) {
+            ctx.fillStyle = "#607d8b";
+            ctx.beginPath();
+            ctx.arc(0, 0, ds * 0.6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#37474f";
+            ctx.fillRect(-ds * 0.15, -ds * 0.8, ds * 0.3, ds * 0.8);
         }
 
         ctx.restore();
@@ -390,16 +441,6 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
         return;
     }
 
-    if (tid === 14) {
-        ctx.fillStyle = "#d32f2f";
-        ctx.fillRect(dx, dy, ds, ds);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = `${Math.max(6, ds * 0.4)}px monospace`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("TNT", dx + ds / 2, dy + ds / 2);
-        return;
-    }
 
     if (tid >= 15 && tid <= 17) {
         // Glass

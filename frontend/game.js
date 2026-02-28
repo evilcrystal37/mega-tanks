@@ -204,6 +204,64 @@ class GameRenderer {
             }
         });
 
+        // Rainbow Trails - continuous gradient
+        if (this.state.rainbow_trails) {
+            ctx.globalAlpha = 0.6;
+            const trailWidth = Math.max(4, cell * 0.8);
+
+            for (const [tankId, trail] of Object.entries(this.state.rainbow_trails)) {
+                const points = trail.points || [];
+                if (points.length < 2) continue;
+
+                // Create rainbow gradient along the path
+                const gradient = ctx.createLinearGradient(
+                    points[0].col * cell, points[0].row * cell,
+                    points[points.length - 1].col * cell, points[points.length - 1].row * cell
+                );
+
+                // Rainbow colors at positions along the gradient
+                const rainbowColors = [
+                    [0.0, "#ff0000"],
+                    [0.14, "#ff7f00"],
+                    [0.28, "#ffff00"],
+                    [0.42, "#00ff00"],
+                    [0.56, "#0000ff"],
+                    [0.70, "#4b0082"],
+                    [0.85, "#9400d3"],
+                    [1.0, "#ff00ff"]
+                ];
+
+                rainbowColors.forEach(([pos, color]) => {
+                    gradient.addColorStop(pos, color);
+                });
+
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = trailWidth;
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+
+                // Draw the continuous path
+                ctx.beginPath();
+                const start = points[0];
+                ctx.moveTo(start.col * cell, start.row * cell);
+
+                for (let i = 1; i < points.length; i++) {
+                    const p = points[i];
+                    ctx.lineTo(p.col * cell, p.row * cell);
+                }
+
+                ctx.stroke();
+
+                // Add a glow effect
+                ctx.shadowColor = "#ff00ff";
+                ctx.shadowBlur = 5;
+                ctx.lineWidth = trailWidth * 0.5;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
         // Word Overlays
         (this.state.word_overlays ?? []).forEach(ov => {
             const x = ov.x * cell;
@@ -236,7 +294,7 @@ class GameRenderer {
             const x = b.col * cell;
             const y = b.row * cell;
             ctx.fillStyle = b.is_player ? "#ffffff" : "#ff4444";
-            const sz = Math.max(2, cell * 0.18);
+            const sz = b.crush_bricks ? Math.max(4, cell * 0.4) : Math.max(2, cell * 0.18);
             ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz);
         });
 
@@ -244,6 +302,9 @@ class GameRenderer {
         if (this.state.player) {
             this._drawTank(ctx, this.state.player, cell, true);
         }
+        (this.state.turrets ?? []).forEach(t => {
+            this._drawTank(ctx, t, cell, true);
+        });
         (this.state.enemies ?? []).forEach(e => {
             this._drawTank(ctx, e, cell, false);
         });
@@ -366,7 +427,7 @@ class GameRenderer {
         const gridC = Math.round(x / sz);
         const gridR = Math.round(y / sz);
 
-    if (tid === 18) {
+    if (tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 25 || tid === 29 || tid === 30 || tid === 31) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(dx, dy, ds, ds);
@@ -384,6 +445,55 @@ class GameRenderer {
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🌼", 0, ds * 0.1); // Slight offset for better centering
+        } else if (tid === 14) {
+            // Minecraft TNT look
+            // Background red
+            ctx.fillStyle = "#d32f2f";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            
+            // White band across the middle
+            ctx.fillStyle = "#eeeeee";
+            ctx.fillRect(-ds, -ds * 0.3, ds * 2, ds * 0.6);
+            
+            // TNT text in black on the white band
+            ctx.fillStyle = "#000000";
+            ctx.font = `bold ${Math.max(6, ds * 0.5)}px monospace`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("TNT", 0, 0);
+            
+            // Some subtle vertical lines to look like dynamite sticks
+            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.lineWidth = ds * 0.05;
+            ctx.beginPath();
+            for (let i = -0.6; i <= 0.6; i += 0.4) {
+                ctx.moveTo(ds * i, -ds);
+                ctx.lineTo(ds * i, -ds * 0.3);
+                ctx.moveTo(ds * i, ds * 0.3);
+                ctx.lineTo(ds * i, ds);
+            }
+            ctx.stroke();
+        } else if (tid === 23) {
+            ctx.fillStyle = "rgba(170, 221, 255, 0.4)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
+            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🌈", 0, ds * 0.1);
+        } else if (tid === 24) {
+            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
+            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🍄", 0, ds * 0.1);
+        } else if (tid === 25) {
+            ctx.fillStyle = "#607d8b";
+            ctx.beginPath();
+            ctx.arc(0, 0, ds * 0.6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#37474f";
+            ctx.fillRect(-ds * 0.15, -ds * 0.8, ds * 0.3, ds * 0.8);
         }
 
         ctx.restore();
@@ -530,16 +640,6 @@ class GameRenderer {
         return;
     }
 
-    if (tid === 14) {
-        ctx.fillStyle = "#d32f2f";
-        ctx.fillRect(dx, dy, ds, ds);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = `${Math.max(6, ds * 0.4)}px monospace`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("TNT", dx + ds / 2, dy + ds / 2);
-        return;
-    }
 
     if (tid >= 15 && tid <= 17) {
         // Glass
@@ -586,19 +686,222 @@ class GameRenderer {
         return;
     }
 
-    let spriteId = null;
-    if (tid === 2) spriteId = "terrain.steel";
-        else if (tid === 3) spriteId = (Math.floor(Date.now() / 400) % 2 === 0) ? "terrain.water.1" : "terrain.water.2";
-        else if (tid === 4) spriteId = "terrain.jungle";
-        else if (tid === 5) spriteId = "terrain.ice";
-
-        if (spriteId && this._atlas.draw(ctx, spriteId, dx, dy, ds, ds)) {
-            return;
-        }
-
-        ctx.fillStyle = TILE_COLORS[tid] || "#000";
-        ctx.fillRect(dx, dy, ds, ds);
+    if (tid === 24) {
+        // Powerup Mushroom
+        const time = Date.now() / 200;
+        const bounce = Math.sin(time) * ds * 0.1;
+        
+        // Stem
+        ctx.fillStyle = "#f5f5dc";
+        ctx.fillRect(dx + ds * 0.4, dy + ds * 0.5 + bounce, ds * 0.2, ds * 0.4);
+        
+        // Cap
+        ctx.fillStyle = "#e52521";
+        ctx.beginPath();
+        ctx.arc(dx + ds * 0.5, dy + ds * 0.5 + bounce, ds * 0.4, Math.PI, 0);
+        ctx.fill();
+        
+        // Spots
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath(); ctx.arc(dx + ds * 0.3, dy + ds * 0.4 + bounce, ds * 0.08, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(dx + ds * 0.7, dy + ds * 0.4 + bounce, ds * 0.08, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(dx + ds * 0.5, dy + ds * 0.2 + bounce, ds * 0.1, 0, Math.PI * 2); ctx.fill();
+        return;
     }
+
+    if (tid >= 26 && tid <= 28) {
+        // Mushroom glass block box with shining effect
+        // Glass base with gradient
+        const baseGradient = ctx.createLinearGradient(dx, dy, dx + ds, dy + ds);
+        baseGradient.addColorStop(0, "rgba(139, 195, 74, 0.9)");
+        baseGradient.addColorStop(0.5, "rgba(139, 195, 74, 0.7)");
+        baseGradient.addColorStop(1, "rgba(139, 195, 74, 0.9)");
+        ctx.fillStyle = baseGradient;
+        ctx.fillRect(dx, dy, ds, ds);
+
+        // Glass shine effect - sharp diagonal sweep every 2 seconds
+        const cycle = (Date.now() % 2000) / 2000; 
+        const shinePos = cycle * 2 - 0.5; // Sweep from left to right
+
+        const shineGradient = ctx.createLinearGradient(
+            dx + ds * (shinePos - 0.2), dy,
+            dx + ds * (shinePos + 0.2), dy + ds
+        );
+        shineGradient.addColorStop(0, "rgba(255, 255, 255, 0)");
+        shineGradient.addColorStop(0.4, "rgba(255, 255, 255, 0)");
+        shineGradient.addColorStop(0.5, "rgba(255, 255, 255, 0.9)");
+        shineGradient.addColorStop(0.6, "rgba(255, 255, 255, 0)");
+        shineGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+        
+        ctx.fillStyle = shineGradient;
+        ctx.fillRect(dx, dy, ds, ds);
+
+        // Inner glow
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(dx + 2, dy + 2, ds - 4, ds - 4);
+
+        // Draw a faint mushroom icon in the middle
+        ctx.globalAlpha = 0.6;
+        ctx.fillStyle = "#e52521";
+        ctx.beginPath();
+        ctx.arc(dx + ds * 0.5, dy + ds * 0.5, ds * 0.25, Math.PI, 0);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+
+        // Glass border highlight
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(dx, dy + ds);
+        ctx.lineTo(dx, dy);
+        ctx.lineTo(dx + ds, dy);
+        ctx.stroke();
+
+        // Darker bottom-right edge for 3D effect
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+        ctx.beginPath();
+        ctx.moveTo(dx + ds, dy);
+        ctx.lineTo(dx + ds, dy + ds);
+        ctx.lineTo(dx, dy + ds);
+        ctx.stroke();
+
+        // Cracks
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        if (tid <= 27) { // 27 and 26 have first crack
+            ctx.moveTo(dx + ds * 0.2, dy);
+            ctx.lineTo(dx + ds * 0.5, dy + ds * 0.5);
+            ctx.lineTo(dx + ds, dy + ds * 0.3);
+        }
+        if (tid === 26) { // 26 has second crack too
+            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
+            ctx.lineTo(dx + ds * 0.8, dy + ds * 0.8);
+            ctx.moveTo(dx, dy + ds * 0.7);
+            ctx.lineTo(dx + ds * 0.3, dy + ds * 0.5);
+        }
+        ctx.stroke();
+        return;
+    }
+
+    if (tid >= 29 && tid <= 31) {
+        // Rainbow glass block box with shining effect
+        // Glass base with gradient
+        const baseGradient = ctx.createLinearGradient(dx, dy, dx + ds, dy + ds);
+        baseGradient.addColorStop(0, "rgba(255, 105, 180, 0.9)");
+        baseGradient.addColorStop(0.5, "rgba(255, 105, 180, 0.7)");
+        baseGradient.addColorStop(1, "rgba(255, 105, 180, 0.9)");
+        ctx.fillStyle = baseGradient;
+        ctx.fillRect(dx, dy, ds, ds);
+
+        // Glass shine effect - sharp diagonal sweep every 2 seconds, offset from mushroom
+        const cycle = ((Date.now() + 500) % 2000) / 2000; 
+        const shinePos = cycle * 2 - 0.5; // Sweep from left to right
+
+        const shineGradient = ctx.createLinearGradient(
+            dx + ds * (shinePos - 0.2), dy,
+            dx + ds * (shinePos + 0.2), dy + ds
+        );
+        shineGradient.addColorStop(0, "rgba(255, 255, 255, 0)");
+        shineGradient.addColorStop(0.4, "rgba(255, 255, 255, 0)");
+        shineGradient.addColorStop(0.5, "rgba(255, 255, 255, 0.9)");
+        shineGradient.addColorStop(0.6, "rgba(255, 255, 255, 0)");
+        shineGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+        
+        ctx.fillStyle = shineGradient;
+        ctx.fillRect(dx, dy, ds, ds);
+
+        // Inner glow
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(dx + 2, dy + 2, ds - 4, ds - 4);
+
+        // Draw a faint rainbow icon in the middle
+        ctx.globalAlpha = 0.6;
+        ctx.font = `${ds * 0.8}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("🌈", dx + ds * 0.5, dy + ds * 0.5);
+        ctx.globalAlpha = 1.0;
+
+        // Glass border highlight
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(dx, dy + ds);
+        ctx.lineTo(dx, dy);
+        ctx.lineTo(dx + ds, dy);
+        ctx.stroke();
+
+        // Darker bottom-right edge for 3D effect
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+        ctx.beginPath();
+        ctx.moveTo(dx + ds, dy);
+        ctx.lineTo(dx + ds, dy + ds);
+        ctx.lineTo(dx, dy + ds);
+        ctx.stroke();
+
+        // Cracks
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        if (tid <= 30) { // 30 and 29 have first crack
+            ctx.moveTo(dx + ds * 0.2, dy);
+            ctx.lineTo(dx + ds * 0.5, dy + ds * 0.5);
+            ctx.lineTo(dx + ds, dy + ds * 0.3);
+        }
+        if (tid === 29) { // 29 has second crack too
+            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
+            ctx.lineTo(dx + ds * 0.8, dy + ds * 0.8);
+            ctx.moveTo(dx, dy + ds * 0.7);
+            ctx.lineTo(dx + ds * 0.3, dy + ds * 0.5);
+        }
+        ctx.stroke();
+        return;
+    }
+
+    if (tid === 24) {
+        // Powerup Mushroom
+        const time = Date.now() / 200;
+        const bounce = Math.sin(time) * ds * 0.1;
+        
+        // Stem
+        ctx.fillStyle = "#f5f5dc";
+        ctx.fillRect(dx + ds * 0.4, dy + ds * 0.5 + bounce, ds * 0.2, ds * 0.4);
+        
+        // Cap
+        ctx.fillStyle = "#e52521";
+        ctx.beginPath();
+        ctx.arc(dx + ds * 0.5, dy + ds * 0.5 + bounce, ds * 0.4, Math.PI, 0);
+        ctx.fill();
+        
+        // Spots
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath(); ctx.arc(dx + ds * 0.3, dy + ds * 0.4 + bounce, ds * 0.08, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(dx + ds * 0.7, dy + ds * 0.4 + bounce, ds * 0.08, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(dx + ds * 0.5, dy + ds * 0.2 + bounce, ds * 0.1, 0, Math.PI * 2); ctx.fill();
+        return;
+    }
+
+    let spriteId = null;
+    if (tid === 2) {
+        spriteId = "terrain.steel";
+    } else if (tid === 3) {
+        spriteId = (Math.floor(Date.now() / 400) % 2 === 0) ? "terrain.water.1" : "terrain.water.2";
+    } else if (tid === 4) {
+        spriteId = "terrain.jungle";
+    } else if (tid === 5) {
+        spriteId = "terrain.ice";
+    }
+
+    if (spriteId && this._atlas.draw(ctx, spriteId, dx, dy, ds, ds)) {
+        return;
+    }
+
+    ctx.fillStyle = TILE_COLORS[tid] || "#000";
+    ctx.fillRect(dx, dy, ds, ds);
+}
 
     _drawTank(ctx, tank, CELL, isPlayer) {
         if (!tank.alive) return;
@@ -606,7 +909,7 @@ class GameRenderer {
         const y = tank.row * CELL;
 
         let drawY = y;
-        let scaleExtra = 1;
+        let scaleExtra = tank.mushroom_active ? 2.0 : 1.0;
 
         if (tank.airborne_ticks > 0) {
             const progress = tank.airborne_ticks / 45;
@@ -624,7 +927,109 @@ class GameRenderer {
         const dir = tank.direction || "up";
 
         let spriteId = null;
-        if (isPlayer) {
+        if (tank.tank_type === "turret") {
+            const sz = Math.round(CELL * scaleExtra * 0.85);
+            const halfSz = sz / 2;
+
+            // Helper function for rounded rectangles using arcs
+            const roundRect = (x, y, w, h, r) => {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.lineTo(x + w - r, y);
+                ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+                ctx.lineTo(x + w, y + h - r);
+                ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                ctx.lineTo(x + r, y + h);
+                ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+                ctx.lineTo(x, y + r);
+                ctx.quadraticCurveTo(x, y, x + r, y);
+                ctx.closePath();
+            };
+
+            ctx.save();
+            ctx.translate(x, drawY);
+
+            // Rotate to facing direction
+            if (dir === "up") ctx.rotate(0);
+            else if (dir === "right") ctx.rotate(Math.PI / 2);
+            else if (dir === "down") ctx.rotate(Math.PI);
+            else if (dir === "left") ctx.rotate(-Math.PI / 2);
+
+            // Turret base shadow/depth
+            ctx.fillStyle = "#37474f";
+            ctx.beginPath();
+            ctx.ellipse(0, sz * 0.15, halfSz * 0.9, halfSz * 0.7, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Main turret body - rounded dome shape with gradient
+            const bodyGradient = ctx.createLinearGradient(-halfSz, -halfSz, halfSz, halfSz);
+            bodyGradient.addColorStop(0, "#78909c");
+            bodyGradient.addColorStop(0.5, "#607d8b");
+            bodyGradient.addColorStop(1, "#455a64");
+
+            ctx.fillStyle = bodyGradient;
+            roundRect(-halfSz * 0.8, -halfSz * 0.6, halfSz * 1.6, halfSz * 1.2, halfSz * 0.3);
+            ctx.fill();
+
+            // Turret highlight (top edge)
+            ctx.strokeStyle = "#90a4ae";
+            ctx.lineWidth = 2;
+            roundRect(-halfSz * 0.75, -halfSz * 0.55, halfSz * 1.5, halfSz * 0.5, halfSz * 0.25);
+            ctx.stroke();
+
+            // Commander cupola (small hatch on top)
+            ctx.fillStyle = "#546e7a";
+            ctx.beginPath();
+            ctx.ellipse(-halfSz * 0.2, -halfSz * 0.3, halfSz * 0.25, halfSz * 0.15, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Cupola hatch detail
+            ctx.strokeStyle = "#37474f";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-halfSz * 0.35, -halfSz * 0.3);
+            ctx.lineTo(-halfSz * 0.05, -halfSz * 0.3);
+            ctx.stroke();
+
+            // Gun mantlet (armor around gun mount)
+            ctx.fillStyle = "#455a64";
+            roundRect(-halfSz * 0.35, -halfSz * 0.9, halfSz * 0.7, halfSz * 0.5, halfSz * 0.15);
+            ctx.fill();
+
+            // Main gun barrel with gradient
+            const barrelGradient = ctx.createLinearGradient(-halfSz * 0.2, -halfSz, halfSz * 0.2, -halfSz);
+            barrelGradient.addColorStop(0, "#37474f");
+            barrelGradient.addColorStop(0.5, "#546e7a");
+            barrelGradient.addColorStop(1, "#37474f");
+
+            ctx.fillStyle = barrelGradient;
+            ctx.fillRect(-halfSz * 0.15, -halfSz * 1.4, halfSz * 0.3, halfSz * 0.8);
+
+            // Barrel muzzle brake (end of barrel)
+            ctx.fillStyle = "#263238";
+            ctx.fillRect(-halfSz * 0.22, -halfSz * 1.5, halfSz * 0.44, halfSz * 0.15);
+
+            // Barrel highlight
+            ctx.strokeStyle = "#78909c";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-halfSz * 0.08, -halfSz * 1.35);
+            ctx.lineTo(-halfSz * 0.08, -halfSz * 0.9);
+            ctx.stroke();
+
+            // Side armor plates detail
+            ctx.strokeStyle = "#37474f";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-halfSz * 0.6, 0);
+            ctx.lineTo(-halfSz * 0.6, halfSz * 0.4);
+            ctx.moveTo(halfSz * 0.6, 0);
+            ctx.lineTo(halfSz * 0.6, halfSz * 0.4);
+            ctx.stroke();
+
+            ctx.restore();
+            return;
+        } else if (isPlayer) {
             const lvl = typeof tank.upgrade_level === "number" ? tank.upgrade_level : 0;
             const tier = lvl <= 0 ? "a" : lvl === 1 ? "b" : lvl === 2 ? "c" : "d";
             spriteId = `tank.player.primary.${tier}.${dir}.${frame}`;

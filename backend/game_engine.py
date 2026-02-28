@@ -48,6 +48,8 @@ class GameEngine:
 
         self.player: Optional[Tank] = None
         self.enemies: Dict[str, Tank] = {}
+        self.turrets: Dict[str, Tank] = {}
+        self.rainbow_trails: dict = {}
         self.bullets: Dict[str, Bullet] = {}
         self.explosions: List[dict] = []  # {"row": r, "col": c, "ticks": t}
 
@@ -168,6 +170,22 @@ class GameEngine:
             self.player = make_player_tank(float(GRID_HEIGHT - 1) + 0.5, float(GRID_WIDTH // 2 - 4) + 0.5)
         self._clear_area_for_tank(self.player)
         
+        # Parse Auto-Turrets
+        for r in range(GRID_HEIGHT):
+            for c in range(GRID_WIDTH):
+                if self.grid[r][c] == 25: # Auto-Turret
+                    self.grid[r][c] = 0
+                    turret = Tank(
+                        row=r + 0.5,
+                        col=c + 0.5,
+                        tank_type="turret",
+                        is_player=True,
+                        speed=0.0,
+                        hp=3,
+                        color="#607d8b"
+                    )
+                    self.turrets[turret.id] = turret
+                    
         # Initial spawn for word overlays
         self.word_state, w_events = ensureContinuationOverlays(self.word_state, self.word_index, self.word_params, random.Random())
         for e in w_events:
@@ -303,6 +321,43 @@ class GameEngine:
                         tank.row = max(TANK_HALF, min(float(GRID_HEIGHT) - TANK_HALF, new_row))
                         tank.col = max(TANK_HALF, min(float(GRID_WIDTH) - TANK_HALF, new_col))
 
+                # Buffs
+                if tid == 23:
+                    # Rainbow collected by driving over it (only after being freed from box)
+                    tank.rainbow_ticks = 300
+                    self.grid[r][c] = 0
+                    self.events.append({"type": "sound", "sound": "powerup-pickup"})
+                elif tid == 24:
+                    # Mushroom now collected by shooting, but just in case:
+                    tank.mushroom_ticks = 600
+                    self.grid[r][c] = 0
+                    self.events.append({"type": "sound", "sound": "powerup-pickup"})
+                    self._clear_area_for_tank(tank, force=True)
+
+            # Apply ticking buffs
+            if tank.rainbow_ticks > 0:
+                tank.rainbow_ticks -= 1
+                # Store continuous trail points
+                if 0 <= tank.row < GRID_HEIGHT and 0 <= tank.col < GRID_WIDTH:
+                    # Create a unique key for this tank's trail
+                    tank_key = tank.id
+                    if tank_key not in self.rainbow_trails:
+                        self.rainbow_trails[tank_key] = {"points": [], "ticks": 120}
+                    # Add current position (use float precision for smoothness)
+                    self.rainbow_trails[tank_key]["points"].append({
+                        "row": round(tank.row, 3),
+                        "col": round(tank.col, 3),
+                        "tick": self.tick_count
+                    })
+                    # Limit trail length to avoid too much data
+                    max_points = 200
+                    if len(self.rainbow_trails[tank_key]["points"]) > max_points:
+                        self.rainbow_trails[tank_key]["points"] = self.rainbow_trails[tank_key]["points"][-max_points:]
+                    self.rainbow_trails[tank_key]["ticks"] = 120
+
+            if tank.mushroom_ticks > 0:
+                tank.mushroom_ticks -= 1
+
         # Move bullets
         self._tick_bullets()
 
@@ -317,6 +372,12 @@ class GameEngine:
 
         # Spawn enemies
         self._tick_spawner()
+
+        # Tick turrets
+        self._tick_turrets()
+
+        # Tick rainbow trails
+        self._tick_rainbow_trails()
 
         # Check win/loss
         self._check_end_conditions()
@@ -377,6 +438,54 @@ class GameEngine:
     # AI
     # ------------------------------------------------------------------
 
+    def _tick_rainbow_trails(self) -> None:
+        to_delete = []
+        for k, v in self.rainbow_trails.items():
+            v["ticks"] -= 1
+            if v["ticks"] <= 0:
+                to_delete.append(k)
+            else:
+                # Fade out old points gradually
+                cutoff_tick = self.tick_count - v["ticks"]
+                v["points"] = [p for p in v["points"] if p["tick"] >= cutoff_tick]
+        for k in to_delete:
+            del self.rainbow_trails[k]
+
+    def _tick_turrets(self) -> None:
+        for t_id, turret in list(self.turrets.items()):
+            if not turret.alive:
+                self.turrets.pop(t_id, None)
+                continue
+
+            turret.tick_cooldown()
+
+            # Find closest enemy within 10 tiles and always aim at it
+            best_dist = float('inf')
+            best_enemy = None
+            for e in self.enemies.values():
+                if e.alive:
+                    dist = math.hypot(e.row - turret.row, e.col - turret.col)
+                    if dist < best_dist and dist < 10.0:
+                        best_dist = dist
+                        best_enemy = e
+
+            # Also check player in friendly mode (turrets are friendly, so they target enemies)
+            # But if we're in a mode where player is enemy to turrets, target player too
+            # For now, turrets only target enemies
+
+            if best_enemy:
+                # Always turn to face the closest enemy
+                dr = best_enemy.row - turret.row
+                dc = best_enemy.col - turret.col
+                if abs(dr) > abs(dc):
+                    turret.direction = "down" if dr > 0 else "up"
+                else:
+                    turret.direction = "right" if dc > 0 else "left"
+
+                # Fire if cooldown is ready
+                if turret.can_fire():
+                    self._try_fire(turret)
+
     def _ai_tick(self, enemy: Tank) -> None:
         # Build mini game state for agent
         base_pos = self._base_pos
@@ -432,9 +541,13 @@ class GameEngine:
 
         moved = False
         if self._can_move_to(new_row, new_col, tank):
-            tank.row = max(TANK_HALF, min(float(GRID_HEIGHT) - TANK_HALF, new_row))
-            tank.col = max(TANK_HALF, min(float(GRID_WIDTH) - TANK_HALF, new_col))
+            size = TANK_HALF * 2.0 if tank.mushroom_ticks > 0 else TANK_HALF
+            tank.row = max(size, min(float(GRID_HEIGHT) - size, new_row))
+            tank.col = max(size, min(float(GRID_WIDTH) - size, new_col))
             moved = True
+            
+            if tank.mushroom_ticks > 0:
+                self._clear_area_for_tank(tank, force=True)
 
         # Smooth perpendicular auto-alignment toward tile center
         if dr != 0:
@@ -455,8 +568,8 @@ class GameEngine:
         return moved
 
     def _can_move_to(self, row: float, col: float, mover: Tank) -> bool:
-        """AABB collision check (~1×1 tile-sized bounding box)."""
-        size = TANK_HALF
+        """AABB collision check."""
+        size = TANK_HALF * 2.0 if mover.mushroom_ticks > 0 else TANK_HALF
         r1, r2 = row - size, row + size
         c1, c2 = col - size, col + size
 
@@ -474,13 +587,17 @@ class GameEngine:
                 if 0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH:
                     tile = get_tile(self.grid[r][c])
                     if tile.tank_solid:
-                        return False
+                        if mover.mushroom_ticks > 0:
+                            pass # Big tank can move through and destroy solid tiles
+                        else:
+                            return False
 
         # 3. Tank-tank collision (same box as tile check)
-        for other in list(self.enemies.values()) + ([self.player] if self.player else []):
+        for other in list(self.enemies.values()) + ([self.player] if self.player else []) + list(self.turrets.values()):
             if other is mover or not other.alive:
                 continue
-            if abs(other.row - row) < 2 * size and abs(other.col - col) < 2 * size:
+            other_size = TANK_HALF * 2.0 if other.mushroom_ticks > 0 else TANK_HALF
+            if abs(other.row - row) < (size + other_size) and abs(other.col - col) < (size + other_size):
                 return False
         return True
 
@@ -582,8 +699,8 @@ class GameEngine:
                         # Base destroyed = begin defeat sequence
                         self.grid[r][c] = 0
                         self._trigger_defeat()
-                    elif bullet.power >= 2 or self.grid[r][c] == 1 or self.grid[r][c] >= 100 or 15 <= self.grid[r][c] <= 17:
-                        # Destroy brick or steel (if power bullet) or letter tile or glass
+                    elif bullet.power >= 2 or self.grid[r][c] == 1 or self.grid[r][c] >= 100 or 15 <= self.grid[r][c] <= 17 or 24 <= self.grid[r][c] <= 28 or 29 <= self.grid[r][c] <= 31:
+                        # Destroy brick or steel (if power bullet) or letter tile or glass or mushroom or rainbow
                         tid = self.grid[r][c]
                         
                         if tid >= 100:
@@ -591,9 +708,60 @@ class GameEngine:
                         elif 15 <= tid <= 16:
                             self.grid[r][c] += 1
                             self.events.append({"type": "sound", "sound": "hit-brick"})
+                        elif 26 <= tid <= 28:
+                            self.grid[r][c] -= 1
+                            if self.grid[r][c] == 25:
+                                self.grid[r][c] = 24
+                            self.events.append({"type": "sound", "sound": "hit-brick"})
+                        elif tid == 24:
+                            self.grid[r][c] = 0
+                            self.events.append({"type": "sound", "sound": "powerup-pickup"})
+                            # find owner tank
+                            owner_id = bullet.owner_id
+                            # If we hit mushroom we give the buff to whoever shot it
+                            if self.player and self.player.id == owner_id:
+                                self.player.mushroom_ticks = 600
+                                self._clear_area_for_tank(self.player, force=True)
+                            else:
+                                for enemy in self.enemies.values():
+                                    if enemy.id == owner_id:
+                                        enemy.mushroom_ticks = 600
+                                        self._clear_area_for_tank(enemy, force=True)
+                                        break
+                                for turret in self.turrets.values():
+                                    if turret.id == owner_id:
+                                        turret.mushroom_ticks = 600
+                                        self._clear_area_for_tank(turret, force=True)
+                                        break
+                        elif 29 <= tid <= 31:
+                            # Rainbow box progression: 31 -> 30 -> 29 -> 23
+                            self.grid[r][c] -= 1
+                            if self.grid[r][c] == 28:
+                                self.grid[r][c] = 23
+                            self.events.append({"type": "sound", "sound": "hit-brick"})
+                        elif tid == 23:
+                            # Rainbow powerup collected - give buff and use once
+                            self.grid[r][c] = 0
+                            self.events.append({"type": "sound", "sound": "powerup-pickup"})
+                            owner_id = bullet.owner_id
+                            # Give rainbow buff to whoever shot it
+                            if self.player and self.player.id == owner_id:
+                                self.player.rainbow_ticks = 300
+                            else:
+                                for enemy in self.enemies.values():
+                                    if enemy.id == owner_id:
+                                        enemy.rainbow_ticks = 300
+                                        break
+                                for turret in self.turrets.values():
+                                    if turret.id == owner_id:
+                                        turret.rainbow_ticks = 300
+                                        break
                         else:
                             self.grid[r][c] = 0
                             self.events.append({"type": "sound", "sound": "hit-brick"})
+                            
+                            if bullet.crush_bricks and tid != 2:
+                                continue
                 else:
                     self.events.append({"type": "sound", "sound": "hit-steel"})
                 
@@ -615,13 +783,16 @@ class GameEngine:
 
     def _check_bullet_tank_hit(self, bullet: Bullet) -> None:
         targets = []
-        if not bullet.is_player and self.player and self.player.alive:
-            targets.append(self.player)
+        if not bullet.is_player:
+            if self.player and self.player.alive:
+                targets.append(self.player)
+            targets.extend(t for t in self.turrets.values() if t.alive)
         if bullet.is_player:
             targets.extend(e for e in self.enemies.values() if e.alive)
 
         for tank in targets:
-            if abs(tank.row - bullet.row) < 0.55 and abs(tank.col - bullet.col) < 0.55:
+            hit_size = 1.05 if tank.mushroom_ticks > 0 else 0.55
+            if abs(tank.row - bullet.row) < hit_size and abs(tank.col - bullet.col) < hit_size:
                 self._add_explosion(tank.row, tank.col)
                 bullet.alive = False
                 self._on_bullet_gone(bullet)
@@ -661,8 +832,12 @@ class GameEngine:
 
     def _on_bullet_gone(self, bullet: Bullet) -> None:
         """Decrement active bullet counter for the owning tank."""
-        if bullet.is_player and self.player and self.player.id == bullet.owner_id:
-            self.player.active_bullets = max(0, self.player.active_bullets - 1)
+        if bullet.is_player:
+            if self.player and self.player.id == bullet.owner_id:
+                self.player.active_bullets = max(0, self.player.active_bullets - 1)
+            elif bullet.owner_id in self.turrets:
+                owner = self.turrets[bullet.owner_id]
+                owner.active_bullets = max(0, owner.active_bullets - 1)
         else:
             owner = self.enemies.get(bullet.owner_id)
             if owner:
@@ -798,7 +973,8 @@ class GameEngine:
             for tank in list(self.enemies.values()) + ([self.player] if self.player and self.player.alive else []):
                 if not tank.alive:
                     continue
-                if abs(tank.row - (next_r + 0.5)) < 1.0 and abs(tank.col - (next_c + 0.5)) < 1.0:
+                hit_size = 1.5 if tank.mushroom_ticks > 0 else 1.0
+                if abs(tank.row - (next_r + 0.5)) < hit_size and abs(tank.col - (next_c + 0.5)) < hit_size:
                     tank.hp = 0
                     tank.alive = False
                     self._add_explosion(tank.row, tank.col)
@@ -845,7 +1021,8 @@ class GameEngine:
                     for tank in list(self.enemies.values()) + ([self.player] if self.player and self.player.alive else []):
                         if not tank.alive:
                             continue
-                        if abs(tank.row - (nr + 0.5)) < 1.0 and abs(tank.col - (nc + 0.5)) < 1.0:
+                        hit_size = 1.5 if tank.mushroom_ticks > 0 else 1.0
+                        if abs(tank.row - (nr + 0.5)) < hit_size and abs(tank.col - (nc + 0.5)) < hit_size:
                             if tank.is_player and getattr(self, "_friendly_mode", False):
                                 continue
                             tank.hp -= 1
@@ -896,14 +1073,18 @@ class GameEngine:
 
     def _clear_area_for_tank(self, tank: Tank, force: bool = False) -> None:
         """Destroys any destructible blocks directly under the tank to allow spawning/movement."""
-        size = TANK_HALF
+        size = TANK_HALF * 2.0 if tank.mushroom_ticks > 0 else TANK_HALF
         r1, r2 = tank.row - size, tank.row + size
         c1, c2 = tank.col - size, tank.col + size
         for nr in range(int(r1), int(r2) + 1):
             for nc in range(int(c1), int(c2) + 1):
                 if 0 <= nr < GRID_HEIGHT and 0 <= nc < GRID_WIDTH:
                     ntile = get_tile(self.grid[nr][nc])
-                    if ntile.tank_solid and (ntile.destructible or force):
+                    can_destroy = ntile.tank_solid and (ntile.destructible or force)
+                    if tank.mushroom_ticks > 0 and ntile.tank_solid:
+                        can_destroy = True
+                        
+                    if can_destroy:
                         if ntile.is_base:
                             self.grid[nr][nc] = 0
                             self._trigger_defeat()
@@ -997,8 +1178,10 @@ class GameEngine:
             "total_enemies": self.total_enemies,
             "player": self.player.to_dict() if self.player else None,
             "enemies": [e.to_dict() for e in self.enemies.values()],
+            "turrets": [t.to_dict() for t in self.turrets.values()],
             "bullets": [b.to_dict() for b in self.bullets.values()],
             "explosions": self.explosions,
+            "rainbow_trails": self.rainbow_trails,
             "items": self.items,
             "events": list(self.events),
             "sandworm": self.sandworm,

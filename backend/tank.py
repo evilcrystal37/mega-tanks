@@ -55,6 +55,11 @@ class Tank:
     # Mechanics states
     lava_ticks: int = 0
     airborne_ticks: int = 0
+    
+    # New buffs
+    rainbow_ticks: int = 0
+    mushroom_ticks: int = 0
+
     def can_fire(self) -> bool:
         return self.fire_cooldown <= 0 and self.active_bullets < self.bullet_limit
 
@@ -86,6 +91,7 @@ class Tank:
             direction=self.direction,
             speed=speed,
             power=power,
+            crush_bricks=self.mushroom_ticks > 0,
         )
 
     def tick_cooldown(self) -> None:
@@ -114,6 +120,8 @@ class Tank:
             "color": self.color,
             "lava_ticks": self.lava_ticks,
             "airborne_ticks": self.airborne_ticks,
+            "rainbow_ticks": self.rainbow_ticks,
+            "mushroom_active": self.mushroom_ticks > 0,
         }
 
 

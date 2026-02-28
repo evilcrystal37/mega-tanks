@@ -24,6 +24,7 @@ class Bullet:
     power: int = 1             # 1 = destroys brick; 2 = destroys steel (star lvl 3)
     ttl: int = 240             # ticks to live (prevents indefinite bullet lockout)
     alive: bool = True
+    crush_bricks: bool = False # from mushroom buff
 
     def tick(self) -> None:
         """Advance bullet position by one tick."""
@@ -51,4 +52,5 @@ class Bullet:
             "col": round(self.col, 3),
             "direction": self.direction,
             "alive": self.alive,
+            "crush_bricks": self.crush_bricks,
         }

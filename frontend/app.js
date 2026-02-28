@@ -27,6 +27,7 @@ const btnSettingsReset = document.getElementById("btn-settings-reset");
 let currentScreen = "title";
 let selectedMenuIndex = 0; // 0: construction, 1: play, 2: settings
 let settingsOrigin = "title";
+let editorReady = false;
 
 // ── Settings definitions ──────────────────────────────────────────────
 
@@ -183,7 +184,12 @@ function buildSettingsUI() {
 // ── Init ──────────────────────────────────────────────────────────────
 
 async function init() {
-    await initEditor();
+    // Start editor init in background so title buttons are responsive immediately.
+    const editorInitPromise = initEditor()
+        .then(() => { editorReady = true; })
+        .catch((err) => {
+            console.error("Editor initialization failed:", err);
+        });
 
     // Screen routing
     btnTitleConstruct.addEventListener("click", () => switchScreen("editor"));
@@ -244,6 +250,9 @@ async function init() {
     });
 
     _updateMenuSelection(0);
+
+    // Let editor finish loading without blocking title interactions.
+    await editorInitPromise;
 }
 
 // ── Selection ─────────────────────────────────────────────────────────
@@ -267,8 +276,10 @@ function switchScreen(screen) {
 
     if (screen === "editor") {
         focusEditor();
-        refreshMapList();
-        resizeEditor();
+        if (editorReady) {
+            refreshMapList();
+            resizeEditor();
+        }
     } else {
         blurEditor();
     }

@@ -109,6 +109,7 @@ TILE_REGISTRY: Dict[int, TileType] = {
         color="#d32f2f",
         tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
         is_explosive=True,
+        non_repeating=True,
     ),
     15: TileType(
         id=15, name="glass", label="Glass",
@@ -145,6 +146,60 @@ TILE_REGISTRY: Dict[int, TileType] = {
         id=22, name="sandworm_tail", label="Worm T",
         color="#cd853f",
         tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
+    ),
+    23: TileType(
+        id=23, name="rainbow_pad", label="Rainbow Pad",
+        color="#aaddff",
+        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    24: TileType(
+        id=24, name="grow_mushroom", label="Mushroom",
+        color="#8bc34a",
+        tank_solid=False, bullet_solid=False, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    25: TileType(
+        id=25, name="auto_turret", label="Auto Turret",
+        color="#607d8b",
+        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    26: TileType(
+        id=26, name="mushroom_crack2", label="Mush C2",
+        color="#8bc34a",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    27: TileType(
+        id=27, name="mushroom_crack1", label="Mush C1",
+        color="#8bc34a",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    28: TileType(
+        id=28, name="mushroom_box", label="Mush Box",
+        color="#8bc34a",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    29: TileType(
+        id=29, name="rainbow_crack2", label="Rainbow C2",
+        color="#ff69b4",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    30: TileType(
+        id=30, name="rainbow_crack1", label="Rainbow C1",
+        color="#ff69b4",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    31: TileType(
+        id=31, name="rainbow_box", label="Rainbow Box",
+        color="#ff69b4",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
     ),
 }
 
