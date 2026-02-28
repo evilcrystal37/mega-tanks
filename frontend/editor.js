@@ -89,11 +89,13 @@ async function _loadTiles() {
             { id: 6, label: "BASE", color: "#f8d818" },
         ];
     }
-    // Cycling skips: Empty (0), Base (6), glass cracks (16, 17),
+    // Cycling skips: Base (6), glass cracks (16, 17),
     // sandworm parts (20, 21), raw item pickups (23, 24 — must stay inside their boxes),
     // mushroom cracks (26, 27), rainbow cracks (29, 30)
-    const NOT_ALLOWED = new Set([0, 6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30]);
+    const NOT_ALLOWED = new Set([6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30]);
     tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id)).map(t => t.id);
+    // Put empty last so Brick remains the default when opening the editor
+    tileIds.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
     tileIndex = 0;
     _updateStatusBar();
 }
@@ -282,6 +284,7 @@ function _drawSandTile(ctx, dx, dy, ds) {
 }
 
 function _drawTileDetail(ctx, tid, x, y, sz) {
+    if (tid === 0) return; // Empty tile — nothing to draw
     const dx = Math.round(x);
     const dy = Math.round(y);
     const ds = Math.round(sz);
