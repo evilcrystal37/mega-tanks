@@ -780,7 +780,11 @@ class GameEngine:
             targets.extend(t for t in self.turrets.values() if t.alive and t.id != bullet.owner_id)
 
         for tank in targets:
-            hit_size = 1.05 if tank.mushroom_ticks > 0 else 0.55
+            # Big (mushroom) tank: use tank's half-extent + bullet speed margin to prevent tunneling
+            if tank.mushroom_ticks > 0:
+                hit_size = (TANK_HALF * 2.0) + 0.5  # ~1.5 to reliably catch fast bullets
+            else:
+                hit_size = 0.55
             if abs(tank.row - bullet.row) < hit_size and abs(tank.col - bullet.col) < hit_size:
                 self._add_explosion(tank.row, tank.col)
                 bullet.alive = False
