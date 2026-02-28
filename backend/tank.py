@@ -55,9 +55,6 @@ class Tank:
     # Mechanics states
     lava_ticks: int = 0
     airborne_ticks: int = 0
-    paint_ticks: int = 0
-    paint_color: Optional[str] = None
-
     def can_fire(self) -> bool:
         return self.fire_cooldown <= 0 and self.active_bullets < self.bullet_limit
 
@@ -117,7 +114,6 @@ class Tank:
             "color": self.color,
             "lava_ticks": self.lava_ticks,
             "airborne_ticks": self.airborne_ticks,
-            "paint_color": self.paint_color if self.paint_ticks > 0 else None,
         }
 
 

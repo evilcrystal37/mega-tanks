@@ -226,7 +226,7 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
     const gridC = Math.round(x / sz);
     const gridR = Math.round(y / sz);
 
-    if (tid === 18 || tid === 19) {
+    if (tid === 18 || tid === 19 || tid === 23) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(dx, dy, ds, ds);
@@ -237,43 +237,13 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
         ctx.translate(centerX, centerY);
 
         if (tid === 18) {
-            // Pinball Bumper
-            const pulse = Math.sin(Date.now() / 150) * ds * 0.1;
+            // Big Sunflower Emoji
+            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
             
-            ctx.fillStyle = "#ff00ff";
-            ctx.beginPath();
-            ctx.arc(0, 0, ds * 0.8 + pulse, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = "#aa00aa";
-            ctx.beginPath();
-            ctx.arc(0, 0, ds * 0.5, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = "#ffffff";
-            ctx.beginPath();
-            ctx.arc(0, 0, ds * 0.2, 0, Math.PI * 2);
-            ctx.fill();
-        } else if (tid === 19) {
-            // Paint Roller / Rainbow
-            const colors = ["#ff0000", "#00ff00", "#0000ff", "#ffff00"];
-            const timeOffset = Date.now() / 500;
-            for (let i = 0; i < 4; i++) {
-                ctx.fillStyle = colors[i];
-                ctx.beginPath();
-                ctx.moveTo(0, 0);
-                ctx.arc(0, 0, ds * 0.9, i * Math.PI/2 + timeOffset, (i+1) * Math.PI/2 + timeOffset);
-                ctx.fill();
-            }
-            
-            ctx.fillStyle = "#eeeeee";
-            ctx.beginPath();
-            ctx.arc(0, 0, ds * 0.3, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = "#333333";
-            ctx.beginPath();
-            ctx.arc(0, 0, ds * 0.15, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🌼", 0, ds * 0.1); // Slight offset for better centering
         }
 
         ctx.restore();
@@ -533,7 +503,7 @@ function _generateRandomMap() {
         13, 
         14, 
         15,
-        18, 19
+        18
     ];
     
     const isDense = Math.random() > 0.5; // 50% chance for a more packed map

@@ -302,17 +302,6 @@ class GameEngine:
                     if self._can_move_to(new_row, new_col, tank):
                         tank.row = max(TANK_HALF, min(float(GRID_HEIGHT) - TANK_HALF, new_row))
                         tank.col = max(TANK_HALF, min(float(GRID_WIDTH) - TANK_HALF, new_col))
-                        
-                # Paint Roller check
-                if tid == 19:
-                    if tank.paint_ticks <= 0:
-                        colors = ["#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff"]
-                        tank.paint_color = random.choice(colors)
-                        tank.paint_ticks = 180  # 3 seconds
-                        self.events.append({"type": "sound", "sound": "powerup-pickup"})
-
-            if tank.paint_ticks > 0:
-                tank.paint_ticks -= 1
 
         # Move bullets
         self._tick_bullets()
@@ -338,7 +327,6 @@ class GameEngine:
             # Check collision with item
             if abs(tank.row - item["row"]) < 0.8 and abs(tank.col - item["col"]) < 0.8:
                 # Collected! 
-                # For now just grant score
                 if item["type"].startswith("letter_"):
                     self.score += 500
                 self.events.append({"type": "sound", "sound": "powerup-pickup"})
@@ -447,15 +435,6 @@ class GameEngine:
             tank.row = max(TANK_HALF, min(float(GRID_HEIGHT) - TANK_HALF, new_row))
             tank.col = max(TANK_HALF, min(float(GRID_WIDTH) - TANK_HALF, new_col))
             moved = True
-        else:
-            if self._hit_bumper(new_row, new_col, tank):
-                bounce_speed = actual_speed * 12
-                b_row = tank.row - dr * bounce_speed
-                b_col = tank.col - dc * bounce_speed
-                if self._can_move_to(b_row, b_col, tank):
-                    tank.row = max(TANK_HALF, min(float(GRID_HEIGHT) - TANK_HALF, b_row))
-                    tank.col = max(TANK_HALF, min(float(GRID_WIDTH) - TANK_HALF, b_col))
-                    self.events.append({"type": "sound", "sound": "hit-steel"})
 
         # Smooth perpendicular auto-alignment toward tile center
         if dr != 0:
@@ -474,18 +453,6 @@ class GameEngine:
                     tank.row += step
         
         return moved
-
-    def _hit_bumper(self, row: float, col: float, mover: Tank) -> bool:
-        """Check if the given bounding box intersects a bumper tile."""
-        size = TANK_HALF
-        r1, r2 = row - size, row + size
-        c1, c2 = col - size, col + size
-        for r in range(int(r1), int(r2) + 1):
-            for c in range(int(c1), int(c2) + 1):
-                if 0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH:
-                    if self.grid[r][c] == 18:
-                        return True
-        return False
 
     def _can_move_to(self, row: float, col: float, mover: Tank) -> bool:
         """AABB collision check (~1×1 tile-sized bounding box)."""

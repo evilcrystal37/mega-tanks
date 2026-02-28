@@ -171,7 +171,7 @@ class GameRenderer {
         for (let r = startR; r <= endR; r++) {
             for (let c = startC; c <= endC; c++) {
                 const tid = grid[r]?.[c] ?? 0;
-                if (tid === 0 || tid === 4) continue; // Forest handled separately for top layer
+                if (tid === 0 || tid === 4 || tid === 18) continue; // Forest and Sunflower handled separately for top layer
                 this._drawTileDetail(ctx, tid, c * cell, r * cell, cell);
             }
         }
@@ -248,13 +248,14 @@ class GameRenderer {
             this._drawTank(ctx, e, cell, false);
         });
 
-    // Top layers: Forest
+    // Top layers: Forest and Sunflower
     for (let r = startR; r <= endR; r++) {
         for (let c = startC; c <= endC; c++) {
-            if ((grid[r]?.[c] ?? 0) === 4) {
+            const tid = grid[r]?.[c] ?? 0;
+            if (tid === 4 || tid === 18) {
                 ctx.save();
-                ctx.globalAlpha = 0.65;
-                this._drawTileDetail(ctx, 4, c * cell, r * cell, cell);
+                if (tid === 4) ctx.globalAlpha = 0.65;
+                this._drawTileDetail(ctx, tid, c * cell, r * cell, cell);
                 ctx.restore();
             }
         }
@@ -365,59 +366,29 @@ class GameRenderer {
         const gridC = Math.round(x / sz);
         const gridR = Math.round(y / sz);
 
-        if (tid === 18 || tid === 19) {
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(dx, dy, ds, ds);
-            ctx.clip();
+    if (tid === 18) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(dx, dy, ds, ds);
+        ctx.clip();
 
-            const centerX = dx + (gridC % 2 === 0 ? ds : 0);
-            const centerY = dy + (gridR % 2 === 0 ? ds : 0);
-            ctx.translate(centerX, centerY);
+        const centerX = dx + (gridC % 2 === 0 ? ds : 0);
+        const centerY = dy + (gridR % 2 === 0 ? ds : 0);
+        ctx.translate(centerX, centerY);
 
-            if (tid === 18) {
-                // Pinball Bumper
-                const pulse = Math.sin(Date.now() / 150) * ds * 0.1;
-                
-                ctx.fillStyle = "#ff00ff";
-                ctx.beginPath();
-                ctx.arc(0, 0, ds * 0.8 + pulse, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.fillStyle = "#aa00aa";
-                ctx.beginPath();
-                ctx.arc(0, 0, ds * 0.5, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.fillStyle = "#ffffff";
-                ctx.beginPath();
-                ctx.arc(0, 0, ds * 0.2, 0, Math.PI * 2);
-                ctx.fill();
-            } else if (tid === 19) {
-                // Paint Roller / Rainbow
-                const colors = ["#ff0000", "#00ff00", "#0000ff", "#ffff00"];
-                const timeOffset = Date.now() / 500;
-                for (let i = 0; i < 4; i++) {
-                    ctx.fillStyle = colors[i];
-                    ctx.beginPath();
-                    ctx.moveTo(0, 0);
-                    ctx.arc(0, 0, ds * 0.9, i * Math.PI/2 + timeOffset, (i+1) * Math.PI/2 + timeOffset);
-                    ctx.fill();
-                }
-                
-                ctx.fillStyle = "#eeeeee";
-                ctx.beginPath();
-                ctx.arc(0, 0, ds * 0.3, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = "#333333";
-                ctx.beginPath();
-                ctx.arc(0, 0, ds * 0.15, 0, Math.PI * 2);
-                ctx.fill();
-            }
-
-            ctx.restore();
-            return;
+        if (tid === 18) {
+            // Big Sunflower Emoji
+            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
+            
+            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🌼", 0, ds * 0.1); // Slight offset for better centering
         }
+
+        ctx.restore();
+        return;
+    }
 
         if (tid === 6) {
             if (this._atlas.draw(ctx, "base.heart.alive", dx, dy, ds, ds)) return;
@@ -636,6 +607,7 @@ class GameRenderer {
 
         let drawY = y;
         let scaleExtra = 1;
+
         if (tank.airborne_ticks > 0) {
             const progress = tank.airborne_ticks / 45;
             drawY -= Math.sin(progress * Math.PI) * CELL * 1.5;
@@ -695,19 +667,11 @@ class GameRenderer {
                         ctx.fill();
                     }
                 }
-                if (tank.paint_color) {
-                    ctx.save();
-                    ctx.globalAlpha = 0.5;
-                    ctx.fillStyle = tank.paint_color;
-                    ctx.globalCompositeOperation = "source-atop";
-                    ctx.fillRect(dx, dy, dw, dh);
-                    ctx.restore();
-                }
                 return;
             }
         }
 
-        ctx.fillStyle = tank.paint_color || tank.color;
+        ctx.fillStyle = tank.color;
         const fallbackSz = Math.round(CELL * scaleExtra);
         ctx.fillRect(Math.round(x - fallbackSz / 2), Math.round(drawY - fallbackSz / 2), fallbackSz, fallbackSz);
     }

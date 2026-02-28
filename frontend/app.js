@@ -32,6 +32,12 @@ let settingsOrigin = "title";
 
 const SETTINGS_DEF = [
     {
+        section: "AUDIO",
+        items: [
+            { key: "mute_audio", label: "MUTE SOUNDS", type: "checkbox", def: false, fmt: v => v ? "ON" : "OFF" }
+        ]
+    },
+    {
         section: "DISPLAY",
         items: [
             { key: "cell_zoom", label: "TILE SIZE", min: 0.6, max: 3.0, step: 0.1, def: 2.0, fmt: v => (+v).toFixed(1) + "×" },
@@ -122,25 +128,53 @@ function buildSettingsUI() {
 
             header.appendChild(label);
             header.appendChild(valueEl);
-
-            const slider = document.createElement("input");
-            slider.type = "range";
-            slider.className = "nes-slider";
-            slider.min = def.min;
-            slider.max = def.max;
-            slider.step = def.step;
-            slider.value = val;
-
-            slider.addEventListener("input", () => {
-                const v = parseFloat(slider.value);
-                valueEl.textContent = def.fmt(v);
-                const stored = loadSettings();
-                stored[def.key] = v;
-                saveSettings(stored);
-            });
-
             row.appendChild(header);
-            row.appendChild(slider);
+
+            if (def.type === "checkbox") {
+                const checkbox = document.createElement("input");
+                checkbox.type = "checkbox";
+                checkbox.className = "nes-checkbox";
+                checkbox.checked = val;
+                
+                // Wrap in a label for better NES.css styling if desired, 
+                // but standard checkbox is fine for this simple setup
+                
+                checkbox.addEventListener("change", () => {
+                    const v = checkbox.checked;
+                    valueEl.textContent = def.fmt(v);
+                    const stored = loadSettings();
+                    stored[def.key] = v;
+                    saveSettings(stored);
+                    
+                    // Immediately apply audio mute if changed
+                    if (def.key === "mute_audio") {
+                        import("./audio.js").then(({ audioManager }) => {
+                            audioManager.setMuted(v);
+                        });
+                    }
+                });
+                
+                row.appendChild(checkbox);
+            } else {
+                const slider = document.createElement("input");
+                slider.type = "range";
+                slider.className = "nes-slider";
+                slider.min = def.min;
+                slider.max = def.max;
+                slider.step = def.step;
+                slider.value = val;
+
+                slider.addEventListener("input", () => {
+                    const v = parseFloat(slider.value);
+                    valueEl.textContent = def.fmt(v);
+                    const stored = loadSettings();
+                    stored[def.key] = v;
+                    saveSettings(stored);
+                });
+
+                row.appendChild(slider);
+            }
+
             grid.appendChild(row);
         });
     });
@@ -239,6 +273,14 @@ function switchScreen(screen) {
 
     if (screen === "settings") {
         buildSettingsUI();
+    } else {
+        // Apply audio settings if we're leaving settings
+        try {
+            const raw = JSON.parse(localStorage.getItem("battle_tanks_settings") ?? "{}");
+            import("./audio.js").then(({ audioManager }) => {
+                audioManager.setMuted(!!raw.mute_audio);
+            });
+        } catch { }
     }
 }
 

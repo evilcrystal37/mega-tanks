@@ -126,15 +126,9 @@ TILE_REGISTRY: Dict[int, TileType] = {
         tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
     ),
     18: TileType(
-        id=18, name="bumper", label="Bumper",
-        color="#ff00ff",
-        tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    19: TileType(
-        id=19, name="paint", label="Paint",
-        color="#ff0000",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
+        id=18, name="sunflower", label="Sunflower",
+        color="#ffeb3b",
+        tank_solid=False, bullet_solid=False, destructible=False, transparent=True, slippery=False,
         non_repeating=True,
     ),
     20: TileType(

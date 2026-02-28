@@ -1,7 +1,14 @@
 class AudioManager {
     constructor() {
         this.sounds = {};
-        this.muted = false;
+        
+        // Load initial mute state from local storage settings if available
+        try {
+            const raw = JSON.parse(localStorage.getItem("battle_tanks_settings") ?? "{}");
+            this.muted = !!raw.mute_audio;
+        } catch {
+            this.muted = false;
+        }
         
         const soundList = [
             "fire", "hit-brick", "enemy-explosion", "tank-idle", 
