@@ -128,6 +128,10 @@ function _updateTurretCycle() {
         // tileIndex > idx  → element shifted left, decrement to stay on same tile
         if (tileIndex > idx) tileIndex--;
         if (tileIndex >= tileIds.length) tileIndex = 0;
+        // Invalidate lastPlaced so the next C press places the new tile
+        // instead of cycling one more step (which would skip the auto-switched tile).
+        lastPlacedRow = -1;
+        lastPlacedCol = -1;
         // Immediately show the new ghost tile (reset blink to visible)
         _cursorVisible = true;
         _lastBlink = performance.now();
