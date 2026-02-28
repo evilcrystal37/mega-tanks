@@ -102,54 +102,6 @@ function _currentTileId() {
     return tileIds[tileIndex] ?? 1;
 }
 
-const MAX_TURRETS = 4;
-const TURRET_ID = 25;
-
-// Count logical turrets as 2×2 blocks — top-left corner at even row/col.
-// The 2×2 brush always lands on even positions, so each stroke = 1 logical turret.
-function _countTurrets() {
-    let count = 0;
-    for (let r = 0; r < GRID_H; r += 2) {
-        for (let c = 0; c < GRID_W; c += 2) {
-            if (grid[r][c] === TURRET_ID) count++;
-        }
-    }
-    return count;
-}
-
-function _updateTurretCycle() {
-    const full = _countTurrets() >= MAX_TURRETS;
-    const idx = tileIds.indexOf(TURRET_ID);
-    const inCycle = idx !== -1;
-
-    if (full && inCycle) {
-        tileIds.splice(idx, 1);
-        // tileIndex === idx → next tile slides in automatically (switch to next ✓)
-        // tileIndex > idx  → element shifted left, decrement to stay on same tile
-        if (tileIndex > idx) tileIndex--;
-        if (tileIndex >= tileIds.length) tileIndex = 0;
-        // Invalidate lastPlaced so the next C press places the new tile
-        // instead of cycling one more step (which would skip the auto-switched tile).
-        lastPlacedRow = -1;
-        lastPlacedCol = -1;
-        // Immediately show the new ghost tile (reset blink to visible)
-        _cursorVisible = true;
-        _lastBlink = performance.now();
-        _updateStatusBar();
-    } else if (!full && !inCycle) {
-        const insertAt = tileIds.findIndex(id => id > TURRET_ID);
-        if (insertAt === -1) tileIds.push(TURRET_ID);
-        else {
-            tileIds.splice(insertAt, 0, TURRET_ID);
-            // Elements at and after insertAt shifted right — keep tileIndex on same tile
-            if (tileIndex >= insertAt) tileIndex++;
-        }
-        // Invalidate lastPlaced so the next C press places rather than cycles
-        lastPlacedRow = -1;
-        lastPlacedCol = -1;
-        _updateStatusBar();
-    }
-}
 
 function _updateStatusBar() {
     const cur = tiles.find(t => t.id === _currentTileId());
@@ -701,11 +653,8 @@ function _generateRandomMap() {
     }
     
     // ── Auto-turrets (tile 25) — placed as 2×2 blocks at even positions ──
-    // Each block spawns one turret entity; symmetry can multiply the count.
-    // Cap placements so the total logical turrets stay within MAX_TURRETS.
-    const turretsPerPlacement = symMode === 4 ? 4 : symMode === 2 ? 2 : 1;
-    const maxTurretPlacements = Math.max(1, Math.floor(MAX_TURRETS / turretsPerPlacement));
-    const numTurretPlacements = 1 + Math.floor(Math.random() * Math.min(2, maxTurretPlacements));
+    // Snap to even row/col so each block aligns with the engine's scan.
+    const numTurretPlacements = 1 + Math.floor(Math.random() * 3);
     for (let t = 0; t < numTurretPlacements; t++) {
         // Snap to even row/col so the 2×2 block aligns with the engine's scan
         let tr = Math.floor(Math.random() * Math.max(1, Math.floor((maxR - 4) / 2))) * 2;
@@ -797,7 +746,6 @@ function _bindEvents() {
     document.getElementById("btn-clear-map").addEventListener("click", () => {
         if (!confirm("CLEAR MAP?")) return;
         _initGrid();
-        _updateTurretCycle();
     });
 
     window.addEventListener("keydown", ev => {
@@ -827,8 +775,6 @@ function _onKeyUp(ev) {
 }
 
 function _applyBrush(value) {
-    // Turrets are big-type 2×2 blocks — block the whole stroke if cap is reached.
-    if (value === TURRET_ID && _countTurrets() >= MAX_TURRETS) return;
     for (let dr = 0; dr < BRUSH_SIZE; dr++) {
         for (let dc = 0; dc < BRUSH_SIZE; dc++) {
             const r = cursorRow + dr;
@@ -838,7 +784,6 @@ function _applyBrush(value) {
             }
         }
     }
-    _updateTurretCycle();
 }
 
     function _handlePaint(ev) {
@@ -978,7 +923,6 @@ async function _loadMap(name) {
         const data = await Api.loadMap(name);
         grid = data.grid;
         nameInput.value = data.name;
-        _updateTurretCycle();
     } catch (e) {
         alert("LOAD FAILED: " + e.message);
     }
