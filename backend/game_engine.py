@@ -34,7 +34,6 @@ ENEMY_SEQUENCE = ["basic", "basic", "fast", "basic", "armor", "power", "fast", "
 class GameEngine:
     def __init__(self, map_obj: Map, mode_name: str = "construction_play", settings: Optional[dict] = None) -> None:
         from .mode_registry import get_mode
-        from .word_logic import PrefixIndex, GameState as WordGameState, Params as WordParams
         
         self.map = map_obj
         self.mode = get_mode(mode_name)
@@ -78,8 +77,8 @@ class GameEngine:
             "dir_timer": 0
         }
         
-        # Dropped items
-        self.items: List[dict] = []  # {"type": "letter_a", "row": r, "col": c}
+        # Dropped items (reserved for future use)
+        self.items: List[dict] = []
 
         # Events to broadcast
         self.events: List[dict] = []
@@ -103,24 +102,6 @@ class GameEngine:
         self._player_direction: Optional[str] = None
         self._player_fire: bool = False
 
-        # Word Overlay System
-        SAMPLE_WORDS = [
-            "ANT", "ART", "BAG", "BAT", "BED", "BEE", "BOX", "BOY", "BUS", "CAT", "COW", "CUP",
-            "DOG", "EAR", "EGG", "FAN", "FLY", "FOG", "GAS", "HAT", "HEN", "ICE", "INK", "JAM",
-            "JAR", "KEY", "KID", "LEG", "LIP", "LOG", "MAP", "MUG", "NET",
-            "BALL", "BARK", "BARN", "BEAR", "BIKE", "BIRD", "BLUE", "BOAT", "BOOK", "BOSS",
-            "CAKE", "CAMP", "CARD", "CORN", "CRAB", "CROW", "DOOR", "DUCK", "FARM", "FISH",
-            "FLAG", "FROG", "GAME", "GIFT", "GIRL", "GOLD", "HAND", "HEAD", "HOME", "JUMP",
-            "KITE", "KING", "LION", "MOON", "NEST"
-        ]
-        self.word_index = PrefixIndex(SAMPLE_WORDS)
-        self.word_state = WordGameState(width=GRID_WIDTH, height=GRID_HEIGHT, current_prefix="", overlays=[])
-        self.word_params = WordParams(
-            spawn_choices_k=3,
-            max_overlays=5,
-            prefer_complete_at_3=True,
-            allow_extend_to_4=True
-        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -159,7 +140,6 @@ class GameEngine:
     # ------------------------------------------------------------------
 
     def _setup(self) -> None:
-        from .word_logic import ensureContinuationOverlays
         base = self.map.find_base()
         if base:
             self._base_pos = base
@@ -185,12 +165,6 @@ class GameEngine:
                         color="#607d8b"
                     )
                     self.turrets[turret.id] = turret
-                    
-        # Initial spawn for word overlays
-        self.word_state, w_events = ensureContinuationOverlays(self.word_state, self.word_index, self.word_params, random.Random())
-        for e in w_events:
-            if e.__class__.__name__ == "OverlaySpawned":
-                self.events.append({"type": "sound", "sound": "powerup-appear"})
 
     def _apply_settings(self) -> None:
         """Apply user-provided settings after mode defaults are set."""
@@ -387,11 +361,7 @@ class GameEngine:
     def _check_item_collection(self, tank: Tank) -> None:
         remaining_items = []
         for item in self.items:
-            # Check collision with item
             if abs(tank.row - item["row"]) < 0.8 and abs(tank.col - item["col"]) < 0.8:
-                # Collected! 
-                if item["type"].startswith("letter_"):
-                    self.score += 500
                 self.events.append({"type": "sound", "sound": "powerup-pickup"})
             else:
                 remaining_items.append(item)
@@ -642,39 +612,6 @@ class GameEngine:
                 self._on_bullet_gone(bullet)
                 continue
                 
-            # Check Word Overlay Collisions
-            if bullet.is_player:
-                hit_overlay = None
-                for ov in self.word_state.overlays:
-                    if ov.x == c and ov.y == r:
-                        hit_overlay = ov
-                        break
-                
-                if hit_overlay:
-                    from .word_logic import handleLetterShot
-                    
-                    # Prevent multiple bullets hitting the same overlay in the same tick if already handled
-                    result = handleLetterShot(self.word_state, self.word_index, c, r, self.word_params, random.Random())
-                    self.word_state = result.new_state
-                    
-                    for event in result.events:
-                        evt_type = event.__class__.__name__
-                        if evt_type == "LetterAccepted":
-                            self.events.append({"type": "sound", "sound": "powerup-pickup"})
-                            self.score += 100
-                        elif evt_type == "LetterRejected":
-                            self.events.append({"type": "sound", "sound": "hit-steel"})
-                        elif evt_type == "WordCompleted":
-                            self.events.append({"type": "sound", "sound": "powerup-appear"})
-                            self.score += 500 * len(event.word)
-                        elif evt_type == "OverlaySpawned":
-                            self.events.append({"type": "sound", "sound": "powerup-appear"})
-                            
-                    self._add_explosion(bullet.row, bullet.col)
-                    bullet.alive = False
-                    self._on_bullet_gone(bullet)
-                    continue
-
             # Tile collision
             tile = get_tile(self.grid[r][c])
             if tile.bullet_solid:
@@ -701,13 +638,11 @@ class GameEngine:
                         # Base destroyed = begin defeat sequence
                         self.grid[r][c] = 0
                         self._trigger_defeat()
-                    elif bullet.power >= 2 or self.grid[r][c] == 1 or self.grid[r][c] >= 100 or 15 <= self.grid[r][c] <= 17 or 24 <= self.grid[r][c] <= 28 or 29 <= self.grid[r][c] <= 31:
-                        # Destroy brick or steel (if power bullet) or letter tile or glass or mushroom or rainbow
+                    elif bullet.power >= 2 or self.grid[r][c] == 1 or 15 <= self.grid[r][c] <= 17 or 24 <= self.grid[r][c] <= 28 or 29 <= self.grid[r][c] <= 31:
+                        # Destroy brick or steel (if power bullet) or glass or mushroom or rainbow
                         tid = self.grid[r][c]
                         
-                        if tid >= 100:
-                            self._destroy_letter_group(r, c, tid)
-                        elif 15 <= tid <= 16:
+                        if 15 <= tid <= 16:
                             self.grid[r][c] += 1
                             self.events.append({"type": "sound", "sound": "hit-brick"})
                         elif 26 <= tid <= 28:
@@ -771,8 +706,7 @@ class GameEngine:
                     self.events.append({"type": "sound", "sound": "hit-steel"})
                 
                 # Explosion effect
-                if not (tid >= 100 if 'tid' in locals() else False):
-                    self._add_explosion(bullet.row, bullet.col)
+                self._add_explosion(bullet.row, bullet.col)
                 bullet.alive = False
                 self._on_bullet_gone(bullet)
                 continue
@@ -1013,11 +947,7 @@ class GameEngine:
                             self.grid[nr][nc] = 0
                             self._trigger_defeat()
                         else:
-                            tid = self.grid[nr][nc]
-                            if tid >= 100:
-                                self._destroy_letter_group(nr, nc, tid)
-                            else:
-                                self.grid[nr][nc] = 0
+                            self.grid[nr][nc] = 0
                     
                     if (nr, nc) != (r, c) and self.grid[nr][nc] == 0:
                         self._add_explosion(nr + 0.5, nc + 0.5)
@@ -1056,17 +986,6 @@ class GameEngine:
                     return group
         return [(r, c)]
 
-    def _destroy_letter_group(self, r: int, c: int, tid: int) -> None:
-        """Destroys a single letter tile and drops exactly one item."""
-        if not (0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH):
-            return
-            
-        self.grid[r][c] = 0
-        self._add_explosion(r + 0.5, c + 0.5)
-            
-        # Spawn exactly one item
-        char = chr(tid - 100 + 65)
-        self.items.append({"type": f"letter_{char.lower()}", "row": r + 0.5, "col": c + 0.5})
 
     def _tick_tnt(self) -> None:
         new_pending = []
@@ -1114,11 +1033,8 @@ class GameEngine:
                             self.grid[nr][nc] = 0
                             self._trigger_defeat()
                         else:
-                            if self.grid[nr][nc] >= 100:
-                                self._destroy_letter_group(nr, nc, self.grid[nr][nc])
-                            else:
-                                self.grid[nr][nc] = 0
-                                self._add_explosion(nr + 0.5, nc + 0.5)
+                            self.grid[nr][nc] = 0
+                            self._add_explosion(nr + 0.5, nc + 0.5)
 
     # ------------------------------------------------------------------
     # End conditions
@@ -1211,9 +1127,7 @@ class GameEngine:
             "events": list(self.events),
             "sandworm": self.sandworm,
             "grid": self.grid,  # full grid on every tick
-            "base_pos": {"row": self._base_pos[0], "col": self._base_pos[1]} if self._base_pos else None,
-            "word_prefix": self.word_state.current_prefix,
-            "word_overlays": [{"x": ov.x, "y": ov.y, "letter": ov.letter} for ov in self.word_state.overlays]
+            "base_pos": {"row": self._base_pos[0], "col": self._base_pos[1]} if self._base_pos else None
         }
 
     async def _emit(self, state: dict) -> None:

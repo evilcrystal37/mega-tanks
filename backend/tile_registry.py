@@ -203,14 +203,6 @@ TILE_REGISTRY: Dict[int, TileType] = {
     ),
 }
 
-for i in range(26):
-    char = chr(65 + i)
-    TILE_REGISTRY[100 + i] = TileType(
-        id=100 + i, name=f"letter_{char.lower()}", label=f"Let {char}",
-        color="#ffffff",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-    )
-
 
 def get_tile(tile_id: int) -> TileType:
     """Return a TileType by ID, defaulting to empty if unknown."""

@@ -89,11 +89,11 @@ async function _loadTiles() {
             { id: 6, label: "BASE", color: "#f8d818" },
         ];
     }
-    // Cycling skips: Empty (0), Base (6), Letter tiles (>=100), glass cracks (16, 17),
+    // Cycling skips: Empty (0), Base (6), glass cracks (16, 17),
     // sandworm parts (20, 21, 22), raw item pickups (23, 24 — must stay inside their boxes),
     // mushroom cracks (26, 27), rainbow cracks (29, 30)
     const NOT_ALLOWED = new Set([0, 6, 16, 17, 20, 21, 22, 23, 24, 26, 27, 29, 30]);
-    tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id) && t.id < 100).map(t => t.id);
+    tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id)).map(t => t.id);
     tileIndex = 0;
     _updateStatusBar();
 }
@@ -284,7 +284,7 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             ctx.fillRect(-ds * 0.15, -ds * 0.8, ds * 0.3, ds * 0.8);
         } else if (tid >= 26 && tid <= 28) {
             // Mushroom glass box — big-type, centered at (0,0)
-            ctx.fillStyle = "rgba(139, 195, 74, 0.95)";
+            ctx.fillStyle = "rgba(139, 195, 74, 0.45)";
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
             const cycle = (Date.now() % 2000) / 2000;
             const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
@@ -328,7 +328,7 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             ctx.stroke();
         } else if (tid >= 29 && tid <= 31) {
             // Rainbow glass box — big-type, centered at (0,0)
-            ctx.fillStyle = "rgba(255, 105, 180, 0.95)";
+            ctx.fillStyle = "rgba(255, 105, 180, 0.45)";
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
             const cycle = ((Date.now() + 500) % 2000) / 2000;
             const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
@@ -422,17 +422,6 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             ctx.fillText(arrow, dx + ds / 2 + offset - ds, dy + ds / 2 + ds * 0.05);
         }
         ctx.restore();
-        return;
-    }
-
-    if (tid >= 100 && tid <= 125) {
-        ctx.fillStyle = "#444444";
-        ctx.fillRect(dx, dy, ds, ds);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = `${Math.max(8, ds * 0.6)}px "Press Start 2P", monospace`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(String.fromCharCode(tid - 100 + 65), dx + ds / 2, dy + ds / 2 + ds * 0.05);
         return;
     }
 
@@ -739,10 +728,6 @@ function _applyBrush(value) {
             _applyBrush(0);
         } else if (heldKeys.has("KeyC") || heldKeys.has("KeyX")) {
             const tid = _currentTileId();
-            if (tid >= 100 && (!ev || !ev.shiftKey) && !heldKeys.has("ShiftLeft") && !heldKeys.has("ShiftRight")) {
-                // Must hold shift to place letter tiles
-                return;
-            }
             _applyBrush(tid);
         }
     }

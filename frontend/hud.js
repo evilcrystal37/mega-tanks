@@ -10,7 +10,6 @@ export class Hud {
         this._upgrade = document.getElementById("hud-upgrade");
         this._mapName = document.getElementById("hud-map-name");
         this._mapNameTop = document.getElementById("hud-map-name-top"); // Top status bar
-        this._wordPrefix = document.getElementById("hud-word-prefix");
 
         this._overlay = document.getElementById("game-overlay");
         this._oTitle = document.getElementById("overlay-title");
@@ -57,15 +56,7 @@ export class Hud {
             ).join("");
         }
 
-        // Word Prefix
-        if (this._wordPrefix) {
-            let prefix = state.word_prefix ?? "";
-            let displayString = "";
-            for (let i = 0; i < 4; i++) {
-                displayString += (i < prefix.length) ? prefix[i] : "_";
-            }
-            this._wordPrefix.textContent = displayString.split("").join(" ");
-        }
+
     }
 
     showOverlay(result, score) {

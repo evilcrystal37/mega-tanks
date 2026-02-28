@@ -183,27 +183,6 @@ class GameRenderer {
             this._atlas.draw(ctx, "base.heart.dead", Math.round(bc * cell), Math.round(br * cell), cell, cell);
         }
         
-        // Items
-        (this.state.items ?? []).forEach(item => {
-            if (item.type.startsWith("letter_")) {
-                const char = item.type.split("_")[1].toUpperCase();
-                const x = item.col * cell;
-                const y = item.row * cell;
-                
-                // Bobbing animation
-                const bob = Math.sin(Date.now() / 200) * 4;
-                
-                ctx.fillStyle = "#ffffff";
-                ctx.shadowColor = "#ffcc00";
-                ctx.shadowBlur = 10;
-                ctx.font = `${Math.max(12, cell * 0.8)}px "Press Start 2P", monospace`;
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.fillText(char, Math.round(x), Math.round(y + bob));
-                ctx.shadowBlur = 0;
-            }
-        });
-
         // Rainbow Trails - continuous gradient
         if (this.state.rainbow_trails) {
             ctx.globalAlpha = 0.6;
@@ -261,33 +240,6 @@ class GameRenderer {
             }
             ctx.globalAlpha = 1.0;
         }
-
-        // Word Overlays
-        (this.state.word_overlays ?? []).forEach(ov => {
-            const x = ov.x * cell;
-            const y = ov.y * cell;
-            
-            // Draw a semi-transparent dark square background
-            ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-            ctx.fillRect(Math.round(x), Math.round(y), cell, cell);
-            
-            // Draw border
-            ctx.strokeStyle = "rgba(255, 204, 0, 0.8)";
-            ctx.lineWidth = Math.max(1, cell * 0.05);
-            ctx.strokeRect(Math.round(x), Math.round(y), cell, cell);
-
-            // Bobbing animation for the letter
-            const bob = Math.sin((Date.now() + (ov.x * 100 + ov.y * 100)) / 200) * (cell * 0.1);
-            
-            ctx.fillStyle = "#ffcc00";
-            ctx.shadowColor = "#ffaa00";
-            ctx.shadowBlur = 15;
-            ctx.font = `bold ${Math.max(12, cell * 0.8)}px "Press Start 2P", monospace`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(ov.letter, Math.round(x + cell / 2), Math.round(y + cell / 2 + bob));
-            ctx.shadowBlur = 0;
-        });
 
         // Bullets
         (this.state.bullets ?? []).forEach(b => {
@@ -486,7 +438,7 @@ class GameRenderer {
             ctx.fillRect(-ds * 0.15, -ds * 0.8, ds * 0.3, ds * 0.8);
         } else if (tid >= 26 && tid <= 28) {
             // Mushroom glass box — green, big-type centered at (0,0)
-            ctx.fillStyle = "rgba(139, 195, 74, 0.95)";
+            ctx.fillStyle = "rgba(139, 195, 74, 0.45)";
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
 
             // Animated shine sweep across full 2x2 area
@@ -540,7 +492,7 @@ class GameRenderer {
             ctx.stroke();
         } else if (tid >= 29 && tid <= 31) {
             // Rainbow glass box — pink, big-type centered at (0,0)
-            ctx.fillStyle = "rgba(255, 105, 180, 0.95)";
+            ctx.fillStyle = "rgba(255, 105, 180, 0.45)";
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
 
             // Animated shine sweep (offset from mushroom)
@@ -644,17 +596,6 @@ class GameRenderer {
                 ctx.fillText(arrow, dx + ds / 2 + offset - ds, dy + ds / 2 + ds * 0.05);
             }
             ctx.restore();
-            return;
-        }
-
-        if (tid >= 100 && tid <= 125) {
-            ctx.fillStyle = "#444444";
-            ctx.fillRect(dx, dy, ds, ds);
-            ctx.fillStyle = "#ffffff";
-            ctx.font = `${Math.max(8, ds * 0.6)}px "Press Start 2P", monospace`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(String.fromCharCode(tid - 100 + 65), dx + ds / 2, dy + ds / 2 + ds * 0.05);
             return;
         }
 
