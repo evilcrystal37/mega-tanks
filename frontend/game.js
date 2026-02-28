@@ -760,114 +760,208 @@ class GameRenderer {
         let spriteId = null;
         if (tank.tank_type === "turret") {
             const sz = Math.round(CELL * 2 * scaleExtra * 0.85);
-            const hp = tank.hp ?? 3;
-            const t = Date.now();
+            const hp  = tank.hp ?? 3;
+            const ms  = Date.now();
+
+            // Direction angle for rotating parts
+            const dirAngle = dir === "right" ? Math.PI / 2
+                           : dir === "down"  ? Math.PI
+                           : dir === "left"  ? -Math.PI / 2 : 0;
 
             ctx.save();
             ctx.translate(x, drawY);
 
-            // ── Static concrete base (does NOT rotate) ───────────────────────
-            // Outer sandbag ring
-            ctx.fillStyle = "#6d5c41";
+            // ── Ground shadow ─────────────────────────────────────────────────
+            ctx.fillStyle = "rgba(0,0,0,0.28)";
             ctx.beginPath();
-            ctx.arc(0, 0, sz * 0.48, 0, Math.PI * 2);
+            ctx.ellipse(sz * 0.06, sz * 0.1, sz * 0.46, sz * 0.22, 0, 0, Math.PI * 2);
             ctx.fill();
 
-            // Concrete floor
-            ctx.fillStyle = "#78716c";
-            ctx.beginPath();
-            ctx.arc(0, 0, sz * 0.4, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Concrete texture lines
-            ctx.strokeStyle = "rgba(0,0,0,0.15)";
-            ctx.lineWidth = 1;
-            for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+            // ── Sandbag ring (8 bags, static) ────────────────────────────────
+            const bagR = sz * 0.44;
+            for (let i = 0; i < 8; i++) {
+                const a = (i / 8) * Math.PI * 2;
+                const bx = Math.cos(a) * bagR;
+                const by = Math.sin(a) * bagR;
+                const bagGrad = ctx.createRadialGradient(bx - sz*0.03, by - sz*0.03, sz*0.01, bx, by, sz*0.1);
+                bagGrad.addColorStop(0, "#a89060");
+                bagGrad.addColorStop(1, "#6b5030");
+                ctx.fillStyle = bagGrad;
                 ctx.beginPath();
-                ctx.moveTo(Math.cos(a) * sz * 0.1, Math.sin(a) * sz * 0.1);
-                ctx.lineTo(Math.cos(a) * sz * 0.38, Math.sin(a) * sz * 0.38);
+                ctx.ellipse(bx, by, sz * 0.12, sz * 0.08, a, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "rgba(0,0,0,0.3)";
+                ctx.lineWidth = 0.5;
                 ctx.stroke();
             }
 
-            // Sandbag highlights
-            ctx.strokeStyle = "rgba(255,220,150,0.2)";
+            // ── Concrete base plate ───────────────────────────────────────────
+            const plateGrad = ctx.createRadialGradient(-sz*0.08, -sz*0.08, sz*0.05, 0, 0, sz*0.38);
+            plateGrad.addColorStop(0, "#95918e");
+            plateGrad.addColorStop(0.6, "#706c69");
+            plateGrad.addColorStop(1, "#524f4c");
+            ctx.fillStyle = plateGrad;
+            ctx.beginPath();
+            ctx.arc(0, 0, sz * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Concrete detail — subtle panel lines
+            ctx.strokeStyle = "rgba(0,0,0,0.12)";
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 6; i++) {
+                const a = (i / 6) * Math.PI * 2;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a) * sz * 0.08, Math.sin(a) * sz * 0.08);
+                ctx.lineTo(Math.cos(a) * sz * 0.32, Math.sin(a) * sz * 0.32);
+                ctx.stroke();
+            }
+            // Rim highlight
+            ctx.strokeStyle = "rgba(255,255,255,0.08)";
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.arc(0, 0, sz * 0.44, -Math.PI * 0.7, Math.PI * 0.2);
+            ctx.arc(0, 0, sz * 0.33, -Math.PI * 0.8, Math.PI * 0.1);
             ctx.stroke();
 
-            // Damage state: cracks at hp ≤ 2
-            if (hp <= 2) {
-                ctx.strokeStyle = "rgba(0,0,0,0.5)";
-                ctx.lineWidth = 1;
+            // ── Pivot ring (steel ring the gun rotates on) ────────────────────
+            const ringGrad = ctx.createLinearGradient(-sz*0.18, -sz*0.18, sz*0.18, sz*0.18);
+            ringGrad.addColorStop(0, "#9eaab0");
+            ringGrad.addColorStop(0.5, "#607d8b");
+            ringGrad.addColorStop(1, "#37474f");
+            ctx.fillStyle = ringGrad;
+            ctx.beginPath();
+            ctx.arc(0, 0, sz * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(0,0,0,0.4)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            // Ring bolts
+            for (let i = 0; i < 6; i++) {
+                const a = (i / 6) * Math.PI * 2;
+                ctx.fillStyle = "#263238";
                 ctx.beginPath();
-                ctx.moveTo(-sz * 0.15, -sz * 0.3); ctx.lineTo(sz * 0.05, sz * 0.1);
-                ctx.moveTo(sz * 0.1, -sz * 0.25); ctx.lineTo(-sz * 0.05, sz * 0.2);
-                ctx.stroke();
+                ctx.arc(Math.cos(a) * sz * 0.16, Math.sin(a) * sz * 0.16, sz * 0.02, 0, Math.PI * 2);
+                ctx.fill();
             }
 
-            // ── Rotating gun mount ────────────────────────────────────────────
-            // Apply direction rotation
-            if (dir === "up") ctx.rotate(0);
-            else if (dir === "right") ctx.rotate(Math.PI / 2);
-            else if (dir === "down") ctx.rotate(Math.PI);
-            else if (dir === "left") ctx.rotate(-Math.PI / 2);
+            // ── Damage cracks (hp ≤ 2) ────────────────────────────────────────
+            if (hp <= 2) {
+                ctx.strokeStyle = "rgba(20,10,0,0.6)";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(-sz*0.28, -sz*0.05); ctx.lineTo(-sz*0.12, sz*0.08); ctx.lineTo(-sz*0.18, sz*0.2);
+                ctx.moveTo(sz*0.15, -sz*0.22); ctx.lineTo(sz*0.05, -sz*0.08); ctx.lineTo(sz*0.2, sz*0.06);
+                ctx.stroke();
+                // Scorch marks
+                ctx.fillStyle = "rgba(0,0,0,0.18)";
+                ctx.beginPath(); ctx.arc(-sz*0.18, sz*0.1, sz*0.06, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(sz*0.1, -sz*0.18, sz*0.05, 0, Math.PI*2); ctx.fill();
+            }
 
-            // Gun housing (armoured shield)
-            const shieldGrad = ctx.createLinearGradient(-sz * 0.22, -sz * 0.1, sz * 0.22, sz * 0.15);
-            shieldGrad.addColorStop(0, "#8d9e7e");
-            shieldGrad.addColorStop(0.5, "#6b7c5e");
-            shieldGrad.addColorStop(1, "#4a5c42");
-            ctx.fillStyle = shieldGrad;
+            // ── Rotating gun assembly ─────────────────────────────────────────
+            ctx.save();
+            ctx.rotate(dirAngle);
+
+            // Gun body / turret head
+            const headGrad = ctx.createLinearGradient(-sz*0.18, -sz*0.05, sz*0.18, sz*0.18);
+            headGrad.addColorStop(0, "#78909c");
+            headGrad.addColorStop(0.45, "#546e7a");
+            headGrad.addColorStop(1, "#2e4050");
+            ctx.fillStyle = headGrad;
             ctx.beginPath();
-            ctx.moveTo(-sz * 0.22, sz * 0.15);
-            ctx.lineTo(-sz * 0.22, -sz * 0.02);
-            ctx.quadraticCurveTo(0, -sz * 0.22, sz * 0.22, -sz * 0.02);
-            ctx.lineTo(sz * 0.22, sz * 0.15);
+            ctx.moveTo(-sz*0.18, sz*0.18);
+            ctx.lineTo(-sz*0.18,  sz*0.0);
+            ctx.bezierCurveTo(-sz*0.18, -sz*0.18, sz*0.18, -sz*0.18, sz*0.18, sz*0.0);
+            ctx.lineTo(sz*0.18, sz*0.18);
             ctx.closePath();
             ctx.fill();
 
-            // Shield edge highlight
-            ctx.strokeStyle = "rgba(180,200,160,0.4)";
+            // Head highlight bevel
+            ctx.strokeStyle = "rgba(180,210,230,0.35)";
             ctx.lineWidth = 1.5;
             ctx.beginPath();
-            ctx.moveTo(-sz * 0.2, sz * 0.13);
-            ctx.lineTo(-sz * 0.2, -sz * 0.01);
-            ctx.quadraticCurveTo(0, -sz * 0.2, sz * 0.2, -sz * 0.01);
+            ctx.moveTo(-sz*0.16, sz*0.0);
+            ctx.bezierCurveTo(-sz*0.16, -sz*0.15, sz*0.16, -sz*0.15, sz*0.16, sz*0.0);
             ctx.stroke();
 
-            // Barrel housing
-            ctx.fillStyle = "#4a5c42";
-            ctx.fillRect(-sz * 0.065, -sz * 0.18, sz * 0.13, sz * 0.18);
+            // Vision slit
+            ctx.fillStyle = "rgba(0,0,0,0.7)";
+            ctx.fillRect(-sz*0.1, -sz*0.04, sz*0.2, sz*0.035);
+            ctx.fillStyle = "rgba(80,200,255,0.25)";
+            ctx.fillRect(-sz*0.1, -sz*0.04, sz*0.2, sz*0.035);
 
-            // Gun barrel
-            ctx.fillStyle = "#2e3d28";
-            ctx.fillRect(-sz * 0.05, -sz * 0.5, sz * 0.1, sz * 0.38);
+            // Barrel root / mantlet
+            const mantletGrad = ctx.createLinearGradient(-sz*0.09, 0, sz*0.09, 0);
+            mantletGrad.addColorStop(0, "#455a64");
+            mantletGrad.addColorStop(0.5, "#607d8b");
+            mantletGrad.addColorStop(1, "#37474f");
+            ctx.fillStyle = mantletGrad;
+            ctx.fillRect(-sz*0.09, -sz*0.22, sz*0.18, sz*0.12);
+
+            // Barrel — with muzzle recoil animation
+            const recoilPhase = (ms % 400) / 400; // 0-1 cycle
+            const recoilOffset = Math.max(0, Math.sin(recoilPhase * Math.PI) * sz * 0.06);
+            const barrelTop = -sz * 0.56 + recoilOffset;
+
+            const barrelGrad = ctx.createLinearGradient(-sz*0.06, 0, sz*0.06, 0);
+            barrelGrad.addColorStop(0, "#2e3d45");
+            barrelGrad.addColorStop(0.4, "#546e7a");
+            barrelGrad.addColorStop(0.7, "#37474f");
+            barrelGrad.addColorStop(1, "#1c2b33");
+            ctx.fillStyle = barrelGrad;
+            ctx.fillRect(-sz*0.055, barrelTop, sz*0.11, sz*0.38);
+
+            // Barrel ring bands
+            ctx.strokeStyle = "rgba(0,0,0,0.45)";
+            ctx.lineWidth = 1.5;
+            [-0.38, -0.28].forEach(off => {
+                ctx.strokeRect(-sz*0.055, barrelTop + sz*(-off - barrelTop/sz*0.1 + 0.02), sz*0.11, sz*0.028);
+            });
 
             // Muzzle brake
-            ctx.fillStyle = "#1e2b1a";
-            ctx.fillRect(-sz * 0.075, -sz * 0.52, sz * 0.15, sz * 0.05);
+            const muzzleGrad = ctx.createLinearGradient(-sz*0.08, 0, sz*0.08, 0);
+            muzzleGrad.addColorStop(0, "#1c2b33");
+            muzzleGrad.addColorStop(0.5, "#37474f");
+            muzzleGrad.addColorStop(1, "#1c2b33");
+            ctx.fillStyle = muzzleGrad;
+            ctx.fillRect(-sz*0.08, barrelTop - sz*0.04, sz*0.16, sz*0.06);
+            // Muzzle holes
+            ctx.fillStyle = "#0d1a20";
+            ctx.fillRect(-sz*0.065, barrelTop - sz*0.035, sz*0.04, sz*0.04);
+            ctx.fillRect( sz*0.025, barrelTop - sz*0.035, sz*0.04, sz*0.04);
 
-            // Barrel groove
-            ctx.strokeStyle = "rgba(120,150,100,0.4)";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(-sz * 0.02, -sz * 0.48);
-            ctx.lineTo(-sz * 0.02, -sz * 0.18);
-            ctx.stroke();
+            // Barrel heat glow (idle shimmer)
+            const heatPulse = (Math.sin(ms / 180) + 1) * 0.5;
+            const heatGrad = ctx.createLinearGradient(0, barrelTop, 0, barrelTop + sz*0.38);
+            heatGrad.addColorStop(0, `rgba(255,120,30,${0.0})`);
+            heatGrad.addColorStop(0.5, `rgba(255,80,10,${heatPulse * 0.12})`);
+            heatGrad.addColorStop(1, `rgba(255,40,0,${0.0})`);
+            ctx.fillStyle = heatGrad;
+            ctx.fillRect(-sz*0.055, barrelTop, sz*0.11, sz*0.38);
 
-            // Damage state: smoke at hp ≤ 1
+            ctx.restore(); // end rotating assembly
+
+            // ── Smoke (hp ≤ 1) ────────────────────────────────────────────────
             if (hp <= 1) {
-                ctx.rotate(-(dir === "right" ? Math.PI / 2 : dir === "down" ? Math.PI : dir === "left" ? -Math.PI / 2 : 0));
-                for (let i = 0; i < 3; i++) {
-                    const sy = -((t / 30 + i * 12) % 36);
-                    const sx = Math.sin(t / 200 + i) * sz * 0.12;
-                    const alpha = 0.5 - (Math.abs(sy) / 36) * 0.4;
-                    ctx.fillStyle = `rgba(80,80,80,${alpha})`;
+                for (let i = 0; i < 5; i++) {
+                    const progress = ((ms / 25 + i * 18) % 60) / 60;
+                    const sy = -progress * sz * 0.9 - sz * 0.1;
+                    const sx = Math.sin(ms / 250 + i * 1.3) * sz * 0.15 * progress;
+                    const r  = sz * (0.07 + progress * 0.13);
+                    const alpha = (1 - progress) * 0.55;
+                    const smoke = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+                    smoke.addColorStop(0, `rgba(60,55,50,${alpha})`);
+                    smoke.addColorStop(1, `rgba(40,40,40,0)`);
+                    ctx.fillStyle = smoke;
                     ctx.beginPath();
-                    ctx.arc(sx, sy - sz * 0.1, sz * 0.1 + i * sz * 0.03, 0, Math.PI * 2);
+                    ctx.arc(sx, sy, r, 0, Math.PI * 2);
                     ctx.fill();
                 }
+                // Ember glow at base
+                const emberAlpha = (Math.sin(ms / 80) + 1) * 0.3;
+                ctx.fillStyle = `rgba(255,100,0,${emberAlpha})`;
+                ctx.beginPath();
+                ctx.arc(0, -sz * 0.05, sz * 0.08, 0, Math.PI * 2);
+                ctx.fill();
             }
 
             ctx.restore();

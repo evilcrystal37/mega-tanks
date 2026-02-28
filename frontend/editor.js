@@ -866,6 +866,13 @@ export async function saveCurrentMap() {
     return await _saveMap();
 }
 
+export async function saveMapAs(name) {
+    try {
+        const res = await Api.saveMap(name, grid);
+        return res?.saved ?? null;
+    } catch { return null; }
+}
+
 async function _saveMap() {
     const name = nameInput.value.trim().toUpperCase();
     try {
