@@ -760,103 +760,115 @@ class GameRenderer {
         let spriteId = null;
         if (tank.tank_type === "turret") {
             const sz = Math.round(CELL * 2 * scaleExtra * 0.85);
-            const halfSz = sz / 2;
-
-            // Helper function for rounded rectangles using arcs
-            const roundRect = (x, y, w, h, r) => {
-                ctx.beginPath();
-                ctx.moveTo(x + r, y);
-                ctx.lineTo(x + w - r, y);
-                ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-                ctx.lineTo(x + w, y + h - r);
-                ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-                ctx.lineTo(x + r, y + h);
-                ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-                ctx.lineTo(x, y + r);
-                ctx.quadraticCurveTo(x, y, x + r, y);
-                ctx.closePath();
-            };
+            const hp = tank.hp ?? 3;
+            const t = Date.now();
 
             ctx.save();
             ctx.translate(x, drawY);
 
-            // Rotate to facing direction
+            // ── Static concrete base (does NOT rotate) ───────────────────────
+            // Outer sandbag ring
+            ctx.fillStyle = "#6d5c41";
+            ctx.beginPath();
+            ctx.arc(0, 0, sz * 0.48, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Concrete floor
+            ctx.fillStyle = "#78716c";
+            ctx.beginPath();
+            ctx.arc(0, 0, sz * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Concrete texture lines
+            ctx.strokeStyle = "rgba(0,0,0,0.15)";
+            ctx.lineWidth = 1;
+            for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a) * sz * 0.1, Math.sin(a) * sz * 0.1);
+                ctx.lineTo(Math.cos(a) * sz * 0.38, Math.sin(a) * sz * 0.38);
+                ctx.stroke();
+            }
+
+            // Sandbag highlights
+            ctx.strokeStyle = "rgba(255,220,150,0.2)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, sz * 0.44, -Math.PI * 0.7, Math.PI * 0.2);
+            ctx.stroke();
+
+            // Damage state: cracks at hp ≤ 2
+            if (hp <= 2) {
+                ctx.strokeStyle = "rgba(0,0,0,0.5)";
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(-sz * 0.15, -sz * 0.3); ctx.lineTo(sz * 0.05, sz * 0.1);
+                ctx.moveTo(sz * 0.1, -sz * 0.25); ctx.lineTo(-sz * 0.05, sz * 0.2);
+                ctx.stroke();
+            }
+
+            // ── Rotating gun mount ────────────────────────────────────────────
+            // Apply direction rotation
             if (dir === "up") ctx.rotate(0);
             else if (dir === "right") ctx.rotate(Math.PI / 2);
             else if (dir === "down") ctx.rotate(Math.PI);
             else if (dir === "left") ctx.rotate(-Math.PI / 2);
 
-            // Turret base shadow/depth
-            ctx.fillStyle = "#37474f";
+            // Gun housing (armoured shield)
+            const shieldGrad = ctx.createLinearGradient(-sz * 0.22, -sz * 0.1, sz * 0.22, sz * 0.15);
+            shieldGrad.addColorStop(0, "#8d9e7e");
+            shieldGrad.addColorStop(0.5, "#6b7c5e");
+            shieldGrad.addColorStop(1, "#4a5c42");
+            ctx.fillStyle = shieldGrad;
             ctx.beginPath();
-            ctx.ellipse(0, sz * 0.15, halfSz * 0.9, halfSz * 0.7, 0, 0, Math.PI * 2);
+            ctx.moveTo(-sz * 0.22, sz * 0.15);
+            ctx.lineTo(-sz * 0.22, -sz * 0.02);
+            ctx.quadraticCurveTo(0, -sz * 0.22, sz * 0.22, -sz * 0.02);
+            ctx.lineTo(sz * 0.22, sz * 0.15);
+            ctx.closePath();
             ctx.fill();
 
-            // Main turret body - rounded dome shape with gradient
-            const bodyGradient = ctx.createLinearGradient(-halfSz, -halfSz, halfSz, halfSz);
-            bodyGradient.addColorStop(0, "#78909c");
-            bodyGradient.addColorStop(0.5, "#607d8b");
-            bodyGradient.addColorStop(1, "#455a64");
-
-            ctx.fillStyle = bodyGradient;
-            roundRect(-halfSz * 0.8, -halfSz * 0.6, halfSz * 1.6, halfSz * 1.2, halfSz * 0.3);
-            ctx.fill();
-
-            // Turret highlight (top edge)
-            ctx.strokeStyle = "#90a4ae";
-            ctx.lineWidth = 2;
-            roundRect(-halfSz * 0.75, -halfSz * 0.55, halfSz * 1.5, halfSz * 0.5, halfSz * 0.25);
+            // Shield edge highlight
+            ctx.strokeStyle = "rgba(180,200,160,0.4)";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(-sz * 0.2, sz * 0.13);
+            ctx.lineTo(-sz * 0.2, -sz * 0.01);
+            ctx.quadraticCurveTo(0, -sz * 0.2, sz * 0.2, -sz * 0.01);
             ctx.stroke();
 
-            // Commander cupola (small hatch on top)
-            ctx.fillStyle = "#546e7a";
-            ctx.beginPath();
-            ctx.ellipse(-halfSz * 0.2, -halfSz * 0.3, halfSz * 0.25, halfSz * 0.15, 0, 0, Math.PI * 2);
-            ctx.fill();
+            // Barrel housing
+            ctx.fillStyle = "#4a5c42";
+            ctx.fillRect(-sz * 0.065, -sz * 0.18, sz * 0.13, sz * 0.18);
 
-            // Cupola hatch detail
-            ctx.strokeStyle = "#37474f";
+            // Gun barrel
+            ctx.fillStyle = "#2e3d28";
+            ctx.fillRect(-sz * 0.05, -sz * 0.5, sz * 0.1, sz * 0.38);
+
+            // Muzzle brake
+            ctx.fillStyle = "#1e2b1a";
+            ctx.fillRect(-sz * 0.075, -sz * 0.52, sz * 0.15, sz * 0.05);
+
+            // Barrel groove
+            ctx.strokeStyle = "rgba(120,150,100,0.4)";
             ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(-halfSz * 0.35, -halfSz * 0.3);
-            ctx.lineTo(-halfSz * 0.05, -halfSz * 0.3);
+            ctx.moveTo(-sz * 0.02, -sz * 0.48);
+            ctx.lineTo(-sz * 0.02, -sz * 0.18);
             ctx.stroke();
 
-            // Gun mantlet (armor around gun mount)
-            ctx.fillStyle = "#455a64";
-            roundRect(-halfSz * 0.35, -halfSz * 0.9, halfSz * 0.7, halfSz * 0.5, halfSz * 0.15);
-            ctx.fill();
-
-            // Main gun barrel with gradient
-            const barrelGradient = ctx.createLinearGradient(-halfSz * 0.2, -halfSz, halfSz * 0.2, -halfSz);
-            barrelGradient.addColorStop(0, "#37474f");
-            barrelGradient.addColorStop(0.5, "#546e7a");
-            barrelGradient.addColorStop(1, "#37474f");
-
-            ctx.fillStyle = barrelGradient;
-            ctx.fillRect(-halfSz * 0.15, -halfSz * 1.4, halfSz * 0.3, halfSz * 0.8);
-
-            // Barrel muzzle brake (end of barrel)
-            ctx.fillStyle = "#263238";
-            ctx.fillRect(-halfSz * 0.22, -halfSz * 1.5, halfSz * 0.44, halfSz * 0.15);
-
-            // Barrel highlight
-            ctx.strokeStyle = "#78909c";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(-halfSz * 0.08, -halfSz * 1.35);
-            ctx.lineTo(-halfSz * 0.08, -halfSz * 0.9);
-            ctx.stroke();
-
-            // Side armor plates detail
-            ctx.strokeStyle = "#37474f";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(-halfSz * 0.6, 0);
-            ctx.lineTo(-halfSz * 0.6, halfSz * 0.4);
-            ctx.moveTo(halfSz * 0.6, 0);
-            ctx.lineTo(halfSz * 0.6, halfSz * 0.4);
-            ctx.stroke();
+            // Damage state: smoke at hp ≤ 1
+            if (hp <= 1) {
+                ctx.rotate(-(dir === "right" ? Math.PI / 2 : dir === "down" ? Math.PI : dir === "left" ? -Math.PI / 2 : 0));
+                for (let i = 0; i < 3; i++) {
+                    const sy = -((t / 30 + i * 12) % 36);
+                    const sx = Math.sin(t / 200 + i) * sz * 0.12;
+                    const alpha = 0.5 - (Math.abs(sy) / 36) * 0.4;
+                    ctx.fillStyle = `rgba(80,80,80,${alpha})`;
+                    ctx.beginPath();
+                    ctx.arc(sx, sy - sz * 0.1, sz * 0.1 + i * sz * 0.03, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
 
             ctx.restore();
             return;

@@ -733,6 +733,7 @@ class GameEngine:
             targets.extend(t for t in self.turrets.values() if t.alive)
         if bullet.is_player:
             targets.extend(e for e in self.enemies.values() if e.alive)
+            targets.extend(t for t in self.turrets.values() if t.alive and t.id != bullet.owner_id)
 
         for tank in targets:
             hit_size = 1.05 if tank.mushroom_ticks > 0 else 0.55
