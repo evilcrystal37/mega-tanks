@@ -310,7 +310,8 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
         ctx.translate(centerX, centerY);
 
         if (tid === 18) {
-            // Big Sunflower Emoji
+            // Big Sunflower Emoji — always full brightness (no darkening)
+            ctx.globalAlpha = 1.0;
             const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
             
             ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;

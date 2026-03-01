@@ -342,6 +342,7 @@ class GameRenderer {
             if (tid === 4 || tid === 18) {
                 ctx.save();
                 if (tid === 4) ctx.globalAlpha = 0.65;
+                if (tid === 18) ctx.globalAlpha = 1.0;  // Sunflower always bright (no darkening cycle)
                 this._drawTileDetail(ctx, tid, c * cell, r * cell, cell);
                 ctx.restore();
             }
@@ -592,7 +593,8 @@ class GameRenderer {
         ctx.translate(centerX, centerY);
 
         if (tid === 18) {
-            // Big Sunflower Emoji
+            // Big Sunflower Emoji — always full brightness (no darkening)
+            ctx.globalAlpha = 1.0;
             const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
             ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = "center";
