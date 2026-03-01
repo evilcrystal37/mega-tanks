@@ -324,6 +324,9 @@ class GameRenderer {
         if (this.state.player) {
             this._drawTank(ctx, this.state.player, cell, true);
         }
+        if (this.state.companion) {
+            this._drawTank(ctx, this.state.companion, cell, true);
+        }
         (this.state.turrets ?? []).forEach(t => {
             this._drawTank(ctx, t, cell, true);
         });
@@ -1035,7 +1038,9 @@ class GameRenderer {
         const y = tank.row * CELL;
 
         let drawY = y;
-        let scaleExtra = tank.mushroom_active ? 2.0 : 1.0;
+        let scaleExtra = tank.tank_type === "companion" ? 2.0
+            : (isPlayer ? 1.0
+            : ((tank.mushroom_active || tank.is_big) ? 2.0 : 1.0));
 
         if (tank.airborne_ticks > 0) {
             const progress = tank.airborne_ticks / 45;
@@ -1051,6 +1056,41 @@ class GameRenderer {
 
         const frame = (Math.floor(Date.now() / 150) % 2) + 1;
         const dir = tank.direction || "up";
+
+        if (tank.tank_type === "companion") {
+            const sz = Math.round(CELL * scaleExtra); // normal tank size
+            ctx.save();
+            ctx.translate(x, drawY);
+
+            // Glowing yellow aura
+            const ms = Date.now();
+            const glow = (Math.sin(ms / 400) + 1) / 2;
+            const auraGrad = ctx.createRadialGradient(0, 0, sz * 0.2, 0, 0, sz * 0.95);
+            auraGrad.addColorStop(0, `rgba(255,238,88,${0.30 + glow * 0.15})`);
+            auraGrad.addColorStop(1, "rgba(255,238,88,0)");
+            ctx.fillStyle = auraGrad;
+            ctx.beginPath();
+            ctx.arc(0, 0, sz * 0.95, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Gun barrel (pointing in direction)
+            ctx.fillStyle = "#555";
+            const gunLen = sz * 0.42;
+            const gunW = sz * 0.12;
+            if (dir === "up")    ctx.fillRect(-gunW/2, -gunLen, gunW, gunLen);
+            else if (dir === "down")  ctx.fillRect(-gunW/2, 0, gunW, gunLen);
+            else if (dir === "left")  ctx.fillRect(-gunLen, -gunW/2, gunLen, gunW);
+            else if (dir === "right") ctx.fillRect(0, -gunW/2, gunLen, gunW);
+
+            // Chick emoji, same size as a regular tank sprite
+            const pulse = Math.sin(ms / 280) * sz * 0.04;
+            ctx.font = `${sz * 0.82 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🐥", 0, sz * 0.04);
+            ctx.restore();
+            return;
+        }
 
         let spriteId = null;
         if (tank.tank_type === "turret") {

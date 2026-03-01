@@ -48,6 +48,9 @@ class GameEngine:
         self.player: Optional[Tank] = None
         self.enemies: Dict[str, Tank] = {}
         self.turrets: Dict[str, Tank] = {}
+        self.companion: Optional[Tank] = None
+        self.companion_orbit_angle: float = 0.0
+        self.companion_ticks: int = 0  # countdown at 60Hz; 30s = 1800 ticks
         self.rainbow_trails: dict = {}
         self.bullets: Dict[str, Bullet] = {}
         self.explosions: List[dict] = []  # {"row": r, "col": c, "ticks": t}
@@ -241,8 +244,17 @@ class GameEngine:
                 enemy.tick_cooldown()
                 self._ai_tick(enemy)
 
+        # Companion cooldowns + AI + lifetime countdown
+        if self.companion and self.companion.alive:
+            self.companion.tick_cooldown()
+            self._ai_tick_companion(self.companion)
+            if self.companion_ticks > 0:
+                self.companion_ticks -= 1
+            if self.companion_ticks <= 0:
+                self.companion = None
+
         # Tile effects on tanks (Lava, Jump ramp etc)
-        for tank in list(self.enemies.values()) + ([self.player] if self.player and self.player.alive else []):
+        for tank in list(self.enemies.values()) + ([self.player] if self.player and self.player.alive else []) + ([self.companion] if self.companion and self.companion.alive else []):
             if not tank.alive:
                 continue
                 
@@ -309,8 +321,28 @@ class GameEngine:
                     for gr, gc in self._find_box_group(r, c, 23, 23):
                         self.grid[gr][gc] = 0
                     self.events.append({"type": "sound", "sound": "powerup-pickup"})
-                elif tid == 24:
-                    # Mushroom collected by driving over it — stacks +10s each pickup
+                elif tid == 32:
+                    # Chick collected by driving over it
+                    for gr, gc in self._find_box_group(r, c, 32, 32):
+                        self.grid[gr][gc] = 0
+                    self.events.append({"type": "sound", "sound": "powerup-pickup"})
+                    if tank.is_player and tank.tank_type != "companion":
+                        # Spawn/refresh companion near player — add 30s
+                        if self.companion is None or not self.companion.alive:
+                            self.companion = Tank(
+                                row=tank.row,
+                                col=tank.col,
+                                direction=tank.direction,
+                                speed=tank.speed * 1.5,
+                                hp=999,
+                                is_player=True,
+                                fire_rate=40,
+                                bullet_limit=1,
+                                tank_type="companion",
+                                color="#ffee58",
+                            )
+                            self.companion_orbit_angle = 0.0
+                        self.companion_ticks += 1800  # +30s per pickup
                     tank.mushroom_ticks = max(tank.mushroom_ticks, 0) + 600
                     for gr, gc in self._find_box_group(r, c, 24, 24):
                         self.grid[gr][gc] = 0
@@ -485,6 +517,119 @@ class GameEngine:
                 if turret.can_fire():
                     self._try_fire(turret)
 
+    def _ai_tick_companion(self, companion: Tank) -> None:
+        if not self.player or not self.player.alive:
+            return
+
+        # Always fire at twice the player's rate
+        companion.fire_rate = max(8, self.player.fire_rate // 2)
+
+        # ── 1. Find nearest threat within 15 cells ─────────────────────
+        best_dist = 15.0
+        best_target_row: Optional[float] = None
+        best_target_col: Optional[float] = None
+
+        for enemy in self.enemies.values():
+            if not enemy.alive:
+                continue
+            dist = math.hypot(enemy.row - companion.row, enemy.col - companion.col)
+            if dist < best_dist:
+                best_dist = dist
+                best_target_row = enemy.row
+                best_target_col = enemy.col
+
+        for turret in self.turrets.values():
+            if not turret.alive:
+                continue
+            dist = math.hypot(turret.row - companion.row, turret.col - companion.col)
+            if dist < best_dist:
+                best_dist = dist
+                best_target_row = turret.row
+                best_target_col = turret.col
+
+        if self.sandworm.get("active") and self.sandworm.get("parts"):
+            head = self.sandworm["parts"][0]
+            worm_row = head["row"] + 0.5
+            worm_col = head["col"] + 0.5
+            dist = math.hypot(worm_row - companion.row, worm_col - companion.col)
+            if dist < best_dist:
+                best_dist = dist
+                best_target_row = worm_row
+                best_target_col = worm_col
+
+        # ── 2. Aim: face threat every tick (fast response, no jitter) ──
+        if best_target_row is not None:
+            dr = best_target_row - companion.row
+            dc = best_target_col - companion.col
+            if abs(dr) > abs(dc):
+                companion.direction = "down" if dr > 0 else "up"
+            else:
+                companion.direction = "right" if dc > 0 else "left"
+            if companion.can_fire():
+                self._try_fire(companion)
+
+        # ── 3. Movement: update destination every 20 ticks to avoid jitter ─
+        companion.ai_timer -= 1
+        if companion.ai_timer <= 0:
+            companion.ai_timer = 20  # Re-evaluate ~3× per second
+
+            # Target: 2.5 cells ahead of the player's facing direction
+            dir_offsets = {
+                "up":    (-2.5,  0.0),
+                "down":  ( 2.5,  0.0),
+                "left":  ( 0.0, -2.5),
+                "right": ( 0.0,  2.5),
+            }
+            pdr, pdc = dir_offsets.get(self.player.direction, (0.0, 0.0))
+            target_row = max(1.0, min(float(GRID_HEIGHT) - 1.0, self.player.row + pdr))
+            target_col = max(1.0, min(float(GRID_WIDTH)  - 1.0, self.player.col + pdc))
+
+            dist_to_player = math.hypot(self.player.row - companion.row, self.player.col - companion.col)
+            dist_to_target = math.hypot(target_row - companion.row, target_col - companion.col)
+
+            # Move away if inside 1-big-tile (2-cell) exclusion zone around player
+            if dist_to_player < 2.0:
+                dr = companion.row - self.player.row
+                dc = companion.col - self.player.col
+                if abs(dr) > abs(dc):
+                    companion.ai_dir = "down" if dr > 0 else "up"
+                    self.companion_orbit_angle = 1.0 if dc > 0 else -1.0
+                else:
+                    companion.ai_dir = "right" if dc > 0 else "left"
+                    self.companion_orbit_angle = 1.0 if dr > 0 else -1.0
+            elif dist_to_target > 1.2:
+                # Pick primary + secondary move direction toward target
+                dr = target_row - companion.row
+                dc = target_col - companion.col
+                if abs(dr) > abs(dc):
+                    companion.ai_dir = "down" if dr > 0 else "up"
+                    self.companion_orbit_angle = 1.0 if dc > 0 else -1.0  # reuse slot as secondary flag
+                else:
+                    companion.ai_dir = "right" if dc > 0 else "left"
+                    self.companion_orbit_angle = 1.0 if dr > 0 else -1.0
+            else:
+                companion.ai_dir = ""  # close enough — hold position
+
+        # ── 4. Execute committed move direction (smooth, one tick at a time) ─
+        if companion.ai_dir:
+            if not self._move_tank(companion, companion.ai_dir):
+                # Blocked — try orthogonal nudge to slide around obstacle
+                rev = {"up": "down", "down": "up", "left": "right", "right": "left"}
+                ortho = {
+                    "up":    "right" if self.companion_orbit_angle > 0 else "left",
+                    "down":  "right" if self.companion_orbit_angle > 0 else "left",
+                    "left":  "down"  if self.companion_orbit_angle > 0 else "up",
+                    "right": "down"  if self.companion_orbit_angle > 0 else "up",
+                }
+                nudge = ortho.get(companion.ai_dir, "up")
+                if not self._move_tank(companion, nudge):
+                    # Still stuck — reset timer so we re-evaluate soon
+                    companion.ai_timer = 0
+
+        # ── 5. Face movement direction when no threat to aim at ────────
+        if best_target_row is None and companion.ai_dir:
+            companion.direction = companion.ai_dir
+
     def _ai_tick(self, enemy: Tank) -> None:
         # Build mini game state for agent
         base_pos = self._base_pos
@@ -540,12 +685,12 @@ class GameEngine:
 
         moved = False
         if self._can_move_to(new_row, new_col, tank):
-            size = TANK_HALF * 2.0 if tank.mushroom_ticks > 0 else TANK_HALF
+            size = TANK_HALF * 2.0 if (tank.mushroom_ticks > 0 or tank.is_big) else TANK_HALF
             tank.row = max(size, min(float(GRID_HEIGHT) - size, new_row))
             tank.col = max(size, min(float(GRID_WIDTH) - size, new_col))
             moved = True
             
-            if tank.mushroom_ticks > 0:
+            if tank.mushroom_ticks > 0 or tank.is_big:
                 self._clear_area_for_tank(tank, force=True)
 
         # Smooth perpendicular auto-alignment toward tile center
@@ -568,7 +713,7 @@ class GameEngine:
 
     def _can_move_to(self, row: float, col: float, mover: Tank) -> bool:
         """AABB collision check."""
-        size = TANK_HALF * 2.0 if mover.mushroom_ticks > 0 else TANK_HALF
+        size = TANK_HALF * 2.0 if (mover.mushroom_ticks > 0 or mover.is_big) else TANK_HALF
         r1, r2 = row - size, row + size
         c1, c2 = col - size, col + size
 
@@ -586,7 +731,7 @@ class GameEngine:
                 if 0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH:
                     tile = get_tile(self.grid[r][c])
                     if tile.tank_solid:
-                        if mover.mushroom_ticks > 0 and not (26 <= self.grid[r][c] <= 31) and not (33 <= self.grid[r][c] <= 35):
+                        if (mover.mushroom_ticks > 0 or mover.is_big) and not (26 <= self.grid[r][c] <= 31) and not (33 <= self.grid[r][c] <= 35):
                             pass # Big tank can move through and destroy solid tiles (but not glass boxes)
                         else:
                             return False
@@ -595,7 +740,7 @@ class GameEngine:
         for other in list(self.enemies.values()) + ([self.player] if self.player else []) + list(self.turrets.values()):
             if other is mover or not other.alive:
                 continue
-            other_size = TANK_HALF * 2.0 if other.mushroom_ticks > 0 else TANK_HALF
+            other_size = TANK_HALF * 2.0 if (other.mushroom_ticks > 0 or other.is_big) else TANK_HALF
             if abs(other.row - row) < (size + other_size) and abs(other.col - col) < (size + other_size):
                 return False
         return True
@@ -691,6 +836,24 @@ class GameEngine:
                             for gr, gc in self._find_box_group(r, c, 32, 32):
                                 self.grid[gr][gc] = 0
                             self.events.append({"type": "sound", "sound": "powerup-pickup"})
+                            owner_id = bullet.owner_id
+                            if self.player and self.player.id == owner_id:
+                                # Spawn/refresh companion — add 30s
+                                if self.companion is None or not self.companion.alive:
+                                    self.companion = Tank(
+                                        row=self.player.row,
+                                        col=self.player.col,
+                                        direction=self.player.direction,
+                                        speed=self.player.speed * 1.5,
+                                        hp=999,
+                                        is_player=True,
+                                        fire_rate=40,
+                                        bullet_limit=1,
+                                        tank_type="companion",
+                                        color="#ffee58",
+                                    )
+                                    self.companion_orbit_angle = 0.0
+                                self.companion_ticks += 1800  # +30s per pickup
                         elif tid == 24:
                             # Mushroom collected — clear entire 2×2 group, stacks +10s
                             for gr, gc in self._find_box_group(r, c, 24, 24):
@@ -800,8 +963,8 @@ class GameEngine:
             targets.extend(t for t in self.turrets.values() if t.alive and t.id != bullet.owner_id)
 
         for tank in targets:
-            # Big (mushroom) tank: use tank's half-extent + bullet speed margin to prevent tunneling
-            if tank.mushroom_ticks > 0:
+            # Big tank: use tank's half-extent + bullet speed margin to prevent tunneling
+            if tank.mushroom_ticks > 0 or tank.is_big:
                 hit_size = (TANK_HALF * 2.0) + 0.5  # ~1.5 to reliably catch fast bullets
             else:
                 hit_size = 0.55
@@ -850,6 +1013,8 @@ class GameEngine:
         if bullet.is_player:
             if self.player and self.player.id == bullet.owner_id:
                 self.player.active_bullets = max(0, self.player.active_bullets - 1)
+            elif self.companion and self.companion.id == bullet.owner_id:
+                self.companion.active_bullets = max(0, self.companion.active_bullets - 1)
             elif bullet.owner_id in self.turrets:
                 owner = self.turrets[bullet.owner_id]
                 owner.active_bullets = max(0, owner.active_bullets - 1)
@@ -1035,7 +1200,7 @@ class GameEngine:
             for tank in list(self.enemies.values()) + ([self.player] if self.player and self.player.alive else []):
                 if not tank.alive:
                     continue
-                hit_size = 1.5 if tank.mushroom_ticks > 0 else 1.0
+                hit_size = 1.5 if (tank.mushroom_ticks > 0 or tank.is_big) else 1.0
                 if abs(tank.row - (next_r + 0.5)) < hit_size and abs(tank.col - (next_c + 0.5)) < hit_size:
                     tank.hp = 0
                     tank.alive = False
@@ -1079,7 +1244,7 @@ class GameEngine:
                     for tank in list(self.enemies.values()) + ([self.player] if self.player and self.player.alive else []):
                         if not tank.alive:
                             continue
-                        hit_size = 1.5 if tank.mushroom_ticks > 0 else 1.0
+                        hit_size = 1.5 if (tank.mushroom_ticks > 0 or tank.is_big) else 1.0
                         if abs(tank.row - (nr + 0.5)) < hit_size and abs(tank.col - (nc + 0.5)) < hit_size:
                             if tank.is_player and getattr(self, "_friendly_mode", False):
                                 continue
@@ -1169,7 +1334,7 @@ class GameEngine:
 
     def _clear_area_for_tank(self, tank: Tank, force: bool = False) -> None:
         """Destroys any destructible blocks directly under the tank to allow spawning/movement."""
-        size = TANK_HALF * 2.0 if tank.mushroom_ticks > 0 else TANK_HALF
+        size = TANK_HALF * 2.0 if (tank.mushroom_ticks > 0 or tank.is_big) else TANK_HALF
         r1, r2 = tank.row - size, tank.row + size
         c1, c2 = tank.col - size, tank.col + size
         for nr in range(int(r1), int(r2) + 1):
@@ -1177,7 +1342,7 @@ class GameEngine:
                 if 0 <= nr < GRID_HEIGHT and 0 <= nc < GRID_WIDTH:
                     ntile = get_tile(self.grid[nr][nc])
                     can_destroy = ntile.tank_solid and (ntile.destructible or force)
-                    if tank.mushroom_ticks > 0 and ntile.tank_solid:
+                    if (tank.mushroom_ticks > 0 or tank.is_big) and ntile.tank_solid:
                         # Glass boxes can only be broken by shooting, not by running over
                         if 26 <= self.grid[nr][nc] <= 31 or 33 <= self.grid[nr][nc] <= 35:
                             can_destroy = False
@@ -1274,6 +1439,8 @@ class GameEngine:
             "enemies_remaining": self.enemies_remaining,
             "total_enemies": self.total_enemies,
             "player": self.player.to_dict() if self.player else None,
+            "companion": self.companion.to_dict() if self.companion else None,
+            "companion_ticks": self.companion_ticks,
             "enemies": [e.to_dict() for e in self.enemies.values()],
             "turrets": [t.to_dict() for t in self.turrets.values()],
             "bullets": [b.to_dict() for b in self.bullets.values()],
