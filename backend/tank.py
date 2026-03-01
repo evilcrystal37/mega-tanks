@@ -59,6 +59,12 @@ class Tank:
     # New buffs
     rainbow_ticks: int = 0
     mushroom_ticks: int = 0
+    is_big: bool = False  # Permanently big (like companion)
+
+    # Companion support
+    companion: Optional['Tank'] = None
+    companion_ticks: int = 0
+    companion_orbit_angle: float = 0.0
 
     def can_fire(self) -> bool:
         return self.fire_cooldown <= 0 and self.active_bullets < self.bullet_limit
@@ -122,6 +128,7 @@ class Tank:
             "airborne_ticks": self.airborne_ticks,
             "rainbow_ticks": self.rainbow_ticks,
             "mushroom_active": self.mushroom_ticks > 0,
+            "is_big": self.is_big,
         }
 
 

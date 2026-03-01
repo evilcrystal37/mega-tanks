@@ -15,6 +15,11 @@ export class Hud {
         this._oTitle = document.getElementById("overlay-title");
         this._oScore = document.getElementById("overlay-score");
 
+        this._companionSection = document.getElementById("hud-companion-section");
+        this._companionTimer   = document.getElementById("hud-companion-timer");
+        this._companionBarFill = document.getElementById("hud-companion-bar-fill");
+        this._companionMaxTicks = 1800; // track max seen for bar scaling
+
         this._totalEnemies = 20;
     }
 
@@ -56,6 +61,27 @@ export class Hud {
             ).join("");
         }
 
+        // Companion lifetime timer
+        const ticks = state.companion_ticks ?? 0;
+        const hasCompanion = ticks > 0 && state.companion;
+        if (this._companionSection) {
+            this._companionSection.style.display = hasCompanion ? "block" : "none";
+        }
+        if (hasCompanion && this._companionTimer) {
+            if (ticks > this._companionMaxTicks) this._companionMaxTicks = ticks;
+            const totalSec = Math.ceil(ticks / 60);
+            const m = Math.floor(totalSec / 60);
+            const s = totalSec % 60;
+            this._companionTimer.textContent = `${m}:${String(s).padStart(2, "0")}`;
+            // Pulse red when < 5 seconds
+            this._companionTimer.style.color = ticks < 300 ? (Math.floor(Date.now() / 300) % 2 === 0 ? "#ff4444" : "#ffee58") : "#ffee58";
+            if (this._companionBarFill) {
+                const pct = Math.round((ticks / this._companionMaxTicks) * 100);
+                this._companionBarFill.style.width = `${pct}%`;
+                this._companionBarFill.style.background = ticks < 300 ? "#ff4444" : "#ffee58";
+            }
+        }
+
 
     }
 
@@ -73,6 +99,7 @@ export class Hud {
 
     reset() {
         this.hideOverlay();
-        this.update({ score: 0, lives: 3, enemies_remaining: 20, total_enemies: 20, player: null });
+        this._companionMaxTicks = 1800;
+        this.update({ score: 0, lives: 3, enemies_remaining: 20, total_enemies: 20, player: null, companion_ticks: 0 });
     }
 }
