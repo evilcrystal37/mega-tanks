@@ -1,32 +1,61 @@
 /**
  * app.js — NES Battle City Screen Router
  *
- * Screens: TITLE -> CONSTRUCTION -> PLAY -> SETTINGS
+ * Screens: TITLE -> CONSTRUCTION -> PLAY -> SETTINGS -> TILE-SETTINGS
  */
 
-import { initEditor, focusEditor, blurEditor, refreshMapList, getCurrentMapName, resizeEditor, saveMapAs } from "./editor.js";
+import { initEditor, focusEditor, blurEditor, refreshMapList, getCurrentMapName, resizeEditor, saveMapAs, launchWithFilteredGrid, refreshTileFilter, applyDisabledTilesToCurrentGrid, renderTilePreview } from "./editor.js";
 import { gameRenderer } from "./game.js";
 
-const titleScreen = document.getElementById("title-screen");
-const editorScreen = document.getElementById("editor-screen");
-const playScreen = document.getElementById("play-screen");
-const settingsScreen = document.getElementById("settings-screen");
+const titleScreen       = document.getElementById("title-screen");
+const editorScreen      = document.getElementById("editor-screen");
+const playScreen        = document.getElementById("play-screen");
+const settingsScreen    = document.getElementById("settings-screen");
+const tileSettingsScreen = document.getElementById("tile-settings-screen");
 
-const btnTitleConstruct = document.getElementById("btn-title-construct");
-const btnTitleSettings = document.getElementById("btn-title-settings");
-const btnEditorSettings = document.getElementById("btn-editor-settings");
-const btnBackTitle = document.getElementById("btn-back-title");
-const btnBackEditor = document.getElementById("btn-back-editor");
-const btnRestart = document.getElementById("btn-restart");
-const btnStopGame = document.getElementById("btn-stop-game");
-const btnLaunchPlay = document.getElementById("btn-launch-play");
-const btnSettingsBack = document.getElementById("btn-settings-back");
-const btnSettingsReset = document.getElementById("btn-settings-reset");
+const btnTitleConstruct    = document.getElementById("btn-title-construct");
+const btnTitleSettings     = document.getElementById("btn-title-settings");
+const btnEditorSettings    = document.getElementById("btn-editor-settings");
+const btnBackTitle         = document.getElementById("btn-back-title");
+const btnBackEditor        = document.getElementById("btn-back-editor");
+const btnRestart           = document.getElementById("btn-restart");
+const btnStopGame          = document.getElementById("btn-stop-game");
+const btnLaunchPlay        = document.getElementById("btn-launch-play");
+const btnSettingsBack      = document.getElementById("btn-settings-back");
+const btnSettingsReset     = document.getElementById("btn-settings-reset");
+const btnTileEditor        = document.getElementById("btn-tile-editor");
+const btnTileSettingsBack  = document.getElementById("btn-tile-settings-back");
+const btnTileSettingsReset = document.getElementById("btn-tile-settings-reset");
 
 let currentScreen = "title";
 let selectedMenuIndex = 0; // 0: construction, 1: settings
 let settingsOrigin = "title";
 let editorReady = false;
+let _lastLaunchedMap = null;
+
+// ── Tile preview animation loop ───────────────────────────────────────
+const TILE_PREVIEW_PX = 56; // canvas buffer size in pixels
+
+let _previewRaf = null;
+let _previewCtxs = []; // { ctx, tileId }[]
+
+function _stopTilePreviewLoop() {
+    if (_previewRaf) { cancelAnimationFrame(_previewRaf); _previewRaf = null; }
+    _previewCtxs = [];
+}
+
+function _startTilePreviewLoop() {
+    // Only cancel any in-flight RAF — do NOT clear _previewCtxs here,
+    // because the caller (buildTileSettingsUI) has already populated it.
+    if (_previewRaf) { cancelAnimationFrame(_previewRaf); _previewRaf = null; }
+    const frame = () => {
+        for (const { ctx, tileId } of _previewCtxs) {
+            renderTilePreview(ctx, tileId, TILE_PREVIEW_PX);
+        }
+        _previewRaf = requestAnimationFrame(frame);
+    };
+    _previewRaf = requestAnimationFrame(frame);
+}
 
 // ── Settings definitions ──────────────────────────────────────────────
 
@@ -69,6 +98,40 @@ const SETTINGS_DEF = [
         ]
     },
 ];
+
+// ── Tile toggles ──────────────────────────────────────────────────────
+
+const TILE_TOGGLES = [
+    { key: "tile_brick",        label: "BRICK",     ids: [1],             color: "#c0522a" },
+    { key: "tile_steel",        label: "STEEL",     ids: [2],             color: "#7a8fa6" },
+    { key: "tile_water",        label: "WATER",     ids: [3],             color: "#1565c0" },
+    { key: "tile_forest",       label: "FOREST",    ids: [4],             color: "#2e7d32" },
+    { key: "tile_ice",          label: "ICE",       ids: [5],             color: "#80deea" },
+    { key: "tile_lava",         label: "LAVA",      ids: [7],             color: "#ff3300" },
+    { key: "tile_conveyor",     label: "CONVEYOR",  ids: [8, 9, 10, 11], color: "#555555" },
+    { key: "tile_mud",          label: "SAND",      ids: [12],            color: "#c8a84b" },
+    { key: "tile_ramp",         label: "RAMP",      ids: [13],            color: "#ff9800" },
+    { key: "tile_tnt",          label: "TNT",       ids: [14],            color: "#d32f2f" },
+    { key: "tile_glass",        label: "GLASS",     ids: [15],            color: "#aaddff" },
+    { key: "tile_sunflower",    label: "SUNFLWR",   ids: [18],            color: "#ffeb3b" },
+    { key: "tile_turret",       label: "TURRET",    ids: [25],            color: "#607d8b" },
+    { key: "tile_mushroom_box", label: "MUSH BOX",  ids: [28],            color: "#8bc34a" },
+    { key: "tile_rainbow_box",  label: "RAINBOW",   ids: [31],            color: "#ff69b4" },
+    { key: "tile_chick_box",    label: "CHICK BOX", ids: [35],            color: "#ffee58" },
+    { key: "tile_spec_tnt",     label: "SPEC TNT",  ids: [36],            color: "#ff6600" },
+];
+
+const TILE_SETTINGS_KEY = "battle_tanks_tile_settings";
+
+function loadTileSettings() {
+    try { return JSON.parse(localStorage.getItem(TILE_SETTINGS_KEY)) || {}; } catch { return {}; }
+}
+
+function saveTileSettings(s) {
+    localStorage.setItem(TILE_SETTINGS_KEY, JSON.stringify(s));
+}
+
+// ── Main settings ─────────────────────────────────────────────────────
 
 const SETTINGS_KEY = "battle_tanks_settings";
 
@@ -180,6 +243,60 @@ function buildSettingsUI() {
     });
 }
 
+// ── Tile Settings UI (dedicated screen) ──────────────────────────────
+
+function buildTileSettingsUI() {
+    _stopTilePreviewLoop();
+
+    const container = document.getElementById("tile-toggle-grid");
+    container.innerHTML = "";
+    const stored = loadTileSettings();
+
+    TILE_TOGGLES.forEach(toggle => {
+        const isEnabled = stored[toggle.key] !== false;
+
+        const item = document.createElement("label");
+        item.className = "tile-toggle-item" + (isEnabled ? "" : " disabled-tile");
+
+        // Live canvas preview
+        const previewCanvas = document.createElement("canvas");
+        previewCanvas.width  = TILE_PREVIEW_PX;
+        previewCanvas.height = TILE_PREVIEW_PX;
+        previewCanvas.className = "tile-toggle-canvas";
+        const previewCtx = previewCanvas.getContext("2d");
+        previewCtx.imageSmoothingEnabled = false;
+        _previewCtxs.push({ ctx: previewCtx, tileId: toggle.ids[0] });
+
+        // Footer row: label + checkbox
+        const footer = document.createElement("div");
+        footer.className = "tile-toggle-footer";
+
+        const lbl = document.createElement("span");
+        lbl.className = "tile-toggle-label";
+        lbl.textContent = toggle.label;
+
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "tile-toggle-cb";
+        cb.checked = isEnabled;
+
+        cb.addEventListener("change", () => {
+            const s = loadTileSettings();
+            s[toggle.key] = cb.checked;
+            saveTileSettings(s);
+            item.classList.toggle("disabled-tile", !cb.checked);
+        });
+
+        footer.appendChild(lbl);
+        footer.appendChild(cb);
+        item.appendChild(previewCanvas);
+        item.appendChild(footer);
+        container.appendChild(item);
+    });
+
+    _startTilePreviewLoop();
+}
+
 // ── Init ──────────────────────────────────────────────────────────────
 
 async function init() {
@@ -203,20 +320,25 @@ async function init() {
         buildSettingsUI();
     });
 
+    btnTileEditor.addEventListener("click", () => switchScreen("tile-settings"));
+    btnTileSettingsBack.addEventListener("click", () => switchScreen("settings"));
+    btnTileSettingsReset.addEventListener("click", () => {
+        saveTileSettings({});
+        buildTileSettingsUI();
+    });
+
     btnRestart.addEventListener("click", () => {
-        const name = getCurrentMapName();
-        if (name) launchGame(name);
+        if (_lastLaunchedMap) launchGame(_lastLaunchedMap);
     });
     btnStopGame.addEventListener("click", () => {
         gameRenderer.stopGame();
         switchScreen("editor");
     });
     btnLaunchPlay.addEventListener("click", async () => {
-        let name = getCurrentMapName();
-        if (!name) {
-            // No saved name — auto-save to a temp slot and play from there
-            name = await saveMapAs("AUTOSAVE");
-        }
+        // Always save a filtered copy of the current grid as AUTOSAVE so the
+        // game session respects any disabled-tile settings, regardless of
+        // whether the map was previously saved with those tiles present.
+        const name = await launchWithFilteredGrid();
         if (name) launchGame(name);
     });
 
@@ -231,7 +353,10 @@ async function init() {
             }
         }
         if (currentScreen === "settings" && ev.code === "Escape") {
-            switchScreen("title");
+            switchScreen(settingsOrigin);
+        }
+        if (currentScreen === "tile-settings" && ev.code === "Escape") {
+            switchScreen("settings");
         }
     });
 
@@ -252,18 +377,30 @@ function _updateMenuSelection(idx) {
 // ── Screen Switching ──────────────────────────────────────────────────
 
 function switchScreen(screen) {
+    // Track whether the user is navigating away from any settings-related screen
+    // back to the editor, so we know when to re-apply tile filter.
+    const wasInSettings = currentScreen === "settings" || currentScreen === "tile-settings";
+    const wasOnTileSettings = currentScreen === "tile-settings";
+    if (wasOnTileSettings && screen !== "tile-settings") _stopTilePreviewLoop();
     currentScreen = screen;
 
     titleScreen.classList.toggle("active", screen === "title");
     editorScreen.classList.toggle("active", screen === "editor");
     playScreen.classList.toggle("active", screen === "play");
     settingsScreen.classList.toggle("active", screen === "settings");
+    tileSettingsScreen.classList.toggle("active", screen === "tile-settings");
 
     if (screen === "editor") {
         focusEditor();
         if (editorReady) {
             refreshMapList();
             resizeEditor();
+        }
+        // When returning from any settings screen, refresh palette + strip
+        // newly-disabled tiles from the live grid so the editor reflects changes.
+        if (wasInSettings && editorReady) {
+            refreshTileFilter();
+            applyDisabledTilesToCurrentGrid();
         }
     } else {
         blurEditor();
@@ -275,6 +412,8 @@ function switchScreen(screen) {
 
     if (screen === "settings") {
         buildSettingsUI();
+    } else if (screen === "tile-settings") {
+        buildTileSettingsUI();
     } else {
         // Apply audio settings if we're leaving settings
         try {
@@ -289,6 +428,7 @@ function switchScreen(screen) {
 // ── Game ──────────────────────────────────────────────────────────────
 
 async function launchGame(mapName) {
+    _lastLaunchedMap = mapName;
     switchScreen("play");
     const settings = getSettings();
     const { cell_zoom, ...gameSettings } = settings;

@@ -76,6 +76,43 @@ function _initGrid() {
     grid[bottom - 2][mid + 2] = 1;
 }
 
+// ── Tile settings (disabled tiles) ────────────────────────────────────
+
+// Tile groups used by both palette filtering and map generator.
+// Must mirror TILE_TOGGLES in app.js (uses same localStorage key).
+const _TILE_GROUPS = {
+    tile_brick:        [1],
+    tile_steel:        [2],
+    tile_water:        [3],
+    tile_forest:       [4],
+    tile_ice:          [5],
+    tile_lava:         [7],
+    tile_conveyor:     [8, 9, 10, 11],
+    tile_mud:          [12],
+    tile_ramp:         [13],
+    tile_tnt:          [14],
+    tile_glass:        [15],
+    tile_sunflower:    [18],
+    tile_turret:       [25],
+    tile_mushroom_box: [28],
+    tile_rainbow_box:  [31],
+    tile_chick_box:    [35],
+    tile_spec_tnt:     [36],
+};
+
+function _getDisabledTileIds() {
+    try {
+        const stored = JSON.parse(localStorage.getItem("battle_tanks_tile_settings") ?? "{}");
+        const disabled = new Set();
+        for (const [key, ids] of Object.entries(_TILE_GROUPS)) {
+            if (stored[key] === false) ids.forEach(id => disabled.add(id));
+        }
+        return disabled;
+    } catch {
+        return new Set();
+    }
+}
+
 // ── Tiles ─────────────────────────────────────────────────────────────
 
 async function _loadTiles() {
@@ -96,7 +133,8 @@ async function _loadTiles() {
     // sandworm parts (20, 21), raw item pickups (23, 24, 32 — must stay inside their boxes),
     // mushroom cracks (26, 27), rainbow cracks (29, 30), chick cracks (33, 34)
     const NOT_ALLOWED = new Set([6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30, 32, 33, 34]);
-    tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id)).map(t => t.id);
+    const disabled = _getDisabledTileIds();
+    tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id) && !disabled.has(t.id)).map(t => t.id);
     // Put empty last so Brick remains the default when opening the editor
     tileIds.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
     tileIndex = 0;
@@ -804,6 +842,8 @@ function _generateRandomMap() {
     
     // Pick symmetry mode: 2-way (left-right) or 4-way (quadrants)
     const symMode = Math.random() > 0.5 ? 4 : 2;
+
+    const disabled = _getDisabledTileIds();
     
     // Weighted tile pool for regular (1×1 and repeating) tiles.
     // Brick is most common; special/rare tiles appear once or twice.
@@ -820,7 +860,10 @@ function _generateRandomMap() {
         14,                        // TNT
         15,                        // glass brick
         18,                        // sunflower (passable cover)
-    ];
+    ].filter(t => !disabled.has(t));
+
+    // Fallback to brick if every tile has been disabled
+    if (placeableTiles.length === 0) placeableTiles.push(1);
     
     const isDense = Math.random() > 0.5; // 50% chance for a more packed map
     const baseShapes = isDense ? 30 + Math.floor(Math.random() * 30) : 15 + Math.floor(Math.random() * 15);
@@ -868,7 +911,7 @@ function _generateRandomMap() {
     
     // ── Auto-turrets (tile 25) — placed as 2×2 blocks at even positions ──
     // Snap to even row/col so each block aligns with the engine's scan.
-    const numTurretPlacements = 1 + Math.floor(Math.random() * 3);
+    const numTurretPlacements = disabled.has(25) ? 0 : 1 + Math.floor(Math.random() * 3);
     for (let t = 0; t < numTurretPlacements; t++) {
         // Snap to even row/col so the 2×2 block aligns with the engine's scan
         let tr = Math.floor(Math.random() * Math.max(1, Math.floor((maxR - 4) / 2))) * 2;
@@ -898,10 +941,10 @@ function _generateRandomMap() {
     // ── Power-up glass boxes (28 = mushroom, 31 = rainbow, 35 = chick) ───────────────
     // These are non-repeating big-type tiles that must be placed as exact
     // 2×2 blocks aligned to even row/col (matches the editor cursor grid).
-    const numBoxes = 1 + Math.floor(Math.random() * 3); // 1-3 boxes
+    const availableBoxes = [28, 31, 35].filter(t => !disabled.has(t));
+    const numBoxes = availableBoxes.length > 0 ? 1 + Math.floor(Math.random() * 3) : 0;
     for (let b = 0; b < numBoxes; b++) {
-        const rand = Math.random();
-        const boxTid = rand < 0.33 ? 28 : (rand < 0.66 ? 31 : 35);
+        const boxTid = availableBoxes[Math.floor(Math.random() * availableBoxes.length)];
         // Pick a random even top-left, staying away from the bottom rows
         let br = Math.floor(Math.random() * Math.max(1, Math.floor((maxR - 4) / 2))) * 2;
         let bc = Math.floor(Math.random() * Math.max(1, Math.floor((maxC - 2) / 2))) * 2;
@@ -1143,10 +1186,92 @@ export async function refreshMapList() {
     } catch { }
 }
 
+// ── Tile filter helpers (called by app.js after settings change) ──────
+
+// ── Tile preview renderer (used by the tile-settings screen) ──────────
+
+// These IDs are rendered as a 2×2 big block by _drawTileDetail.
+// To show the full sprite in a square preview, we draw all four quadrants.
+const _BIG_TILE_IDS = new Set([6, 14, 18, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]);
+
+/**
+ * Draw a single tile into `ctx` at (0,0) filling `canvasSize` px.
+ * Handles big/non-repeating tiles by compositing all 4 quadrants.
+ * The caller is responsible for clearing the canvas first.
+ */
+export function renderTilePreview(ctx, tileId, canvasSize) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = "#1a1a2e";
+    ctx.fillRect(0, 0, canvasSize, canvasSize);
+    if (tileId === 0) return;
+
+    if (tileId === 4) {
+        // Forest uses reduced alpha in the editor
+        ctx.save();
+        ctx.globalAlpha = 0.65;
+        _drawTileDetail(ctx, 4, 0, 0, canvasSize);
+        ctx.restore();
+    } else if (_BIG_TILE_IDS.has(tileId)) {
+        // Non-repeating/big tile: _drawTileDetail draws one quadrant per cell.
+        // Render all four at half size so the complete 2×2 sprite fills the canvas.
+        const h = canvasSize / 2;
+        _drawTileDetail(ctx, tileId, 0, 0, h);   // top-left
+        _drawTileDetail(ctx, tileId, h, 0, h);   // top-right
+        _drawTileDetail(ctx, tileId, 0, h, h);   // bottom-left
+        _drawTileDetail(ctx, tileId, h, h, h);   // bottom-right
+    } else {
+        _drawTileDetail(ctx, tileId, 0, 0, canvasSize);
+    }
+}
+
+/**
+ * Re-apply the disabled-tile filter to the already-loaded tiles list.
+ * Synchronous — no API call needed because `tiles` is already cached.
+ */
+export function refreshTileFilter() {
+    const NOT_ALLOWED = new Set([6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30, 32, 33, 34]);
+    const disabled = _getDisabledTileIds();
+    tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id) && !disabled.has(t.id)).map(t => t.id);
+    tileIds.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
+    // Keep tileIndex in bounds after the list shrinks/grows
+    tileIndex = Math.min(tileIndex, Math.max(0, tileIds.length - 1));
+    _updateStatusBar();
+}
+
+/** Replace any currently-disabled tiles on the live grid with empty. */
+export function applyDisabledTilesToCurrentGrid() {
+    const disabled = _getDisabledTileIds();
+    if (disabled.size === 0) return;
+    for (let r = 0; r < GRID_H; r++) {
+        for (let c = 0; c < GRID_W; c++) {
+            if (disabled.has(grid[r][c])) grid[r][c] = 0;
+        }
+    }
+}
+
+/**
+ * Save a filtered copy of the current grid (disabled tiles → 0) as AUTOSAVE
+ * and return the saved map name. Used by the PLAY button so the game always
+ * runs a clean, settings-compliant map.
+ */
+export async function launchWithFilteredGrid() {
+    const disabled = _getDisabledTileIds();
+    const filteredGrid = disabled.size > 0
+        ? grid.map(row => row.map(tid => disabled.has(tid) ? 0 : tid))
+        : grid;
+    try {
+        const res = await Api.saveMap("AUTOSAVE", filteredGrid);
+        return res?.saved ?? null;
+    } catch {
+        return null;
+    }
+}
+
 async function _loadMap(name) {
     try {
         const data = await Api.loadMap(name);
-        grid = data.grid;
+        const disabled = _getDisabledTileIds();
+        grid = data.grid.map(row => row.map(tid => disabled.has(tid) ? 0 : tid));
         nameInput.value = data.name;
     } catch (e) {
         alert("LOAD FAILED: " + e.message);

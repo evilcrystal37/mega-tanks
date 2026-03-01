@@ -607,6 +607,101 @@ body {
   flex: 1;
 }
 
+/* ═══════════════════ TILE SETTINGS SCREEN ══════════════════════════ */
+#tile-settings-screen {
+  justify-content: center;
+  align-items: center;
+}
+
+.tile-settings-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: min(600px, 94vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 28px 32px;
+  background: var(--nes-dark);
+  border: 2px solid var(--nes-border);
+}
+
+.tile-settings-desc {
+  font-family: var(--font);
+  font-size: 5.5px;
+  color: var(--nes-gray);
+  letter-spacing: 0.5px;
+  line-height: 1.9;
+  text-align: center;
+}
+
+.tile-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+  width: 100%;
+}
+
+/* Card-style tile toggle item — canvas preview on top, label+cb below */
+.tile-toggle-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 6px 6px 5px;
+  border: 2px solid var(--nes-gray);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.1s, opacity 0.15s;
+}
+
+.tile-toggle-item:hover {
+  border-color: var(--nes-yellow);
+}
+
+.tile-toggle-item.disabled-tile {
+  opacity: 0.28;
+  border-color: #2a2a2a;
+}
+
+/* Live canvas preview */
+.tile-toggle-canvas {
+  display: block;
+  width: 56px;
+  height: 56px;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+/* Footer row: name on left, checkbox on right */
+.tile-toggle-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 5px;
+  gap: 4px;
+}
+
+.tile-toggle-label {
+  font-family: var(--font);
+  font-size: 5px;
+  color: var(--nes-white);
+  letter-spacing: 0.3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.tile-toggle-cb {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--nes-orange);
+}
+
 /* ═══════════════════ SCROLLBAR ═════════════════════════════════════ */
 ::-webkit-scrollbar {
   width: 4px;
