@@ -350,9 +350,7 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
         if (tid === 18) {
             // Big Sunflower Emoji — always full brightness (no darkening)
             ctx.globalAlpha = 1.0;
-            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
-            
-            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.font = `${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🌼", 0, ds * 0.1); // Slight offset for better centering
@@ -527,8 +525,7 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             ctx.strokeStyle = "rgba(0,0,0,0.15)";
             ctx.beginPath();
             ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
-            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
-            ctx.font = `${ds * 1.2 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+            ctx.font = `${ds * 1.2}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🌈", 0, ds * 0.05);
@@ -565,8 +562,7 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             ctx.strokeStyle = "rgba(0,0,0,0.15)";
             ctx.beginPath();
             ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
-            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
-            ctx.font = `${ds * 1.2 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+            ctx.font = `${ds * 1.2}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🐥", 0, ds * 0.05);
@@ -582,8 +578,7 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             }
             ctx.stroke();
         } else if (tid === 32) {
-            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
-            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.font = `${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🐥", 0, ds * 0.1);

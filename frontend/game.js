@@ -640,8 +640,7 @@ class GameRenderer {
         if (tid === 18) {
             // Big Sunflower Emoji — always full brightness (no darkening)
             ctx.globalAlpha = 1.0;
-            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
-            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.font = `${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🌼", 0, ds * 0.1);
@@ -695,14 +694,12 @@ class GameRenderer {
                 ctx.strokeRect(-ds + lw/2, -ds + lw/2, ds*2 - lw, ds*2 - lw);
             }
         } else if (tid === 23) {
-            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
-            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.font = `${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🌈", 0, ds * 0.1);
         } else if (tid === 24) {
-            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
-            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.font = `${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🍄", 0, ds * 0.1);
@@ -799,8 +796,7 @@ class GameRenderer {
             ctx.stroke();
 
             // Rainbow icon centered at (0,0)
-            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
-            ctx.font = `${ds * 1.2 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+            ctx.font = `${ds * 1.2}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🌈", 0, ds * 0.05);
@@ -847,8 +843,7 @@ class GameRenderer {
             ctx.stroke();
 
             // Chick icon centered at (0,0)
-            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
-            ctx.font = `${ds * 1.2 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+            ctx.font = `${ds * 1.2}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🐥", 0, ds * 0.05);
@@ -866,8 +861,7 @@ class GameRenderer {
             }
             ctx.stroke();
         } else if (tid === 32) {
-            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
-            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.font = `${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🐥", 0, ds * 0.1);
