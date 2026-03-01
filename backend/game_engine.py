@@ -63,7 +63,7 @@ class GameEngine:
         self._defeat_bricks: List[tuple[int, int]] = []
         
         # TNT chain explosion queue
-        self._pending_tnt: List[tuple[int, int, int]] = []  # (row, col, ticks)
+        self._pending_tnt: List[tuple[int, int, int, int]] = []  # (row, col, ticks, radius)
         
         # Sandworm state (Snake-like)
         self.sandworm: dict = {
@@ -891,7 +891,7 @@ class GameEngine:
                     self.events.append({"type": "sound", "sound": "hit-steel"})
                     continue
                 elif tile.is_explosive:
-                    self._detonate_tile(r, c)
+                    self._detonate_tile(r, c, tile.explosion_radius)
                 elif tile.destructible:
                     if tile.is_base:
                         # Base destroyed = begin defeat sequence
@@ -1329,22 +1329,22 @@ class GameEngine:
                         self.player_lives -= 1
                         self._player_respawn_timer = 180
 
-    def _detonate_tile(self, r: int, c: int) -> None:
+    def _detonate_tile(self, r: int, c: int, radius: int = 2) -> None:
         if not (0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH):
             return
             
         self.grid[r][c] = 0
         self._add_explosion(r + 0.5, c + 0.5)
         
-        for nr in range(r - 2, r + 3):
-            for nc in range(c - 2, c + 3):
+        for nr in range(r - radius, r + radius + 1):
+            for nc in range(c - radius, c + radius + 1):
                 if 0 <= nr < GRID_HEIGHT and 0 <= nc < GRID_WIDTH:
                     # Tile destruction
                     ntile = get_tile(self.grid[nr][nc])
                     if ntile.is_explosive:
                         # Add to pending instead of instant recursion
                         self.grid[nr][nc] = 0 # Prevent re-queueing
-                        self._pending_tnt.append((nr, nc, 10)) # 10 tick delay (~160ms)
+                        self._pending_tnt.append((nr, nc, 10, ntile.explosion_radius)) # 10 tick delay (~160ms)
                     elif ntile.destructible:
                         if ntile.is_base:
                             self.grid[nr][nc] = 0
@@ -1425,11 +1425,11 @@ class GameEngine:
 
     def _tick_tnt(self) -> None:
         new_pending = []
-        for r, c, ticks in self._pending_tnt:
+        for r, c, ticks, radius in self._pending_tnt:
             if ticks <= 0:
-                self._detonate_tile(r, c)
+                self._detonate_tile(r, c, radius)
             else:
-                new_pending.append((r, c, ticks - 1))
+                new_pending.append((r, c, ticks - 1, radius))
         self._pending_tnt = new_pending
 
     # ------------------------------------------------------------------

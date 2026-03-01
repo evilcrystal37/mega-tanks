@@ -578,7 +578,7 @@ class GameRenderer {
     const gridC = Math.round(x / sz);
     const gridR = Math.round(y / sz);
 
-    if (tid === 6 || tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 32 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 35)) {
+    if (tid === 6 || tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 32 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 36)) {
         ctx.save();
         const centerX = dx + (gridC % 2 === 0 ? ds : 0);
         const centerY = dy + (gridR % 2 === 0 ? ds : 0);
@@ -621,6 +621,35 @@ class GameRenderer {
                 ctx.lineTo(ds * i, ds);
             }
             ctx.stroke();
+        } else if (tid === 36) {
+            // Special TNT — same look as TNT but with a neon yellow pulsing glow border
+            ctx.fillStyle = "#d32f2f";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            ctx.fillStyle = "#eeeeee";
+            ctx.fillRect(-ds, -ds * 0.3, ds * 2, ds * 0.6);
+            ctx.fillStyle = "#000000";
+            ctx.font = `bold ${Math.max(6, ds * 0.5)}px monospace`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("TNT", 0, 0);
+            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.lineWidth = ds * 0.05;
+            ctx.beginPath();
+            for (let i = -0.6; i <= 0.6; i += 0.4) {
+                ctx.moveTo(ds * i, -ds);
+                ctx.lineTo(ds * i, -ds * 0.3);
+                ctx.moveTo(ds * i, ds * 0.3);
+                ctx.lineTo(ds * i, ds);
+            }
+            ctx.stroke();
+            // Neon yellow highlight border
+            const glowAlpha36 = 0.7 + Math.sin(Date.now() / 200) * 0.3;
+            ctx.shadowColor = "#ffe000";
+            ctx.shadowBlur = ds * 0.6;
+            ctx.strokeStyle = `rgba(255, 224, 0, ${glowAlpha36})`;
+            ctx.lineWidth = ds * 0.18;
+            ctx.strokeRect(-ds + ds * 0.09, -ds + ds * 0.09, ds * 2 - ds * 0.18, ds * 2 - ds * 0.18);
+            ctx.shadowBlur = 0;
         } else if (tid === 23) {
             const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
             ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;

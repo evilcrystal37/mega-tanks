@@ -26,6 +26,7 @@ class TileType:
     speed_mult: float = 1.0 # Speed multiplier for tanks (mud)
     is_explosive: bool = False # Detonates on hit (TNT)
     non_repeating: bool = False # Renders as one big block instead of 4 sub-blocks
+    explosion_radius: int = 2  # How many tiles out the blast reaches (default: 2 = 5×5 area)
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +222,14 @@ TILE_REGISTRY: Dict[int, TileType] = {
         color="#ffee58",
         tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
         non_repeating=True,
+    ),
+    36: TileType(
+        id=36, name="special_tnt", label="Special TNT",
+        color="#d32f2f",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        is_explosive=True,
+        non_repeating=True,
+        explosion_radius=7,
     ),
 }
 
