@@ -330,9 +330,19 @@ class GameEngine:
                     if tank.tank_type != "companion":
                         # Spawn/refresh companion near tank — add 30s
                         if tank.companion is None or not tank.companion.alive:
+                            # Spawn offset from master so it doesn't overlap visually
+                            dir_offsets = {
+                                "up":    ( 2.0,  0.0),
+                                "down":  (-2.0,  0.0),
+                                "left":  ( 0.0,  2.0),
+                                "right": ( 0.0, -2.0),
+                            }
+                            cdr, cdc = dir_offsets.get(tank.direction, (2.0, 0.0))
+                            comp_row = max(1.0, min(float(GRID_HEIGHT) - 1.0, tank.row + cdr))
+                            comp_col = max(1.0, min(float(GRID_WIDTH) - 1.0, tank.col + cdc))
                             tank.companion = Tank(
-                                row=tank.row,
-                                col=tank.col,
+                                row=comp_row,
+                                col=comp_col,
                                 direction=tank.direction,
                                 speed=tank.speed * 1.5,
                                 hp=999,
@@ -344,6 +354,8 @@ class GameEngine:
                             )
                             tank.companion_orbit_angle = 0.0
                         tank.companion_ticks += 1800  # +30s per pickup
+                elif tid == 24:
+                    # Mushroom collected
                     tank.mushroom_ticks = max(tank.mushroom_ticks, 0) + 600
                     for gr, gc in self._find_box_group(r, c, 24, 24):
                         self.grid[gr][gc] = 0
@@ -522,6 +534,20 @@ class GameEngine:
         if not master or not master.alive:
             return
 
+        # ── 0. Snap back if too far away (≥ 8 cells) ───────────────────
+        dist_to_master = math.hypot(master.row - companion.row, master.col - companion.col)
+        if dist_to_master >= 8.0:
+            # Teleport to just behind the master
+            dir_offsets = {
+                "up":    ( 2.0,  0.0),
+                "down":  (-2.0,  0.0),
+                "left":  ( 0.0,  2.0),
+                "right": ( 0.0, -2.0),
+            }
+            cdr, cdc = dir_offsets.get(master.direction, (2.0, 0.0))
+            companion.row = max(1.0, min(float(GRID_HEIGHT) - 1.0, master.row + cdr))
+            companion.col = max(1.0, min(float(GRID_WIDTH) - 1.0, master.col + cdc))
+
         # Always fire at twice the master's rate
         companion.fire_rate = max(8, master.fire_rate // 2)
 
@@ -576,52 +602,39 @@ class GameEngine:
         if companion.ai_timer <= 0:
             companion.ai_timer = 20  # Re-evaluate ~3× per second
 
-            # Target: 2.5 cells ahead of the master's facing direction
+            # Target: 3 cells ahead of the master's current facing direction
             dir_offsets = {
-                "up":    (-2.5,  0.0),
-                "down":  ( 2.5,  0.0),
-                "left":  ( 0.0, -2.5),
-                "right": ( 0.0,  2.5),
+                "up":    (-3.0,  0.0),
+                "down":  ( 3.0,  0.0),
+                "left":  ( 0.0, -3.0),
+                "right": ( 0.0,  3.0),
             }
             pdr, pdc = dir_offsets.get(master.direction, (0.0, 0.0))
             target_row = max(1.0, min(float(GRID_HEIGHT) - 1.0, master.row + pdr))
             target_col = max(1.0, min(float(GRID_WIDTH)  - 1.0, master.col + pdc))
 
-            dist_to_master = math.hypot(master.row - companion.row, master.col - companion.col)
             dist_to_target = math.hypot(target_row - companion.row, target_col - companion.col)
+            dist_to_master = math.hypot(master.row - companion.row, master.col - companion.col)
 
-            # Move away if inside 1-big-tile (2-cell) exclusion zone around master
-            if dist_to_master < 2.0:
-                dr = companion.row - master.row
-                dc = companion.col - master.col
-                if abs(dr) > abs(dc):
-                    companion.ai_dir = "down" if dr > 0 else "up"
-                    companion.companion_orbit_angle = 1.0 if dc > 0 else -1.0
-                else:
-                    companion.ai_dir = "right" if dc > 0 else "left"
-                    companion.companion_orbit_angle = 1.0 if dr > 0 else -1.0
-            elif dist_to_target > 1.2:
-                # Use BFS to find a path to the target, avoiding solid tiles
+            if dist_to_target > 1.0:
+                # Use BFS to find a path to the spot ahead of master
                 path_dir = self._find_path_dir(companion.row, companion.col, target_row, target_col, companion)
                 if path_dir:
                     companion.ai_dir = path_dir
-                    # Secondary flag for slide logic
                     if path_dir in ("up", "down"):
                         companion.companion_orbit_angle = 1.0 if target_col > companion.col else -1.0
                     else:
                         companion.companion_orbit_angle = 1.0 if target_row > companion.row else -1.0
                 else:
-                    # Fallback to direct approach if path is blocked
-                    dr = target_row - companion.row
-                    dc = target_col - companion.col
-                    if abs(dr) > abs(dc):
-                        companion.ai_dir = "down" if dr > 0 else "up"
-                        companion.companion_orbit_angle = 1.0 if dc > 0 else -1.0  # reuse slot as secondary flag
-                    else:
-                        companion.ai_dir = "right" if dc > 0 else "left"
-                        companion.companion_orbit_angle = 1.0 if dr > 0 else -1.0
+                    # Fallback: head directly in the master's movement direction to get ahead
+                    companion.ai_dir = master.direction
+                    companion.companion_orbit_angle = 1.0
+            elif dist_to_master < 1.5:
+                # Too close — push ahead in master's movement direction
+                companion.ai_dir = master.direction
+                companion.companion_orbit_angle = 1.0
             else:
-                companion.ai_dir = ""  # close enough — hold position
+                companion.ai_dir = ""  # On position — hold
 
         # ── 4. Execute committed move direction (smooth, one tick at a time) ─
         if companion.ai_dir:
@@ -922,9 +935,18 @@ class GameEngine:
                             if owner_tank and owner_tank.tank_type != "companion":
                                 # Spawn/refresh companion — add 30s
                                 if owner_tank.companion is None or not owner_tank.companion.alive:
+                                    dir_offsets = {
+                                        "up":    ( 2.0,  0.0),
+                                        "down":  (-2.0,  0.0),
+                                        "left":  ( 0.0,  2.0),
+                                        "right": ( 0.0, -2.0),
+                                    }
+                                    cdr, cdc = dir_offsets.get(owner_tank.direction, (2.0, 0.0))
+                                    comp_row = max(1.0, min(float(GRID_HEIGHT) - 1.0, owner_tank.row + cdr))
+                                    comp_col = max(1.0, min(float(GRID_WIDTH) - 1.0, owner_tank.col + cdc))
                                     owner_tank.companion = Tank(
-                                        row=owner_tank.row,
-                                        col=owner_tank.col,
+                                        row=comp_row,
+                                        col=comp_col,
                                         direction=owner_tank.direction,
                                         speed=owner_tank.speed * 1.5,
                                         hp=999,
