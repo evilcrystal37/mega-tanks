@@ -709,7 +709,8 @@ class GameEngine:
                 if 0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH:
                     tile = get_tile(self.grid[r][c])
                     if tile.tank_solid:
-                        if (mover.mushroom_ticks > 0 or mover.is_big) and not (26 <= self.grid[r][c] <= 31) and not (33 <= self.grid[r][c] <= 35):
+                        base_protected = mover.is_player and self.grid[r][c] == 6
+                        if (mover.mushroom_ticks > 0 or mover.is_big) and not (26 <= self.grid[r][c] <= 31) and not (33 <= self.grid[r][c] <= 35) and not base_protected:
                             pass
                         else:
                             return False
@@ -815,8 +816,9 @@ class GameEngine:
                 if 0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH:
                     tile = get_tile(self.grid[r][c])
                     if tile.tank_solid:
-                        if (mover.mushroom_ticks > 0 or mover.is_big) and not (26 <= self.grid[r][c] <= 31) and not (33 <= self.grid[r][c] <= 35):
-                            pass # Big tank can move through and destroy solid tiles (but not glass boxes)
+                        base_protected = mover.is_player and self.grid[r][c] == 6
+                        if (mover.mushroom_ticks > 0 or mover.is_big) and not (26 <= self.grid[r][c] <= 31) and not (33 <= self.grid[r][c] <= 35) and not base_protected:
+                            pass # Big tank can move through and destroy solid tiles (but not glass/chick boxes or player's base)
                         else:
                             return False
 
@@ -894,9 +896,12 @@ class GameEngine:
                     self._detonate_tile(r, c, tile.explosion_radius)
                 elif tile.destructible:
                     if tile.is_base:
-                        # Base destroyed = begin defeat sequence
-                        self.grid[r][c] = 0
-                        self._trigger_defeat()
+                        # Big player tanks cannot accidentally destroy their own base
+                        player_is_big = (bullet.is_player and self.player and
+                                         (self.player.mushroom_ticks > 0 or self.player.is_big))
+                        if not player_is_big:
+                            self.grid[r][c] = 0
+                            self._trigger_defeat()
                     elif bullet.power >= 2 or self.grid[r][c] == 1 or 15 <= self.grid[r][c] <= 17 or 24 <= self.grid[r][c] <= 28 or 29 <= self.grid[r][c] <= 31 or 32 <= self.grid[r][c] <= 35:
                         # Destroy brick or steel (if power bullet) or glass or mushroom or rainbow or chick
                         tid = self.grid[r][c]
@@ -1142,8 +1147,9 @@ class GameEngine:
     # Explosions
     # ------------------------------------------------------------------
 
-    def _add_explosion(self, row: float, col: float) -> None:
-        self.explosions.append({"row": row, "col": col, "ticks": 15}) # 0.25s
+    def _add_explosion(self, row: float, col: float, kind: str = "normal", radius: int = 0) -> None:
+        ticks = 50 if kind == "super_tnt" else 15
+        self.explosions.append({"row": row, "col": col, "ticks": ticks, "kind": kind, "radius": radius})
 
     def _tick_explosions(self) -> None:
         for exp in self.explosions:
@@ -1334,7 +1340,10 @@ class GameEngine:
             return
             
         self.grid[r][c] = 0
-        self._add_explosion(r + 0.5, c + 0.5)
+        if radius > 2:
+            self._add_explosion(r + 0.5, c + 0.5, kind="super_tnt", radius=radius)
+        else:
+            self._add_explosion(r + 0.5, c + 0.5)
         
         for nr in range(r - radius, r + radius + 1):
             for nc in range(c - radius, c + radius + 1):
@@ -1352,7 +1361,7 @@ class GameEngine:
                         else:
                             self.grid[nr][nc] = 0
                     
-                    if (nr, nc) != (r, c) and self.grid[nr][nc] == 0:
+                    if (nr, nc) != (r, c) and self.grid[nr][nc] == 0 and radius <= 2:
                         self._add_explosion(nr + 0.5, nc + 0.5)
                     
                     # Tank damage (enemies + player)
@@ -1466,8 +1475,12 @@ class GameEngine:
                         
                     if can_destroy:
                         if ntile.is_base:
-                            self.grid[nr][nc] = 0
-                            self._trigger_defeat()
+                            # Big player tanks cannot accidentally crush their own base
+                            if tank.is_player and (tank.mushroom_ticks > 0 or tank.is_big):
+                                pass
+                            else:
+                                self.grid[nr][nc] = 0
+                                self._trigger_defeat()
                         else:
                             self.grid[nr][nc] = 0
                             self._add_explosion(nr + 0.5, nc + 0.5)

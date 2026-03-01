@@ -642,14 +642,13 @@ class GameRenderer {
                 ctx.lineTo(ds * i, ds);
             }
             ctx.stroke();
-            // Neon yellow highlight border
+            // Neon yellow highlight border — layered strokes instead of shadowBlur (much cheaper)
             const glowAlpha36 = 0.7 + Math.sin(Date.now() / 200) * 0.3;
-            ctx.shadowColor = "#ffe000";
-            ctx.shadowBlur = ds * 0.6;
-            ctx.strokeStyle = `rgba(255, 224, 0, ${glowAlpha36})`;
-            ctx.lineWidth = ds * 0.18;
-            ctx.strokeRect(-ds + ds * 0.09, -ds + ds * 0.09, ds * 2 - ds * 0.18, ds * 2 - ds * 0.18);
-            ctx.shadowBlur = 0;
+            for (const [lw, a] of [[ds*0.30, 0.18], [ds*0.22, 0.35], [ds*0.14, 0.65], [ds*0.08, glowAlpha36]]) {
+                ctx.strokeStyle = `rgba(255, 224, 0, ${a})`;
+                ctx.lineWidth = lw;
+                ctx.strokeRect(-ds + lw/2, -ds + lw/2, ds*2 - lw, ds*2 - lw);
+            }
         } else if (tid === 23) {
             const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
             ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
@@ -1074,8 +1073,7 @@ class GameRenderer {
 
         let drawY = y;
         let scaleExtra = tank.tank_type === "companion" ? 2.0
-            : (isPlayer ? 1.0
-            : ((tank.mushroom_active || tank.is_big) ? 2.0 : 1.0));
+            : ((tank.mushroom_active || tank.is_big) ? 2.0 : 1.0);
 
         if (tank.airborne_ticks > 0) {
             const progress = tank.airborne_ticks / 45;
@@ -1424,6 +1422,10 @@ class GameRenderer {
     }
 
     _drawExplosion(ctx, exp, cell) {
+        if (exp.kind === "super_tnt") {
+            this._drawSuperTntExplosion(ctx, exp, cell);
+            return;
+        }
         const maxTicks = 15;
         const elapsed = maxTicks - exp.ticks;
         const frames = [
@@ -1444,6 +1446,86 @@ class GameRenderer {
         const dy = Math.round(cy - dh / 2);
 
         this._atlas.draw(ctx, frame.id, dx, dy, dw, dh);
+    }
+
+    _drawSuperTntExplosion(ctx, exp, cell) {
+        const maxTicks = 50;
+        const elapsed = maxTicks - exp.ticks;
+        const progress = elapsed / maxTicks; // 0 → 1
+        const cx = exp.col * cell;
+        const cy = exp.row * cell;
+        const maxRadius = (exp.radius ?? 3) * cell;
+
+        ctx.save();
+
+        // Central white flash at the very start
+        if (progress < 0.15) {
+            const flashAlpha = (1 - progress / 0.15) * 0.9;
+            const flash = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxRadius * 0.4);
+            flash.addColorStop(0, `rgba(255,255,255,${flashAlpha})`);
+            flash.addColorStop(0.5, `rgba(255,220,80,${flashAlpha * 0.6})`);
+            flash.addColorStop(1, `rgba(255,80,0,0)`);
+            ctx.fillStyle = flash;
+            ctx.beginPath();
+            ctx.arc(cx, cy, maxRadius * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Concentric fire rings expanding outward
+        const numRings = 6;
+        const ringSpacing = 0.18; // time offset between rings
+        for (let i = 0; i < numRings; i++) {
+            const ringProgress = Math.max(0, Math.min(1, progress - i * ringSpacing));
+            if (ringProgress <= 0) continue;
+
+            const r = ringProgress * maxRadius;
+            // Each ring fades out as it expands; earlier rings fade faster
+            const fadeStart = 0.5 + i * 0.06;
+            const alpha = ringProgress < fadeStart
+                ? 1.0
+                : Math.max(0, 1 - (ringProgress - fadeStart) / (1 - fadeStart));
+
+            const ringAlpha = alpha * (1 - i * 0.12);
+            if (ringAlpha <= 0) continue;
+
+            // Thick glowing ring: bright yellow-white core → orange edge
+            const lineW = cell * (0.3 - i * 0.03);
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, Math.max(1, r), 0, Math.PI * 2);
+            // Color shifts from white/yellow (first ring) to deep orange/red (later rings)
+            const rVal = 255;
+            const gVal = Math.round(200 - i * 30);
+            const bVal = Math.round(Math.max(0, 60 - i * 20));
+            ctx.strokeStyle = `rgba(${rVal},${gVal},${bVal},${ringAlpha})`;
+            ctx.lineWidth = Math.max(1, lineW);
+            ctx.stroke();
+
+            // Faint fill inside the leading ring to simulate heat/glow
+            if (i === 0) {
+                const glow = ctx.createRadialGradient(cx, cy, r * 0.5, cx, cy, r);
+                glow.addColorStop(0, `rgba(255, 200, 50, ${ringAlpha * 0.15})`);
+                glow.addColorStop(1, `rgba(255, 60, 0, 0)`);
+                ctx.fillStyle = glow;
+                ctx.beginPath();
+                ctx.arc(cx, cy, Math.max(1, r), 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Dark smoke ring trailing behind the outermost fire ring
+        const smokeProgress = Math.max(0, progress - 0.1);
+        if (smokeProgress > 0) {
+            const smokeR = smokeProgress * maxRadius * 0.85;
+            const smokeAlpha = Math.max(0, (1 - progress) * 0.35);
+            ctx.beginPath();
+            ctx.arc(cx, cy, Math.max(1, smokeR), 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(30, 20, 10, ${smokeAlpha})`;
+            ctx.lineWidth = cell * 0.2;
+            ctx.stroke();
+        }
+
+        ctx.restore();
     }
 
     _bindInput() {

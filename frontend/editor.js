@@ -367,14 +367,13 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
                 ctx.lineTo(ds * i, ds);
             }
             ctx.stroke();
-            // Neon yellow highlight border
+            // Neon yellow highlight border — layered strokes instead of shadowBlur (much cheaper)
             const glowAlpha = 0.7 + Math.sin(Date.now() / 200) * 0.3;
-            ctx.shadowColor = "#ffe000";
-            ctx.shadowBlur = ds * 0.6;
-            ctx.strokeStyle = `rgba(255, 224, 0, ${glowAlpha})`;
-            ctx.lineWidth = ds * 0.18;
-            ctx.strokeRect(-ds + ds * 0.09, -ds + ds * 0.09, ds * 2 - ds * 0.18, ds * 2 - ds * 0.18);
-            ctx.shadowBlur = 0;
+            for (const [lw, a] of [[ds*0.30, 0.18], [ds*0.22, 0.35], [ds*0.14, 0.65], [ds*0.08, glowAlpha]]) {
+                ctx.strokeStyle = `rgba(255, 224, 0, ${a})`;
+                ctx.lineWidth = lw;
+                ctx.strokeRect(-ds + lw/2, -ds + lw/2, ds*2 - lw, ds*2 - lw);
+            }
         } else if (tid === 25) {
             // Turret placement preview — sandbag ring + dome + prominent barrel (pointing up)
             // Sandbag ring
