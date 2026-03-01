@@ -62,15 +62,18 @@ export function blurEditor() {
 
 function _initGrid() {
     grid = Array.from({ length: GRID_H }, () => Array(GRID_W).fill(0));
-    // Pre-place base and bricks
+    // Pre-place base (2×2 big-type) and bricks — bricks must not overlap base footprint
     const mid = Math.floor(GRID_W / 2);
     const bottom = GRID_H - 1;
-    grid[bottom][mid] = 6;     // Base
-    grid[bottom][mid - 1] = 1;   // Left brick
-    grid[bottom][mid + 1] = 1;   // Right brick
-    grid[bottom - 1][mid - 1] = 1; // Top-left brick
-    grid[bottom - 1][mid] = 1;   // Top-mid brick
-    grid[bottom - 1][mid + 1] = 1; // Top-right brick
+    grid[bottom][mid] = 6;     // Base (spans mid..mid+1, bottom-1..bottom when even-aligned)
+    grid[bottom][mid - 1] = 1;   // West of base
+    grid[bottom][mid + 2] = 1;   // East of base (skip mid+1 — part of base 2×2)
+    grid[bottom - 1][mid - 1] = 1; // Northwest
+    grid[bottom - 1][mid + 2] = 1; // Northeast (skip mid, mid+1 — part of base 2×2)
+    grid[bottom - 2][mid - 1] = 1; // Row above
+    grid[bottom - 2][mid] = 1;
+    grid[bottom - 2][mid + 1] = 1;
+    grid[bottom - 2][mid + 2] = 1;
 }
 
 // ── Tiles ─────────────────────────────────────────────────────────────
@@ -292,14 +295,18 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
     const gridC = Math.round(x / sz);
     const gridR = Math.round(y / sz);
 
-    if (tid === 14 || tid === 18 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 35) || tid === 32) {
+    if (tid === 6 || tid === 14 || tid === 18 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 35) || tid === 32) {
         ctx.save();
-        ctx.beginPath();
-        ctx.rect(dx, dy, ds, ds);
-        ctx.clip();
-
         const centerX = dx + (gridC % 2 === 0 ? ds : 0);
         const centerY = dy + (gridR % 2 === 0 ? ds : 0);
+        ctx.beginPath();
+        // Base occupies 1 cell but draws 2×2 — use 2×2 clip so full sprite is visible
+        if (tid === 6) {
+            ctx.rect(centerX - ds, centerY - ds, ds * 2, ds * 2);
+        } else {
+            ctx.rect(dx, dy, ds, ds);
+        }
+        ctx.clip();
         ctx.translate(centerX, centerY);
 
         if (tid === 18) {
@@ -513,14 +520,13 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🐥", 0, ds * 0.1);
+        } else if (tid === 6) {
+            // Base eagle — big-type (2×2)
+            _atlas.draw(ctx, "base.heart.alive", -ds, -ds, ds * 2, ds * 2);
         }
 
         ctx.restore();
         return;
-    }
-
-    if (tid === 6) {
-        if (_atlas.draw(ctx, "base.heart.alive", dx, dy, ds, ds)) return;
     }
 
     if (tid === 7) {
@@ -892,26 +898,29 @@ function _generateRandomMap() {
         }
     }
 
-    // Base protection: Clear area around base and place base struct
+    // Base protection: Clear area around base and place base struct (base is 2×2 big-type)
     const mid = Math.floor(GRID_W / 2);
     const bottom = GRID_H - 1;
     
-    // Clear 4x6 area around base
+    // Clear 5×6 area around base (base spans mid..mid+1, bottom-1..bottom)
     for (let r = bottom - 3; r <= bottom; r++) {
-        for (let c = mid - 2; c <= mid + 2; c++) {
+        for (let c = mid - 2; c <= mid + 3; c++) {
             if (r >= 0 && r < GRID_H && c >= 0 && c < GRID_W) {
                 grid[r][c] = 0;
             }
         }
     }
     
-    // Re-place base structure
-    grid[bottom][mid] = 6;     // Base
-    grid[bottom][mid - 1] = 1;   // Left brick
-    grid[bottom][mid + 1] = 1;   // Right brick
-    grid[bottom - 1][mid - 1] = 1; // Top-left brick
-    grid[bottom - 1][mid] = 1;   // Top-mid brick
-    grid[bottom - 1][mid + 1] = 1; // Top-right brick
+    // Re-place base structure — bricks must not overlap base 2×2
+    grid[bottom][mid] = 6;     // Base (spans mid..mid+1, bottom-1..bottom)
+    grid[bottom][mid - 1] = 1;   // West
+    grid[bottom][mid + 2] = 1;   // East
+    grid[bottom - 1][mid - 1] = 1; // Northwest
+    grid[bottom - 1][mid + 2] = 1; // Northeast
+    grid[bottom - 2][mid - 1] = 1;
+    grid[bottom - 2][mid] = 1;
+    grid[bottom - 2][mid + 1] = 1;
+    grid[bottom - 2][mid + 2] = 1;
 }
 
 function _bindEvents() {

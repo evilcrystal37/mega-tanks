@@ -250,7 +250,8 @@ class GameRenderer {
         if (this.state.result === "defeat" && this.state.base_pos) {
             const br = this.state.base_pos.row;
             const bc = this.state.base_pos.col;
-            this._atlas.draw(ctx, "base.heart.dead", Math.round(bc * cell), Math.round(br * cell), cell, cell);
+            // Base eagle is big-type (2×2), dead overlay matches
+            this._atlas.draw(ctx, "base.heart.dead", Math.round(bc * cell), Math.round(br * cell), cell * 2, cell * 2);
         }
         
         // Rainbow Trails - continuous gradient
@@ -576,14 +577,18 @@ class GameRenderer {
     const gridC = Math.round(x / sz);
     const gridR = Math.round(y / sz);
 
-    if (tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 32 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 35)) {
+    if (tid === 6 || tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 32 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 35)) {
         ctx.save();
-        ctx.beginPath();
-        ctx.rect(dx, dy, ds, ds);
-        ctx.clip();
-
         const centerX = dx + (gridC % 2 === 0 ? ds : 0);
         const centerY = dy + (gridR % 2 === 0 ? ds : 0);
+        ctx.beginPath();
+        // Base occupies 1 cell but draws 2×2 — use 2×2 clip so full sprite is visible
+        if (tid === 6) {
+            ctx.rect(centerX - ds, centerY - ds, ds * 2, ds * 2);
+        } else {
+            ctx.rect(dx, dy, ds, ds);
+        }
+        ctx.clip();
         ctx.translate(centerX, centerY);
 
         if (tid === 18) {
@@ -791,15 +796,14 @@ class GameRenderer {
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🐥", 0, ds * 0.1);
+        } else if (tid === 6) {
+            // Base eagle — big-type (2×2)
+            this._atlas.draw(ctx, "base.heart.alive", -ds, -ds, ds * 2, ds * 2);
         }
 
         ctx.restore();
         return;
     }
-
-        if (tid === 6) {
-            if (this._atlas.draw(ctx, "base.heart.alive", dx, dy, ds, ds)) return;
-        }
 
         if (tid === 7) {
             const t = Date.now() / 1200;

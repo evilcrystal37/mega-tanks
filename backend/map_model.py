@@ -17,18 +17,22 @@ GRID_WIDTH = 64
 
 
 def create_default_grid():
-    """Create a grid with the Base and shielding bricks pre-placed."""
+    """Create a grid with the Base (2×2 big-type) and shielding bricks pre-placed.
+    Bricks must not overlap the base footprint (mid..mid+1, bottom-1..bottom)."""
     grid = [[0] * GRID_WIDTH for _ in range(GRID_HEIGHT)]
     mid_x = GRID_WIDTH // 2
     bottom_y = GRID_HEIGHT - 1
-    # Base (Eagle)
+    # Base (Eagle) — 2×2 big-type spans (mid, mid+1) × (bottom-1, bottom)
     grid[bottom_y][mid_x] = 6
-    # Surround with bricks (U-shape)
-    grid[bottom_y][mid_x-1] = 1
-    grid[bottom_y][mid_x+1] = 1
-    grid[bottom_y-1][mid_x-1] = 1
-    grid[bottom_y-1][mid_x] = 1
-    grid[bottom_y-1][mid_x+1] = 1
+    # Surround with bricks — avoid base footprint
+    grid[bottom_y][mid_x - 1] = 1   # West
+    grid[bottom_y][mid_x + 2] = 1   # East
+    grid[bottom_y - 1][mid_x - 1] = 1   # Northwest
+    grid[bottom_y - 1][mid_x + 2] = 1   # Northeast
+    grid[bottom_y - 2][mid_x - 1] = 1   # Row above
+    grid[bottom_y - 2][mid_x] = 1
+    grid[bottom_y - 2][mid_x + 1] = 1
+    grid[bottom_y - 2][mid_x + 2] = 1
     return grid
 
 
