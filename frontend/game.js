@@ -253,6 +253,51 @@ class GameRenderer {
             // Base eagle is big-type (2×2), dead overlay matches
             this._atlas.draw(ctx, "base.heart.dead", Math.round(bc * cell), Math.round(br * cell), cell * 2, cell * 2);
         }
+
+        // Golden Eagle overlay
+        if (this.state.golden_eagle_ticks > 0 && this.state.base_pos && this.state.result !== "defeat") {
+            const br = this.state.base_pos.row;
+            const bc = this.state.base_pos.col;
+            const bx = Math.round(bc * cell);
+            const by = Math.round(br * cell);
+
+            ctx.save();
+
+            // 1. Draw normal base sprite with gold tint overlay
+            this._atlas.draw(ctx, "base.heart.alive", bx, by, cell * 2, cell * 2);
+            ctx.globalCompositeOperation = "source-atop";  // only paint over opaque pixels
+            ctx.fillStyle = `rgba(255, 200, 0, 0.55)`;
+            ctx.fillRect(bx, by, cell * 2, cell * 2);
+            ctx.globalCompositeOperation = "source-over";
+
+            // 2. Sparkle dots (6 random-phase flashing gold dots)
+            const t = Date.now();
+            ctx.fillStyle = "#FFF"; // Base sparkle color
+            const sparkles = [
+                {x: 0.2, y: 0.2, phase: 0},
+                {x: 0.8, y: 0.3, phase: 1},
+                {x: 0.5, y: 0.1, phase: 2},
+                {x: 0.1, y: 0.7, phase: 3},
+                {x: 0.9, y: 0.8, phase: 4},
+                {x: 0.4, y: 0.9, phase: 5},
+            ];
+            
+            ctx.shadowColor = "#FFD700";
+            ctx.shadowBlur = 4;
+            for (let s of sparkles) {
+                const alpha = (Math.sin(t / 200 + s.phase) + 1) / 2; // 0 to 1
+                if (alpha > 0.5) {
+                    ctx.globalAlpha = alpha;
+                    ctx.beginPath();
+                    ctx.arc(bx + s.x * cell * 2, by + s.y * cell * 2, cell * 0.1, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            ctx.globalAlpha = 1.0;
+            ctx.shadowBlur = 0;
+
+            ctx.restore();
+        }
         
         // Rainbow Trails - continuous gradient
         if (this.state.rainbow_trails) {
@@ -578,7 +623,7 @@ class GameRenderer {
     const gridC = Math.round(x / sz);
     const gridR = Math.round(y / sz);
 
-    if (tid === 6 || tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 32 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 36)) {
+    if (tid === 6 || tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 32 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 41)) {
         ctx.save();
         const centerX = dx + (gridC % 2 === 0 ? ds : 0);
         const centerY = dy + (gridR % 2 === 0 ? ds : 0);
@@ -826,6 +871,165 @@ class GameRenderer {
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🐥", 0, ds * 0.1);
+        } else if (tid >= 38 && tid <= 40) {
+            // Money glass box — gold, big-type centered at (0,0)
+            ctx.fillStyle = "rgba(255, 215, 0, 0.2)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+
+            // Animated shine sweep
+            const cycle = ((Date.now() + 1500) % 2000) / 2000;
+            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
+            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
+            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
+            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.7)");
+            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+
+            // Inner border & 3D edges
+            ctx.strokeStyle = "rgba(255,255,255,0.6)";
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-ds + 3, -ds + 3, ds * 2 - 6, ds * 2 - 6);
+            ctx.strokeStyle = "rgba(255,255,255,0.9)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds);
+            ctx.stroke();
+            ctx.strokeStyle = "rgba(0,0,0,0.4)";
+            ctx.beginPath();
+            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds);
+            ctx.stroke();
+
+            // Rotating $ icon centered at (0,0)
+            ctx.save();
+            const rotateScale = Math.cos(Date.now() / 300);
+            ctx.scale(rotateScale, 1);
+            ctx.font = `bold ${ds * 1.5}px "Segoe UI", Arial, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "#FFD700"; // Gold color
+            ctx.shadowColor = "#B8860B"; // Dark goldenrod
+            ctx.shadowOffsetX = 1;
+            ctx.shadowOffsetY = 1;
+            ctx.shadowBlur = 2;
+            ctx.fillText("$", 0, ds * 0.05);
+            ctx.restore();
+
+            // Cracks
+            ctx.strokeStyle = "rgba(255,255,255,0.9)";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            if (tid <= 39) {
+                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
+            }
+            if (tid === 38) {
+                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
+                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
+            }
+            ctx.stroke();
+        } else if (tid === 37) {
+            // Money Pad (just the rotating $)
+            ctx.save();
+            const rotateScale = Math.cos(Date.now() / 300);
+            ctx.scale(rotateScale, 1);
+            ctx.font = `bold ${ds * 1.5}px "Segoe UI", Arial, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "#FFD700";
+            ctx.shadowColor = "#B8860B";
+            ctx.shadowBlur = 4;
+            ctx.fillText("$", 0, ds * 0.05);
+            ctx.restore();
+        } else if (tid === 41) {
+            // Golden shiny bricks
+            ctx.fillStyle = "#D4AF37"; // Goldenrod base
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            
+            ctx.strokeStyle = "#8B6508"; // Dark golden mortar
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            const rowH = ds * 0.5;
+            // Horizontal lines
+            for (let i = 1; i < 4; i++) {
+                ctx.moveTo(-ds, -ds + i * rowH);
+                ctx.lineTo(ds, -ds + i * rowH);
+            }
+            // Vertical lines
+            for (let i = 0; i < 4; i++) {
+                const y1 = -ds + i * rowH;
+                const y2 = y1 + rowH;
+                if (i % 2 === 0) {
+                    // Middle line
+                    ctx.moveTo(0, y1); ctx.lineTo(0, y2);
+                } else {
+                    // Staggered lines
+                    ctx.moveTo(-ds * 0.5, y1); ctx.lineTo(-ds * 0.5, y2);
+                    ctx.moveTo(ds * 0.5, y1); ctx.lineTo(ds * 0.5, y2);
+                }
+            }
+            ctx.stroke();
+            
+            // Add highlights to each brick for 3D shiny effect
+            ctx.strokeStyle = "rgba(255, 255, 200, 0.8)";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            for (let i = 0; i < 4; i++) {
+                const y = -ds + i * rowH;
+                if (i % 2 === 0) {
+                    // Brick 1: -ds to 0
+                    ctx.moveTo(-ds + 1, y + 1); ctx.lineTo(-1, y + 1);
+                    ctx.moveTo(-ds + 1, y + 1); ctx.lineTo(-ds + 1, y + rowH - 1);
+                    // Brick 2: 0 to ds
+                    ctx.moveTo(1, y + 1); ctx.lineTo(ds - 1, y + 1);
+                    ctx.moveTo(1, y + 1); ctx.lineTo(1, y + rowH - 1);
+                } else {
+                    // Brick 1: -ds to -ds*0.5
+                    ctx.moveTo(-ds + 1, y + 1); ctx.lineTo(-ds * 0.5 - 1, y + 1);
+                    ctx.moveTo(-ds + 1, y + 1); ctx.lineTo(-ds + 1, y + rowH - 1);
+                    // Brick 2: -ds*0.5 to ds*0.5
+                    ctx.moveTo(-ds * 0.5 + 1, y + 1); ctx.lineTo(ds * 0.5 - 1, y + 1);
+                    ctx.moveTo(-ds * 0.5 + 1, y + 1); ctx.lineTo(-ds * 0.5 + 1, y + rowH - 1);
+                    // Brick 3: ds*0.5 to ds
+                    ctx.moveTo(ds * 0.5 + 1, y + 1); ctx.lineTo(ds - 1, y + 1);
+                    ctx.moveTo(ds * 0.5 + 1, y + 1); ctx.lineTo(ds * 0.5 + 1, y + rowH - 1);
+                }
+            }
+            ctx.stroke();
+            
+            // Shadow on bottom/right of each brick
+            ctx.strokeStyle = "rgba(184, 134, 11, 0.6)";
+            ctx.beginPath();
+            for (let i = 0; i < 4; i++) {
+                const y2 = -ds + (i + 1) * rowH;
+                if (i % 2 === 0) {
+                    ctx.moveTo(-ds + 1, y2 - 1); ctx.lineTo(-1, y2 - 1);
+                    ctx.moveTo(-1, -ds + i * rowH + 1); ctx.lineTo(-1, y2 - 1);
+                    
+                    ctx.moveTo(1, y2 - 1); ctx.lineTo(ds - 1, y2 - 1);
+                    ctx.moveTo(ds - 1, -ds + i * rowH + 1); ctx.lineTo(ds - 1, y2 - 1);
+                } else {
+                    ctx.moveTo(-ds + 1, y2 - 1); ctx.lineTo(-ds * 0.5 - 1, y2 - 1);
+                    ctx.moveTo(-ds * 0.5 - 1, -ds + i * rowH + 1); ctx.lineTo(-ds * 0.5 - 1, y2 - 1);
+                    
+                    ctx.moveTo(-ds * 0.5 + 1, y2 - 1); ctx.lineTo(ds * 0.5 - 1, y2 - 1);
+                    ctx.moveTo(ds * 0.5 - 1, -ds + i * rowH + 1); ctx.lineTo(ds * 0.5 - 1, y2 - 1);
+                    
+                    ctx.moveTo(ds * 0.5 + 1, y2 - 1); ctx.lineTo(ds - 1, y2 - 1);
+                    ctx.moveTo(ds - 1, -ds + i * rowH + 1); ctx.lineTo(ds - 1, y2 - 1);
+                }
+            }
+            ctx.stroke();
+
+            // Animated glint sweep across the whole block
+            const cycle = ((Date.now() + x * 2 + y * 2) % 2000) / 2000;
+            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
+            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
+            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
+            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.6)");
+            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
         } else if (tid === 6) {
             // Base eagle — big-type (2×2)
             this._atlas.draw(ctx, "base.heart.alive", -ds, -ds, ds * 2, ds * 2);

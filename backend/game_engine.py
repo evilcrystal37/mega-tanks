@@ -81,6 +81,13 @@ class GameEngine:
         # Dropped items (reserved for future use)
         self.items: List[dict] = []
 
+        # Golden Eagle effect
+        self.golden_eagle_ticks: int = 0
+        self._money_spawn_timer: int = random.randint(600, 1200)   # 10–20s initial delay
+        self._money_tile_pos: Optional[tuple[int, int]] = None     # (top-left row, col) when active
+        self._money_tile_timer: int = 0
+        self._saved_eagle_tiles: Dict[tuple[int, int], int] = {}
+
         # Events to broadcast
         self.events: List[dict] = []
 
@@ -374,6 +381,17 @@ class GameEngine:
                                 break
                         if not freed:
                             tank.mushroom_ticks = max(0, tank.mushroom_ticks - 600)
+                elif tid == 37:
+                    # Money collected
+                    if tank.is_player:
+                        if self.golden_eagle_ticks == 0:
+                            self._build_golden_arch()
+                        self.golden_eagle_ticks = max(self.golden_eagle_ticks, 0) + 1800  # 30s, stackable
+                        for gr, gc in self._find_box_group(r, c, 37, 37):
+                            self.grid[gr][gc] = 0
+                        self._money_tile_pos = None
+                        self._money_spawn_timer = random.randint(1200, 2400)
+                        self.events.append({"type": "sound", "sound": "powerup-pickup"})
 
             # Apply ticking buffs
             if tank.rainbow_ticks > 0:
@@ -418,6 +436,15 @@ class GameEngine:
 
         # Tick rainbow trails
         self._tick_rainbow_trails()
+
+        # Tick money tile
+        self._tick_money_tile()
+
+        # Golden Eagle effect
+        if self.golden_eagle_ticks > 0:
+            self.golden_eagle_ticks -= 1
+            if self.golden_eagle_ticks == 0:
+                self._remove_golden_arch()
 
         # Check win/loss
         self._check_end_conditions()
@@ -486,6 +513,77 @@ class GameEngine:
                 v["points"] = [p for p in v["points"] if p["tick"] >= cutoff_tick]
         for k in to_delete:
             del self.rainbow_trails[k]
+
+    def _tick_money_tile(self) -> None:
+        if self._money_tile_pos is not None:
+            self._money_tile_timer -= 1
+            if self._money_tile_timer <= 0:
+                # Remove tile
+                r, c = self._money_tile_pos
+                for gr in range(r, r + 2):
+                    for gc in range(c, c + 2):
+                        if 0 <= gr < GRID_HEIGHT and 0 <= gc < GRID_WIDTH and 37 <= self.grid[gr][gc] <= 40:
+                            self.grid[gr][gc] = 0
+                self._money_tile_pos = None
+                self._money_spawn_timer = random.randint(1200, 2400)
+        else:
+            self._money_spawn_timer -= 1
+            if self._money_spawn_timer <= 0:
+                # Find valid 2x2 empty block
+                valid_spots = []
+                base_r, base_c = self._base_pos if self._base_pos else (GRID_HEIGHT - 1, GRID_WIDTH // 2)
+                for r in range(0, GRID_HEIGHT - 1, 2):
+                    for c in range(0, GRID_WIDTH - 1, 2):
+                        # Not too close to base
+                        if abs(r - base_r) < 3 and abs(c - base_c) < 3:
+                            continue
+                        
+                        # Check if 2x2 area is completely empty
+                        is_empty = True
+                        for gr in range(r, r + 2):
+                            for gc in range(c, c + 2):
+                                if self.grid[gr][gc] != 0:
+                                    is_empty = False
+                                    break
+                            if not is_empty:
+                                break
+                                
+                        if is_empty:
+                            valid_spots.append((r, c))
+                            
+                if valid_spots:
+                    spot = random.choice(valid_spots)
+                    self._money_tile_pos = spot
+                    self._money_tile_timer = 1800  # 30 seconds at 60Hz
+                    for gr in range(spot[0], spot[0] + 2):
+                        for gc in range(spot[1], spot[1] + 2):
+                            self.grid[gr][gc] = 40
+                    self.events.append({"type": "sound", "sound": "powerup-appear"})
+                else:
+                    # Retry soon if no spot found
+                    self._money_spawn_timer = 120
+
+    def _build_golden_arch(self) -> None:
+        if not self._base_pos:
+            return
+        base_r, base_c = self._base_pos
+        # Positions around the base (2x2 block top-left coordinates)
+        offsets = [(-2, -2), (-2, 0), (-2, 2), (0, -2), (0, 2)]
+        for dr, dc in offsets:
+            r, c = base_r + dr, base_c + dc
+            for gr in range(r, r + 2):
+                for gc in range(c, c + 2):
+                    if 0 <= gr < GRID_HEIGHT and 0 <= gc < GRID_WIDTH:
+                        if self.grid[gr][gc] != 6 and self.grid[gr][gc] != 41:
+                            self._saved_eagle_tiles[(gr, gc)] = self.grid[gr][gc]
+                            self.grid[gr][gc] = 41
+
+    def _remove_golden_arch(self) -> None:
+        for (gr, gc), original_tid in self._saved_eagle_tiles.items():
+            if 0 <= gr < GRID_HEIGHT and 0 <= gc < GRID_WIDTH:
+                if self.grid[gr][gc] == 41:
+                    self.grid[gr][gc] = original_tid
+        self._saved_eagle_tiles.clear()
 
     def _tick_turrets(self) -> None:
         for t_id, turret in list(self.turrets.items()):
@@ -900,10 +998,13 @@ class GameEngine:
                         player_is_big = (bullet.is_player and self.player and
                                          (self.player.mushroom_ticks > 0 or self.player.is_big))
                         if not player_is_big:
-                            self.grid[r][c] = 0
-                            self._trigger_defeat()
-                    elif bullet.power >= 2 or self.grid[r][c] == 1 or 15 <= self.grid[r][c] <= 17 or 24 <= self.grid[r][c] <= 28 or 29 <= self.grid[r][c] <= 31 or 32 <= self.grid[r][c] <= 35:
-                        # Destroy brick or steel (if power bullet) or glass or mushroom or rainbow or chick
+                            if self.golden_eagle_ticks > 0:
+                                pass
+                            else:
+                                self.grid[r][c] = 0
+                                self._trigger_defeat()
+                    elif bullet.power >= 2 or self.grid[r][c] == 1 or 15 <= self.grid[r][c] <= 17 or 24 <= self.grid[r][c] <= 28 or 29 <= self.grid[r][c] <= 31 or 32 <= self.grid[r][c] <= 35 or 38 <= self.grid[r][c] <= 40:
+                        # Destroy brick or steel (if power bullet) or glass or mushroom or rainbow or chick or money
                         tid = self.grid[r][c]
                         
                         if 15 <= tid <= 16:
@@ -922,6 +1023,11 @@ class GameEngine:
                                 self.grid[gr][gc] -= 1
                                 if self.grid[gr][gc] == 32:
                                     self.grid[gr][gc] = 32
+                            self.events.append({"type": "sound", "sound": "hit-brick"})
+                        elif 38 <= tid <= 40:
+                            # Crack the whole 2×2 money box together: 40→39→38→37
+                            for gr, gc in self._find_box_group(r, c, 38, 40):
+                                self.grid[gr][gc] -= 1
                             self.events.append({"type": "sound", "sound": "hit-brick"})
                         elif tid == 32:
                             # Chick collected
@@ -1356,8 +1462,11 @@ class GameEngine:
                         self._pending_tnt.append((nr, nc, 10, ntile.explosion_radius)) # 10 tick delay (~160ms)
                     elif ntile.destructible:
                         if ntile.is_base:
-                            self.grid[nr][nc] = 0
-                            self._trigger_defeat()
+                            if self.golden_eagle_ticks > 0:
+                                pass
+                            else:
+                                self.grid[nr][nc] = 0
+                                self._trigger_defeat()
                         else:
                             self.grid[nr][nc] = 0
                     
@@ -1478,6 +1587,8 @@ class GameEngine:
                             # Big player tanks cannot accidentally crush their own base
                             if tank.is_player and (tank.mushroom_ticks > 0 or tank.is_big):
                                 pass
+                            elif self.golden_eagle_ticks > 0:
+                                pass
                             else:
                                 self.grid[nr][nc] = 0
                                 self._trigger_defeat()
@@ -1579,6 +1690,7 @@ class GameEngine:
             "bullets": [b.to_dict() for b in self.bullets.values()],
             "explosions": self.explosions,
             "rainbow_trails": self.rainbow_trails,
+            "golden_eagle_ticks": self.golden_eagle_ticks,
             "items": self.items,
             "events": list(self.events),
             "sandworm": {**self.sandworm, "hp": self.sandworm.get("hp", 5)},

@@ -231,6 +231,36 @@ TILE_REGISTRY: Dict[int, TileType] = {
         non_repeating=True,
         explosion_radius=7,
     ),
+    37: TileType(
+        id=37, name="money_pad", label="Money",
+        color="#FFD700",
+        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    38: TileType(
+        id=38, name="money_crack2", label="Money C2",
+        color="#FFD700",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    39: TileType(
+        id=39, name="money_crack1", label="Money C1",
+        color="#FFD700",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    40: TileType(
+        id=40, name="money_box", label="Money Box",
+        color="#FFD700",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    41: TileType(
+        id=41, name="golden_frame", label="Gold Frame",
+        color="#DAA520",
+        tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
 }
 
 

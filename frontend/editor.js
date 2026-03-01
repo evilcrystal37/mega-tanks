@@ -131,8 +131,8 @@ async function _loadTiles() {
     }
     // Cycling skips: Base (6), glass cracks (16, 17),
     // sandworm parts (20, 21), raw item pickups (23, 24, 32 — must stay inside their boxes),
-    // mushroom cracks (26, 27), rainbow cracks (29, 30), chick cracks (33, 34)
-    const NOT_ALLOWED = new Set([6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30, 32, 33, 34]);
+    // mushroom cracks (26, 27), rainbow cracks (29, 30), chick cracks (33, 34), money tiles (37, 38, 39, 40) and golden frame (41)
+    const NOT_ALLOWED = new Set([6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30, 32, 33, 34, 37, 38, 39, 40, 41]);
     const disabled = _getDisabledTileIds();
     tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id) && !disabled.has(t.id)).map(t => t.id);
     // Put empty last so Brick remains the default when opening the editor
@@ -1192,7 +1192,7 @@ export async function refreshMapList() {
 
 // These IDs are rendered as a 2×2 big block by _drawTileDetail.
 // To show the full sprite in a square preview, we draw all four quadrants.
-const _BIG_TILE_IDS = new Set([6, 14, 18, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]);
+const _BIG_TILE_IDS = new Set([6, 14, 18, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]);
 
 /**
  * Draw a single tile into `ctx` at (0,0) filling `canvasSize` px.
@@ -1229,7 +1229,7 @@ export function renderTilePreview(ctx, tileId, canvasSize) {
  * Synchronous — no API call needed because `tiles` is already cached.
  */
 export function refreshTileFilter() {
-    const NOT_ALLOWED = new Set([6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30, 32, 33, 34]);
+    const NOT_ALLOWED = new Set([6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30, 32, 33, 34, 37, 38, 39, 40, 41]);
     const disabled = _getDisabledTileIds();
     tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id) && !disabled.has(t.id)).map(t => t.id);
     tileIds.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
