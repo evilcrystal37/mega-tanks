@@ -12,14 +12,10 @@ from pydantic import BaseModel, Field
 
 from .map_model import Map
 from .map_store import save_map, load_map, list_maps, delete_map
+from .session_store import session_store
 from .tile_registry import all_tiles, TILE_REGISTRY
 
 router = APIRouter()
-
-# Active game engines stored globally (keyed by session id)
-# In a production app you'd use a proper session store
-_active_engines: Dict[str, Any] = {}
-
 
 # ---------------------------------------------------------------------------
 # Schemas
@@ -150,7 +146,7 @@ async def start_game(payload: StartGamePayload):
 
     settings_dict = payload.settings.model_dump() if payload.settings else None
     engine = GameEngine(map_obj=m, mode_name=payload.mode, settings=settings_dict)
-    _active_engines[payload.session_id] = engine
+    session_store.set_engine(payload.session_id, engine)
     await engine.start()
     speed = engine.player.speed if engine.player else None
     lives = engine.player_lives
@@ -162,7 +158,7 @@ async def start_game(payload: StartGamePayload):
 @router.post("/api/game/stop")
 def stop_game(session_id: str = "default"):
     """Stop a running game session."""
-    engine = _active_engines.pop(session_id, None)
+    engine = session_store.pop_engine(session_id)
     if engine:
         engine.stop()
         return {"stopped": True}
@@ -170,4 +166,4 @@ def stop_game(session_id: str = "default"):
 
 
 def get_engine(session_id: str = "default") -> Optional[Any]:
-    return _active_engines.get(session_id)
+    return session_store.get_engine(session_id)

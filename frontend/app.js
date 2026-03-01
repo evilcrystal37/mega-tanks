@@ -6,6 +6,7 @@
 
 import { initEditor, focusEditor, blurEditor, refreshMapList, getCurrentMapName, resizeEditor, saveMapAs, launchWithFilteredGrid, refreshTileFilter, applyDisabledTilesToCurrentGrid, renderTilePreview } from "./editor.js";
 import { gameRenderer } from "./game.js";
+import { TILE_TOGGLES } from "./constants.js";
 
 const titleScreen       = document.getElementById("title-screen");
 const editorScreen      = document.getElementById("editor-screen");
@@ -97,28 +98,6 @@ const SETTINGS_DEF = [
             { key: "spawn_interval",     label: "SPAWN INTERVAL", min: 10, max: 600, step: 10, def: 90,  fmt: v => (+v / 60).toFixed(1) + "s" },
         ]
     },
-];
-
-// ── Tile toggles ──────────────────────────────────────────────────────
-
-const TILE_TOGGLES = [
-    { key: "tile_brick",        label: "BRICK",     ids: [1],             color: "#c0522a" },
-    { key: "tile_steel",        label: "STEEL",     ids: [2],             color: "#7a8fa6" },
-    { key: "tile_water",        label: "WATER",     ids: [3],             color: "#1565c0" },
-    { key: "tile_forest",       label: "FOREST",    ids: [4],             color: "#2e7d32" },
-    { key: "tile_ice",          label: "ICE",       ids: [5],             color: "#80deea" },
-    { key: "tile_lava",         label: "LAVA",      ids: [7],             color: "#ff3300" },
-    { key: "tile_conveyor",     label: "CONVEYOR",  ids: [8, 9, 10, 11], color: "#555555" },
-    { key: "tile_mud",          label: "SAND",      ids: [12],            color: "#c8a84b" },
-    { key: "tile_ramp",         label: "RAMP",      ids: [13],            color: "#ff9800" },
-    { key: "tile_tnt",          label: "TNT",       ids: [14],            color: "#d32f2f" },
-    { key: "tile_glass",        label: "GLASS",     ids: [15],            color: "#aaddff" },
-    { key: "tile_sunflower",    label: "SUNFLWR",   ids: [18],            color: "#ffeb3b" },
-    { key: "tile_turret",       label: "TURRET",    ids: [25],            color: "#607d8b" },
-    { key: "tile_mushroom_box", label: "MUSH BOX",  ids: [28],            color: "#8bc34a" },
-    { key: "tile_rainbow_box",  label: "RAINBOW",   ids: [31],            color: "#ff69b4" },
-    { key: "tile_chick_box",    label: "CHICK BOX", ids: [35],            color: "#ffee58" },
-    { key: "tile_spec_tnt",     label: "SPEC TNT",  ids: [36],            color: "#ff6600" },
 ];
 
 const TILE_SETTINGS_KEY = "battle_tanks_tile_settings";

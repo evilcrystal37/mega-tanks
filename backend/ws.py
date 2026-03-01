@@ -19,7 +19,7 @@ import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from .api import get_engine
+from .session_store import session_store
 
 ws_router = APIRouter()
 
@@ -28,7 +28,7 @@ ws_router = APIRouter()
 async def game_websocket(websocket: WebSocket, session_id: str = "default"):
     await websocket.accept()
 
-    engine = get_engine(session_id)
+    engine = session_store.get_engine(session_id)
     if engine is None:
         await websocket.send_json({"type": "error", "message": "No active game session. Start a game first via POST /api/game/start."})
         await websocket.close()
@@ -44,6 +44,8 @@ async def game_websocket(websocket: WebSocket, session_id: str = "default"):
             pass  # drop frame if client is slow
 
     engine.subscribe(on_state)
+    # Ensure newly connected clients always receive a full grid snapshot first.
+    send_queue.put_nowait({"type": "state", **engine._build_state(force_full_grid=True)})
 
     # Send task: forward queued states to client
     async def sender():

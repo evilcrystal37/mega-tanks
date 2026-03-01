@@ -8,8 +8,8 @@ from backend.map_model import Map, GRID_WIDTH, GRID_HEIGHT
 def test_default_map_is_valid():
     m = Map(name="test")
     assert m.is_valid()
-    # Default base is at (20, 16) for 33x21 grid
-    assert m.find_base() == (20, 16)
+    # Default base is at bottom center for 42x64 grid.
+    assert m.find_base() == (41, 32)
 
 
 def test_custom_empty_map_invalid():

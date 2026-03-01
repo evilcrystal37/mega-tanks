@@ -4,10 +4,10 @@
 
 import { Api } from "./api.js";
 import { SpriteAtlas } from "./spriteAtlas.js";
+import { CELL, GRID_H, GRID_W, TILE_GROUPS } from "./constants.js";
+import { drawSandTile } from "./tileRenderer.js";
+import { computeViewport, getCellZoom, resizeCanvas } from "./viewport.js";
 
-const GRID_W = 64;
-const GRID_H = 42;
-const CELL = 32;
 const BRUSH_SIZE = 2; // 2x2 tiles (4 tiles at once)
 
 // State
@@ -29,7 +29,6 @@ let _cell = CELL;
 const canvas = document.getElementById("editor-canvas");
 const ctx = canvas.getContext("2d");
 ctx.imageSmoothingEnabled = false;
-const tileName = document.getElementById("sb-tile-name");
 const nameInput = document.getElementById("map-name-input");
 const valBanner = document.getElementById("validation-banner");
 const launchBtn = document.getElementById("btn-launch-play");
@@ -80,31 +79,11 @@ function _initGrid() {
 
 // Tile groups used by both palette filtering and map generator.
 // Must mirror TILE_TOGGLES in app.js (uses same localStorage key).
-const _TILE_GROUPS = {
-    tile_brick:        [1],
-    tile_steel:        [2],
-    tile_water:        [3],
-    tile_forest:       [4],
-    tile_ice:          [5],
-    tile_lava:         [7],
-    tile_conveyor:     [8, 9, 10, 11],
-    tile_mud:          [12],
-    tile_ramp:         [13],
-    tile_tnt:          [14],
-    tile_glass:        [15],
-    tile_sunflower:    [18],
-    tile_turret:       [25],
-    tile_mushroom_box: [28],
-    tile_rainbow_box:  [31],
-    tile_chick_box:    [35],
-    tile_spec_tnt:     [36],
-};
-
 function _getDisabledTileIds() {
     try {
         const stored = JSON.parse(localStorage.getItem("battle_tanks_tile_settings") ?? "{}");
         const disabled = new Set();
-        for (const [key, ids] of Object.entries(_TILE_GROUPS)) {
+        for (const [key, ids] of Object.entries(TILE_GROUPS)) {
             if (stored[key] === false) ids.forEach(id => disabled.add(id));
         }
         return disabled;
@@ -138,7 +117,6 @@ async function _loadTiles() {
     // Put empty last so Brick remains the default when opening the editor
     tileIds.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
     tileIndex = 0;
-    _updateStatusBar();
 }
 
 function _currentTileId() {
@@ -146,39 +124,20 @@ function _currentTileId() {
 }
 
 
-function _updateStatusBar() {
-    const cur = tiles.find(t => t.id === _currentTileId());
-    if (tileName) tileName.textContent = cur ? cur.label.toUpperCase() : "BRICK";
-}
-
 // ── Canvas ────────────────────────────────────────────────────────────
 
 function _resize() {
-    const wrap = canvas.parentElement;
-    const maxW = Math.max(1, wrap?.clientWidth ?? 800);
-    const maxH = Math.max(1, wrap?.clientHeight ?? 600);
     const zoom = _getCellZoom();
-    const naturalCell = Math.min(maxW / GRID_W, maxH / GRID_H);
-    _cell = Math.max(1, Math.round(naturalCell * zoom));
-
-    // Ensure canvas dimensions are exact multiples of the cell size
-    const adjustedW = Math.floor(maxW / _cell) * _cell;
-    const adjustedH = Math.floor(maxH / _cell) * _cell;
-
-    canvas.width = adjustedW;
-    canvas.height = adjustedH;
-    canvas.style.width = `${adjustedW}px`;
-    canvas.style.height = `${adjustedH}px`;
+    const sized = resizeCanvas(canvas, GRID_W, GRID_H, zoom);
+    _cell = sized.cell;
+    canvas.width = sized.width;
+    canvas.height = sized.height;
+    canvas.style.width = `${sized.width}px`;
+    canvas.style.height = `${sized.height}px`;
 }
 
 function _getCellZoom() {
-    try {
-        const raw = JSON.parse(localStorage.getItem("battle_tanks_settings") ?? "{}");
-        const z = parseFloat(raw?.cell_zoom ?? 2.0);
-        return Number.isFinite(z) ? z : 2.0;
-    } catch {
-        return 2.0;
-    }
+    return getCellZoom("battle_tanks_settings", 2.0);
 }
 
 // ── Render ────────────────────────────────────────────────────────────
@@ -197,16 +156,15 @@ function _render(ts = 0) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const cell = _cell || CELL;
-    const visW = canvas.width / cell;
-    const visH = canvas.height / cell;
-    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-    const vpLeft = visW >= GRID_W ? (GRID_W - visW) / 2 : clamp(cursorCol + BRUSH_SIZE / 2 - visW / 2, 0, GRID_W - visW);
-    const vpTop = visH >= GRID_H ? (GRID_H - visH) / 2 : clamp(cursorRow + BRUSH_SIZE / 2 - visH / 2, 0, GRID_H - visH);
-
-    const startC = Math.max(0, Math.floor(vpLeft));
-    const endC = Math.min(GRID_W - 1, Math.ceil(vpLeft + visW));
-    const startR = Math.max(0, Math.floor(vpTop));
-    const endR = Math.min(GRID_H - 1, Math.ceil(vpTop + visH));
+    const { vpLeft, vpTop, startC, endC, startR, endR } = computeViewport(
+        cursorRow + BRUSH_SIZE / 2,
+        cursorCol + BRUSH_SIZE / 2,
+        canvas.width,
+        canvas.height,
+        cell,
+        GRID_W,
+        GRID_H
+    );
 
     ctx.save();
     ctx.translate(Math.round(-vpLeft * cell), Math.round(-vpTop * cell));
@@ -265,64 +223,7 @@ function _render(ts = 0) {
     requestAnimationFrame(_render);
 }
 
-function _drawSandTile(ctx, dx, dy, ds) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(dx, dy, ds, ds);
-    ctx.clip();
-
-    ctx.fillStyle = "#d4bc8e";
-    ctx.fillRect(dx, dy, ds, ds);
-
-    const cx = dx + ds / 2;
-    const cy = dy + ds / 2;
-    ctx.translate(cx, cy);
-    ctx.rotate(-0.56);
-    ctx.translate(-cx, -cy);
-
-    const numBands = 7;
-    const bandH = ds * 1.8 / numBands;
-    const origin = dy - ds * 0.4;
-    const left   = dx - ds * 0.4;
-    const right  = dx + ds * 1.4;
-    const steps  = Math.max(8, Math.ceil(ds * 1.8));
-
-    for (let i = 0; i < numBands + 1; i++) {
-        const y0 = origin + i * bandH;
-        const wave = (x, yBase) =>
-            yBase + Math.sin(((x - left) / (right - left)) * Math.PI * 2.5) * bandH * 0.18;
-
-        ctx.fillStyle = "rgba(168,130,72,0.38)";
-        ctx.beginPath();
-        ctx.moveTo(left, wave(left, y0));
-        for (let s = 1; s <= steps; s++) {
-            const x = left + (s / steps) * (right - left);
-            ctx.lineTo(x, wave(x, y0));
-        }
-        for (let s = steps; s >= 0; s--) {
-            const x = left + (s / steps) * (right - left);
-            ctx.lineTo(x, wave(x, y0) + bandH * 0.42);
-        }
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.fillStyle = "rgba(255,242,200,0.22)";
-        ctx.beginPath();
-        ctx.moveTo(left, wave(left, y0) + bandH * 0.42);
-        for (let s = 1; s <= steps; s++) {
-            const x = left + (s / steps) * (right - left);
-            ctx.lineTo(x, wave(x, y0) + bandH * 0.42);
-        }
-        for (let s = steps; s >= 0; s--) {
-            const x = left + (s / steps) * (right - left);
-            ctx.lineTo(x, wave(x, y0) + bandH * 0.78);
-        }
-        ctx.closePath();
-        ctx.fill();
-    }
-
-    ctx.restore();
-}
+function _drawSandTile(ctx, dx, dy, ds) { drawSandTile(ctx, dx, dy, ds); }
 
 function _drawTileDetail(ctx, tid, x, y, sz) {
     if (tid === 0) return; // Empty tile — nothing to draw
@@ -1085,7 +986,6 @@ function _handleKey(ev) {
             if (lastPlacedRow === cursorRow && lastPlacedCol === cursorCol) {
                 tileIndex = (tileIndex + 1) % tileIds.length;
             }
-            _updateStatusBar();
             _applyBrush(_currentTileId());
             lastPlacedRow = cursorRow;
             lastPlacedCol = cursorCol;
@@ -1095,7 +995,6 @@ function _handleKey(ev) {
             if (lastPlacedRow === cursorRow && lastPlacedCol === cursorCol) {
                 tileIndex = (tileIndex - 1 + tileIds.length) % tileIds.length;
             }
-            _updateStatusBar();
             _applyBrush(_currentTileId());
             lastPlacedRow = cursorRow;
             lastPlacedCol = cursorCol;
@@ -1230,7 +1129,6 @@ export function refreshTileFilter() {
     tileIds.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
     // Keep tileIndex in bounds after the list shrinks/grows
     tileIndex = Math.min(tileIndex, Math.max(0, tileIds.length - 1));
-    _updateStatusBar();
 }
 
 /** Replace any currently-disabled tiles on the live grid with empty. */
@@ -1272,3 +1170,19 @@ async function _loadMap(name) {
         alert("LOAD FAILED: " + e.message);
     }
 }
+
+// Transitional class wrapper around editor module behavior.
+export class MapEditor {
+    async init() { await initEditor(); }
+    focus() { focusEditor(); }
+    blur() { blurEditor(); }
+    resize() { resizeEditor(); }
+    getGrid() { return getCurrentGrid(); }
+    getMapName() { return getCurrentMapName(); }
+    async saveAs(name) { return await saveMapAs(name); }
+    async launchWithFilteredGrid() { return await launchWithFilteredGrid(); }
+    refreshTileFilter() { refreshTileFilter(); }
+    applyDisabledTilesToCurrentGrid() { applyDisabledTilesToCurrentGrid(); }
+}
+
+export const mapEditor = new MapEditor();

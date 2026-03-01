@@ -6,90 +6,17 @@ import { Api, GameSocket } from "./api.js";
 import { Hud } from "./hud.js";
 import { SpriteAtlas } from "./spriteAtlas.js";
 import { audioManager } from "./audio.js";
+import { CELL, GRID_H, GRID_W } from "./constants.js";
+import { GameInput } from "./gameInput.js";
+import { GameStateStore } from "./gameState.js";
+import { renderBullets, renderExplosions } from "./effectRenderer.js";
+import { renderTanks } from "./tankRenderer.js";
+import { drawSandTile } from "./tileRenderer.js";
+import { computeViewport, getCellZoom, resizeCanvas } from "./viewport.js";
 
-const GRID_W = 64;
-const GRID_H = 42;
-const CELL = 32;
+const FALLBACK_TILE_COLORS = {};
 
-const TILE_COLORS = {
-    0: "#000000",
-    1: "#a83800", // Brick
-    2: "#9c9c9c", // Steel
-    3: "#0000ff", // Water
-    4: "#00a800", // Forest
-    5: "#80deea", // Ice
-    6: "#000000", // Base
-};
-
-/**
- * Draw a sand/quicksand tile with diagonal dune ripple pattern.
- * Matches the diagonal sinusoidal wave look of real desert sand.
- */
-function _drawSandTile(ctx, dx, dy, ds) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(dx, dy, ds, ds);
-    ctx.clip();
-
-    // Warm sandy base
-    ctx.fillStyle = "#d4bc8e";
-    ctx.fillRect(dx, dy, ds, ds);
-
-    // Rotate canvas ~32° around tile centre to produce diagonal waves
-    const cx = dx + ds / 2;
-    const cy = dy + ds / 2;
-    ctx.translate(cx, cy);
-    ctx.rotate(-0.56); // ≈ 32°
-    ctx.translate(-cx, -cy);
-
-    // How many wave bands across the (now rotated) tile
-    const numBands = 7;
-    const bandH = ds * 1.8 / numBands; // larger to cover rotated corners
-    const origin = dy - ds * 0.4;      // start above tile to cover corners
-    const left   = dx - ds * 0.4;
-    const right  = dx + ds * 1.4;
-    const steps  = Math.max(8, Math.ceil(ds * 1.8)); // horizontal sample points
-
-    for (let i = 0; i < numBands + 1; i++) {
-        const y0 = origin + i * bandH;
-
-        // Wave function: gentle sine ripple along the band
-        const wave = (x, yBase) =>
-            yBase + Math.sin(((x - left) / (right - left)) * Math.PI * 2.5) * bandH * 0.18;
-
-        // ── Dark trough (shadow between crests) ─────────────────────────
-        ctx.fillStyle = "rgba(168,130,72,0.38)";
-        ctx.beginPath();
-        ctx.moveTo(left, wave(left, y0));
-        for (let s = 1; s <= steps; s++) {
-            const x = left + (s / steps) * (right - left);
-            ctx.lineTo(x, wave(x, y0));
-        }
-        for (let s = steps; s >= 0; s--) {
-            const x = left + (s / steps) * (right - left);
-            ctx.lineTo(x, wave(x, y0) + bandH * 0.42);
-        }
-        ctx.closePath();
-        ctx.fill();
-
-        // ── Light crest (sunlit peak) ────────────────────────────────────
-        ctx.fillStyle = "rgba(255,242,200,0.22)";
-        ctx.beginPath();
-        ctx.moveTo(left, wave(left, y0) + bandH * 0.42);
-        for (let s = 1; s <= steps; s++) {
-            const x = left + (s / steps) * (right - left);
-            ctx.lineTo(x, wave(x, y0) + bandH * 0.42);
-        }
-        for (let s = steps; s >= 0; s--) {
-            const x = left + (s / steps) * (right - left);
-            ctx.lineTo(x, wave(x, y0) + bandH * 0.78);
-        }
-        ctx.closePath();
-        ctx.fill();
-    }
-
-    ctx.restore();
-}
+function _drawSandTile(ctx, dx, dy, ds) { drawSandTile(ctx, dx, dy, ds); }
 
 class GameRenderer {
     constructor() {
@@ -106,6 +33,13 @@ class GameRenderer {
         this._lastInput = { direction: null, fire: false };
         this._explosions = [];
         this._cell = null;
+        this._gridCache = null;
+        this._tileColors = { ...FALLBACK_TILE_COLORS };
+        this.stateStore = new GameStateStore();
+        this.gameInput = new GameInput(
+            () => this._sendInput(),
+            () => this.socket?.sendPause()
+        );
 
         this._atlas = new SpriteAtlas();
     }
@@ -115,9 +49,17 @@ class GameRenderer {
         this.hud.setMapName(mapName);
         this.hud.reset();
         this._explosions = [];
+        this._gridCache = null;
+        this.stateStore.reset();
 
         this._resize();
         await this._atlas.ready();
+        try {
+            const tiles = await Api.getTiles();
+            this._tileColors = Object.fromEntries(tiles.map(t => [t.id, t.color]));
+        } catch {
+            this._tileColors = { ...FALLBACK_TILE_COLORS };
+        }
 
         await Api.startGame(mapName, "construction_play", sessionId, settings);
 
@@ -139,14 +81,15 @@ class GameRenderer {
 
     _onState(rawState) {
         const prev = this.state;
-        this.state = rawState;
+        const { state } = this.stateStore.apply(rawState);
+        this._explosions = this.stateStore.explosions;
+        this.state = state;
 
         this.hud.update(rawState);
 
         if (rawState.events && rawState.events.length > 0) {
             rawState.events.forEach(ev => {
                 if (ev.type === "sound") {
-                    console.log("PLAYING SOUND:", ev.sound);
                     audioManager.play(ev.sound);
                 }
             });
@@ -164,35 +107,19 @@ class GameRenderer {
     }
 
     _resize() {
-        const wrap = this.canvas.parentElement;
-        const maxW = Math.max(1, wrap?.clientWidth ?? 800);
-        const maxH = Math.max(1, wrap?.clientHeight ?? 600);
-
-        // "Natural" cell size that would show the full map inside the container,
-        // then apply a zoom multiplier to make tiles larger and enable camera scrolling.
         const zoom = this._getCellZoom();
-        const naturalCell = Math.min(maxW / GRID_W, maxH / GRID_H);
-        this._cell = Math.max(1, Math.round(naturalCell * zoom));
-
-        // Ensure canvas dimensions are exact multiples of the cell size
-        const adjustedW = Math.floor(maxW / this._cell) * this._cell;
-        const adjustedH = Math.floor(maxH / this._cell) * this._cell;
+        const sized = resizeCanvas(this.canvas, GRID_W, GRID_H, zoom);
+        this._cell = sized.cell;
 
         // Canvas fills the container 1:1 (no CSS down-scaling).
-        this.canvas.width = adjustedW;
-        this.canvas.height = adjustedH;
-        this.canvas.style.width = `${adjustedW}px`;
-        this.canvas.style.height = `${adjustedH}px`;
+        this.canvas.width = sized.width;
+        this.canvas.height = sized.height;
+        this.canvas.style.width = `${sized.width}px`;
+        this.canvas.style.height = `${sized.height}px`;
     }
 
     _getCellZoom() {
-        try {
-            const raw = JSON.parse(localStorage.getItem("battle_tanks_settings") ?? "{}");
-            const z = parseFloat(raw?.cell_zoom ?? 2.0);
-            return Number.isFinite(z) ? z : 2.0;
-        } catch {
-            return 2.0;
-        }
+        return getCellZoom("battle_tanks_settings", 2.0);
     }
 
     _startLoop() {
@@ -216,21 +143,18 @@ class GameRenderer {
         if (!this.state) return;
 
         const cell = this._cell ?? CELL;
-        const visW = this.canvas.width / cell;
-        const visH = this.canvas.height / cell;
-
         const focus = this.state.player && this.state.player.alive
             ? { row: this.state.player.row, col: this.state.player.col }
             : { row: GRID_H / 2, col: GRID_W / 2 };
-
-        const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-        const vpLeft = visW >= GRID_W ? (GRID_W - visW) / 2 : clamp(focus.col - visW / 2, 0, GRID_W - visW);
-        const vpTop = visH >= GRID_H ? (GRID_H - visH) / 2 : clamp(focus.row - visH / 2, 0, GRID_H - visH);
-
-        const startC = Math.max(0, Math.floor(vpLeft));
-        const endC = Math.min(GRID_W - 1, Math.ceil(vpLeft + visW));
-        const startR = Math.max(0, Math.floor(vpTop));
-        const endR = Math.min(GRID_H - 1, Math.ceil(vpTop + visH));
+        const { vpLeft, vpTop, startC, endC, startR, endR } = computeViewport(
+            focus.row,
+            focus.col,
+            this.canvas.width,
+            this.canvas.height,
+            cell,
+            GRID_W,
+            GRID_H
+        );
 
         const grid = this.state.grid ?? [];
 
@@ -357,28 +281,8 @@ class GameRenderer {
             ctx.globalAlpha = 1.0;
         }
 
-        // Bullets
-        (this.state.bullets ?? []).forEach(b => {
-            const x = b.col * cell;
-            const y = b.row * cell;
-            ctx.fillStyle = b.is_player ? "#ffffff" : "#ff4444";
-            const sz = b.crush_bricks ? Math.max(4, cell * 0.4) : Math.max(2, cell * 0.18);
-            ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz);
-        });
-
-        // Tanks
-        if (this.state.player) {
-            this._drawTank(ctx, this.state.player, cell, true);
-        }
-        if (this.state.companion) {
-            this._drawTank(ctx, this.state.companion, cell, true);
-        }
-        (this.state.turrets ?? []).forEach(t => {
-            this._drawTank(ctx, t, cell, true);
-        });
-        (this.state.enemies ?? []).forEach(e => {
-            this._drawTank(ctx, e, cell, false);
-        });
+        renderBullets(ctx, this.state, cell);
+        renderTanks(this, ctx, this.state, cell);
 
     // Top layers: Forest and Sunflower
     for (let r = startR; r <= endR; r++) {
@@ -394,10 +298,7 @@ class GameRenderer {
         }
     }
 
-        // Explosions
-        (this.state.explosions ?? []).forEach(exp => {
-            this._drawExplosion(ctx, exp, cell);
-        });
+        renderExplosions(this, ctx, this.state, cell);
 
         // Sandworm
         if (this.state.sandworm && this.state.sandworm.active) {
@@ -1260,7 +1161,7 @@ class GameRenderer {
         return;
     }
 
-    ctx.fillStyle = TILE_COLORS[tid] || "#000";
+    ctx.fillStyle = this._tileColors[tid] || "#000";
     ctx.fillRect(dx, dy, ds, ds);
 }
 
@@ -1726,36 +1627,13 @@ class GameRenderer {
         ctx.restore();
     }
 
-    _bindInput() {
-        this._keydown = (ev) => {
-            if (ev.code === "Enter" && !this._keysDown.has(ev.code)) {
-                this.socket?.sendPause();
-            }
-            this._keysDown.add(ev.code);
-            this._sendInput();
-        };
-        this._keyup = (ev) => {
-            this._keysDown.delete(ev.code);
-            this._sendInput();
-        };
-        window.addEventListener("keydown", this._keydown);
-        window.addEventListener("keyup", this._keyup);
-    }
+    _bindInput() { this.gameInput.bind(); }
 
-    _unbindInput() {
-        window.removeEventListener("keydown", this._keydown);
-        window.removeEventListener("keyup", this._keyup);
-    }
+    _unbindInput() { this.gameInput.unbind(); }
 
     _sendInput() {
-        const k = this._keysDown;
-        let dir = null;
-        if (k.has("ArrowUp") || k.has("KeyW")) dir = "up";
-        else if (k.has("ArrowDown") || k.has("KeyS")) dir = "down";
-        else if (k.has("ArrowLeft") || k.has("KeyA")) dir = "left";
-        else if (k.has("ArrowRight") || k.has("KeyD")) dir = "right";
-
-        const fire = k.has("KeyX") || k.has("KeyC");
+        const dir = this.gameInput.getDirection();
+        const fire = this.gameInput.isFiring();
 
         if (dir !== this._lastInput.direction || fire !== this._lastInput.fire) {
             this._lastInput = { direction: dir, fire };

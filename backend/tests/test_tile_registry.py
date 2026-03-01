@@ -13,7 +13,8 @@ def test_all_tiles_sorted():
 def test_get_known_tile():
     brick = get_tile(1)
     assert brick.name == "brick"
-    assert brick.solid is True
+    assert brick.tank_solid is True
+    assert brick.bullet_solid is True
     assert brick.destructible is True
 
 
@@ -26,7 +27,7 @@ def test_base_tile_is_base():
 def test_ice_is_slippery():
     ice = get_tile(5)
     assert ice.slippery is True
-    assert ice.solid is False
+    assert ice.tank_solid is False
 
 
 def test_unknown_tile_defaults_to_empty():

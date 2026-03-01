@@ -9,7 +9,6 @@ export class Hud {
         this._enemies = document.getElementById("hud-enemies");
         this._upgrade = document.getElementById("hud-upgrade");
         this._mapName = document.getElementById("hud-map-name");
-        this._mapNameTop = document.getElementById("hud-map-name-top"); // Top status bar
 
         this._overlay = document.getElementById("game-overlay");
         this._oTitle = document.getElementById("overlay-title");
@@ -26,7 +25,6 @@ export class Hud {
     setMapName(name) {
         const text = name || "BATTLE FIELD";
         if (this._mapName) this._mapName.textContent = text;
-        if (this._mapNameTop) this._mapNameTop.textContent = text;
     }
 
     update(state) {
