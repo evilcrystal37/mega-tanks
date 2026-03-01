@@ -4,7 +4,7 @@
 
 import { Api } from "./api.js";
 import { SpriteAtlas } from "./spriteAtlas.js";
-import { CELL, GRID_H, GRID_W, TILE_GROUPS } from "./constants.js";
+import { CELL, GRID_H, GRID_W, TILE_GROUPS, TILE_TOGGLES } from "./constants.js";
 import { drawSandTile } from "./tileRenderer.js";
 import { computeViewport, getCellZoom, resizeCanvas } from "./viewport.js";
 
@@ -740,23 +740,31 @@ function _generateRandomMap() {
     const symMode = Math.random() > 0.5 ? 4 : 2;
 
     const disabled = _getDisabledTileIds();
-    
-    // Weighted tile pool for regular (1×1 and repeating) tiles.
-    // Brick is most common; special/rare tiles appear once or twice.
-    const placeableTiles = [
-        1, 1, 1, 1, 1, 1, 1, 1,  // brick      — most common
-        2, 2, 2,                   // steel
-        3, 3,                      // water
-        4, 4, 4,                   // forest
-        5, 5,                      // ice
-        7,                         // lava
-        8, 9, 10, 11,              // conveyors (all four directions)
-        12,                        // mud
-        13,                        // spring / ramp
-        14,                        // TNT
-        15,                        // glass brick
-        18,                        // sunflower (passable cover)
-    ].filter(t => !disabled.has(t));
+
+    // Build weighted fill pool and 2×2 placement lists dynamically from TILE_TOGGLES.
+    // Adding autoGen metadata to a TILE_TOGGLES entry is all that's needed for new tiles.
+    const placeableTiles = [];
+    const powerupBoxIds = [];
+    let turretTileId = null;
+
+    for (const toggle of TILE_TOGGLES) {
+        const ag = toggle.autoGen;
+        if (!ag) continue;
+        const anyDisabled = toggle.ids.some(id => disabled.has(id));
+        if (anyDisabled) continue;
+
+        if (ag.type === "powerup_2x2") {
+            powerupBoxIds.push(toggle.ids[0]);
+        } else if (ag.type === "turret_2x2") {
+            turretTileId = toggle.ids[0];
+        } else {
+            // Regular fill tile — repeat each id `weight` times
+            const w = ag.weight ?? 1;
+            for (let i = 0; i < w; i++) {
+                placeableTiles.push(...toggle.ids);
+            }
+        }
+    }
 
     // Fallback to brick if every tile has been disabled
     if (placeableTiles.length === 0) placeableTiles.push(1);
@@ -805,9 +813,9 @@ function _generateRandomMap() {
         }
     }
     
-    // ── Auto-turrets (tile 25) — placed as 2×2 blocks at even positions ──
+    // ── Auto-turrets — placed as 2×2 blocks at even positions ──
     // Snap to even row/col so each block aligns with the engine's scan.
-    const numTurretPlacements = disabled.has(25) ? 0 : 1 + Math.floor(Math.random() * 3);
+    const numTurretPlacements = turretTileId == null ? 0 : 1 + Math.floor(Math.random() * 3);
     for (let t = 0; t < numTurretPlacements; t++) {
         // Snap to even row/col so the 2×2 block aligns with the engine's scan
         let tr = Math.floor(Math.random() * Math.max(1, Math.floor((maxR - 4) / 2))) * 2;
@@ -819,25 +827,23 @@ function _generateRandomMap() {
                 const r = tr + dr;
                 const c = tc + dc;
                 if (r < maxR && c < maxC) {
-                    grid[r][c] = 25;
+                    grid[r][c] = turretTileId;
                     const mirrorC = GRID_W - 1 - c;
                     const mirrorR = GRID_H - 1 - r;
                     if (symMode === 2) {
-                        grid[r][mirrorC] = 25;
+                        grid[r][mirrorC] = turretTileId;
                     } else if (symMode === 4) {
-                        grid[r][mirrorC] = 25;
-                        grid[mirrorR][c] = 25;
-                        grid[mirrorR][mirrorC] = 25;
+                        grid[r][mirrorC] = turretTileId;
+                        grid[mirrorR][c] = turretTileId;
+                        grid[mirrorR][mirrorC] = turretTileId;
                     }
                 }
             }
         }
     }
 
-    // ── Power-up glass boxes (28 = mushroom, 31 = rainbow, 35 = chick) ───────────────
-    // These are non-repeating big-type tiles that must be placed as exact
-    // 2×2 blocks aligned to even row/col (matches the editor cursor grid).
-    const availableBoxes = [28, 31, 35].filter(t => !disabled.has(t));
+    // ── Power-up glass boxes — placed as 2×2 blocks (populated dynamically from TILE_TOGGLES) ──
+    const availableBoxes = powerupBoxIds;
     const numBoxes = availableBoxes.length > 0 ? 1 + Math.floor(Math.random() * 3) : 0;
     for (let b = 0; b < numBoxes; b++) {
         const boxTid = availableBoxes[Math.floor(Math.random() * availableBoxes.length)];

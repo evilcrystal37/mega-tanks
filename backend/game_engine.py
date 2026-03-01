@@ -41,6 +41,7 @@ from .tile_registry import (
     GOLDEN_FRAME,
     GLASS,
     GLASS_CRACK1,
+    GLASS_CRACK2,
     ICE,
     LAVA,
     MONEY_BOX,
@@ -419,15 +420,21 @@ class GameEngine:
                     tank_key = tank.id
                     if tank_key not in self.rainbow_trails:
                         self.rainbow_trails[tank_key] = {"points": [], "ticks": 120}
-                    self.rainbow_trails[tank_key]["points"].append({
-                        "row": round(tank.row, 3),
-                        "col": round(tank.col, 3),
-                        "tick": self.tick_count
-                    })
-                    # Limit trail: up to 3600 points (~60 seconds at 60Hz, covers max stacked duration)
+                    
+                    # Only add point if moved significantly to reduce payload size
+                    pts = self.rainbow_trails[tank_key]["points"]
+                    if not pts or abs(pts[-1]["row"] - tank.row) > 0.01 or abs(pts[-1]["col"] - tank.col) > 0.01:
+                        self.rainbow_trails[tank_key]["points"].append({
+                            "row": round(tank.row, 3),
+                            "col": round(tank.col, 3),
+                            "tick": self.tick_count
+                        })
+                    
+                    # Limit trail length to avoid huge WebSocket payloads
                     max_points = 3600
                     if len(self.rainbow_trails[tank_key]["points"]) > max_points:
                         self.rainbow_trails[tank_key]["points"] = self.rainbow_trails[tank_key]["points"][-max_points:]
+                    
                     # Keep trail visible for full remaining rainbow duration + 2s fade-out
                     self.rainbow_trails[tank_key]["ticks"] = tank.rainbow_ticks + 120
 
@@ -1050,12 +1057,15 @@ class GameEngine:
                             else:
                                 self.grid[r][c] = EMPTY
                                 self._trigger_defeat()
-                    elif bullet.power >= 2 or self.grid[r][c] == BRICK or self.grid[r][c] in BIG_BOX_OR_PAD_IDS or GLASS <= self.grid[r][c] <= GLASS_CRACK1:
+                    elif bullet.power >= 2 or self.grid[r][c] == BRICK or self.grid[r][c] in BIG_BOX_OR_PAD_IDS or GLASS <= self.grid[r][c] <= GLASS_CRACK2:
                         # Destroy brick or steel (if power bullet) or glass or mushroom or rainbow or chick or money
                         tid = self.grid[r][c]
                         
                         if GLASS <= tid <= GLASS_CRACK1:
                             self.grid[r][c] += 1
+                            self.events.append({"type": "sound", "sound": "hit-brick"})
+                        elif tid == GLASS_CRACK2:
+                            self.grid[r][c] = EMPTY
                             self.events.append({"type": "sound", "sound": "hit-brick"})
                         elif tid in MUSHROOM_BOX_IDS:
                             # Crack the whole 2×2 mushroom box together
