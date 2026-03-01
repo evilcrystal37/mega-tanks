@@ -198,6 +198,30 @@ TILE_REGISTRY: Dict[int, TileType] = {
         tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
         non_repeating=True,
     ),
+    32: TileType(
+        id=32, name="chick_pad", label="Chick",
+        color="#ffee58",
+        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    33: TileType(
+        id=33, name="chick_crack2", label="Chick C2",
+        color="#ffee58",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    34: TileType(
+        id=34, name="chick_crack1", label="Chick C1",
+        color="#ffee58",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    35: TileType(
+        id=35, name="chick_box", label="Chick Box",
+        color="#ffee58",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
 }
 
 

@@ -90,9 +90,9 @@ async function _loadTiles() {
         ];
     }
     // Cycling skips: Base (6), glass cracks (16, 17),
-    // sandworm parts (20, 21), raw item pickups (23, 24 — must stay inside their boxes),
-    // mushroom cracks (26, 27), rainbow cracks (29, 30)
-    const NOT_ALLOWED = new Set([6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30]);
+    // sandworm parts (20, 21), raw item pickups (23, 24, 32 — must stay inside their boxes),
+    // mushroom cracks (26, 27), rainbow cracks (29, 30), chick cracks (33, 34)
+    const NOT_ALLOWED = new Set([6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30, 32, 33, 34]);
     tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id)).map(t => t.id);
     // Put empty last so Brick remains the default when opening the editor
     tileIds.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
@@ -292,7 +292,7 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
     const gridC = Math.round(x / sz);
     const gridR = Math.round(y / sz);
 
-    if (tid === 14 || tid === 18 || tid === 25 || (tid >= 26 && tid <= 31)) {
+    if (tid === 14 || tid === 18 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 35) || tid === 32) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(dx, dy, ds, ds);
@@ -469,6 +469,50 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
                 ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
             }
             ctx.stroke();
+        } else if (tid >= 33 && tid <= 35) {
+            // Chick glass box — yellow, big-type centered at (0,0)
+            ctx.fillStyle = "rgba(255, 238, 88, 0.15)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            const cycle = ((Date.now() + 1000) % 2000) / 2000;
+            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
+            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
+            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
+            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.4)");
+            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            ctx.strokeStyle = "rgba(255, 238, 88, 0.7)";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(-ds + 0.5, -ds + 0.5, ds * 2 - 1, ds * 2 - 1);
+            ctx.strokeStyle = "rgba(255,255,255,0.5)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds); ctx.stroke();
+            ctx.strokeStyle = "rgba(0,0,0,0.15)";
+            ctx.beginPath();
+            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
+            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
+            ctx.font = `${ds * 1.2 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🐥", 0, ds * 0.05);
+            ctx.strokeStyle = "rgba(255,255,255,0.9)";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            if (tid <= 34) {
+                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
+            }
+            if (tid === 33) {
+                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
+                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
+            }
+            ctx.stroke();
+        } else if (tid === 32) {
+            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
+            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🐥", 0, ds * 0.1);
         }
 
         ctx.restore();
@@ -816,12 +860,13 @@ function _generateRandomMap() {
         }
     }
 
-    // ── Power-up glass boxes (28 = mushroom, 31 = rainbow) ───────────────
+    // ── Power-up glass boxes (28 = mushroom, 31 = rainbow, 35 = chick) ───────────────
     // These are non-repeating big-type tiles that must be placed as exact
     // 2×2 blocks aligned to even row/col (matches the editor cursor grid).
     const numBoxes = 1 + Math.floor(Math.random() * 3); // 1-3 boxes
     for (let b = 0; b < numBoxes; b++) {
-        const boxTid = Math.random() < 0.5 ? 28 : 31;
+        const rand = Math.random();
+        const boxTid = rand < 0.33 ? 28 : (rand < 0.66 ? 31 : 35);
         // Pick a random even top-left, staying away from the bottom rows
         let br = Math.floor(Math.random() * Math.max(1, Math.floor((maxR - 4) / 2))) * 2;
         let bc = Math.floor(Math.random() * Math.max(1, Math.floor((maxC - 2) / 2))) * 2;

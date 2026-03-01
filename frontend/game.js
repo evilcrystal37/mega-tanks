@@ -568,12 +568,12 @@ class GameRenderer {
     _drawTileDetail(ctx, tid, x, y, sz) {
         const dx = Math.round(x);
         const dy = Math.round(y);
-        const ds = Math.round(sz);
+    const ds = Math.round(sz);
 
-        const gridC = Math.round(x / sz);
-        const gridR = Math.round(y / sz);
+    const gridC = Math.round(x / sz);
+    const gridR = Math.round(y / sz);
 
-    if (tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 25 || (tid >= 26 && tid <= 31)) {
+    if (tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 32 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 35)) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(dx, dy, ds, ds);
@@ -734,6 +734,60 @@ class GameRenderer {
                 ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
             }
             ctx.stroke();
+        } else if (tid >= 33 && tid <= 35) {
+            // Chick glass box — yellow, big-type centered at (0,0)
+            ctx.fillStyle = "rgba(255, 238, 88, 0.2)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+
+            // Animated shine sweep
+            const cycle = ((Date.now() + 1000) % 2000) / 2000;
+            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
+            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
+            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
+            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.6)");
+            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+
+            // Inner border & 3D edges
+            ctx.strokeStyle = "rgba(255,255,255,0.5)";
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-ds + 3, -ds + 3, ds * 2 - 6, ds * 2 - 6);
+            ctx.strokeStyle = "rgba(255,255,255,0.8)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds);
+            ctx.stroke();
+            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.beginPath();
+            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds);
+            ctx.stroke();
+
+            // Chick icon centered at (0,0)
+            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
+            ctx.font = `${ds * 1.2 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🐥", 0, ds * 0.05);
+
+            // Cracks
+            ctx.strokeStyle = "rgba(255,255,255,0.9)";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            if (tid <= 34) {
+                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
+            }
+            if (tid === 33) {
+                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
+                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
+            }
+            ctx.stroke();
+        } else if (tid === 32) {
+            const pulse = Math.sin(Date.now() / 300) * ds * 0.05;
+            ctx.font = `${ds * 1.5 + pulse}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🐥", 0, ds * 0.1);
         }
 
         ctx.restore();

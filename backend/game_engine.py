@@ -586,7 +586,7 @@ class GameEngine:
                 if 0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH:
                     tile = get_tile(self.grid[r][c])
                     if tile.tank_solid:
-                        if mover.mushroom_ticks > 0 and not (26 <= self.grid[r][c] <= 31):
+                        if mover.mushroom_ticks > 0 and not (26 <= self.grid[r][c] <= 31) and not (33 <= self.grid[r][c] <= 35):
                             pass # Big tank can move through and destroy solid tiles (but not glass boxes)
                         else:
                             return False
@@ -665,8 +665,8 @@ class GameEngine:
                         # Base destroyed = begin defeat sequence
                         self.grid[r][c] = 0
                         self._trigger_defeat()
-                    elif bullet.power >= 2 or self.grid[r][c] == 1 or 15 <= self.grid[r][c] <= 17 or 24 <= self.grid[r][c] <= 28 or 29 <= self.grid[r][c] <= 31:
-                        # Destroy brick or steel (if power bullet) or glass or mushroom or rainbow
+                    elif bullet.power >= 2 or self.grid[r][c] == 1 or 15 <= self.grid[r][c] <= 17 or 24 <= self.grid[r][c] <= 28 or 29 <= self.grid[r][c] <= 31 or 32 <= self.grid[r][c] <= 35:
+                        # Destroy brick or steel (if power bullet) or glass or mushroom or rainbow or chick
                         tid = self.grid[r][c]
                         
                         if 15 <= tid <= 16:
@@ -679,6 +679,18 @@ class GameEngine:
                                 if self.grid[gr][gc] == 25:
                                     self.grid[gr][gc] = 24
                             self.events.append({"type": "sound", "sound": "hit-brick"})
+                        elif 33 <= tid <= 35:
+                            # Crack the whole 2×2 chick box together: 35→34→33→32
+                            for gr, gc in self._find_box_group(r, c, 33, 35):
+                                self.grid[gr][gc] -= 1
+                                if self.grid[gr][gc] == 32:
+                                    self.grid[gr][gc] = 32
+                            self.events.append({"type": "sound", "sound": "hit-brick"})
+                        elif tid == 32:
+                            # Chick collected
+                            for gr, gc in self._find_box_group(r, c, 32, 32):
+                                self.grid[gr][gc] = 0
+                            self.events.append({"type": "sound", "sound": "powerup-pickup"})
                         elif tid == 24:
                             # Mushroom collected — clear entire 2×2 group, stacks +10s
                             for gr, gc in self._find_box_group(r, c, 24, 24):
@@ -1167,7 +1179,7 @@ class GameEngine:
                     can_destroy = ntile.tank_solid and (ntile.destructible or force)
                     if tank.mushroom_ticks > 0 and ntile.tank_solid:
                         # Glass boxes can only be broken by shooting, not by running over
-                        if 26 <= self.grid[nr][nc] <= 31:
+                        if 26 <= self.grid[nr][nc] <= 31 or 33 <= self.grid[nr][nc] <= 35:
                             can_destroy = False
                         else:
                             can_destroy = True
