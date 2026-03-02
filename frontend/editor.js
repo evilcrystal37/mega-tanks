@@ -989,7 +989,7 @@ function _handleKey(ev) {
             break;
 
         case "KeyC": // Next tile / Place
-            if (lastPlacedRow === cursorRow && lastPlacedCol === cursorCol) {
+            if (!ev.repeat && lastPlacedRow === cursorRow && lastPlacedCol === cursorCol) {
                 tileIndex = (tileIndex + 1) % tileIds.length;
             }
             _applyBrush(_currentTileId());
@@ -998,7 +998,7 @@ function _handleKey(ev) {
             break;
 
         case "KeyX": // Prev tile / Place
-            if (lastPlacedRow === cursorRow && lastPlacedCol === cursorCol) {
+            if (!ev.repeat && lastPlacedRow === cursorRow && lastPlacedCol === cursorCol) {
                 tileIndex = (tileIndex - 1 + tileIds.length) % tileIds.length;
             }
             _applyBrush(_currentTileId());
