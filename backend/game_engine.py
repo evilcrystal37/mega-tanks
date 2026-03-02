@@ -1493,7 +1493,7 @@ class GameEngine:
                         # Add to pending instead of instant recursion
                         self.grid[nr][nc] = EMPTY # Prevent re-queueing
                         self._pending_tnt.append((nr, nc, 10, ntile.explosion_radius)) # 10 tick delay (~160ms)
-                    elif ntile.destructible:
+                    elif ntile.destructible and self.grid[nr][nc] not in BIG_BOX_OR_PAD_IDS:
                         if ntile.is_base:
                             if self.golden_eagle_ticks > 0:
                                 pass
