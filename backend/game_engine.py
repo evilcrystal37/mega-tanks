@@ -606,7 +606,7 @@ class GameEngine:
                 if valid_spots:
                     spot = random.choice(valid_spots)
                     self._money_tile_pos = spot
-                    self._money_tile_timer = 1800  # 30 seconds at 60Hz
+                    self._money_tile_timer = 2700  # 45 seconds at 60Hz
                     for gr in range(spot[0], spot[0] + 2):
                         for gc in range(spot[1], spot[1] + 2):
                             self.grid[gr][gc] = MONEY_BOX
