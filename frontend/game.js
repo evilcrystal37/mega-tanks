@@ -42,6 +42,7 @@ class GameRenderer {
         );
 
         this._atlas = new SpriteAtlas();
+        this._tankSoundState = null; // "moving" | "idle" | "dead"
     }
 
     async startGame(mapName, sessionId = "default", settings = null) {
@@ -50,6 +51,7 @@ class GameRenderer {
         this.hud.reset();
         this._explosions = [];
         this._gridCache = null;
+        this._tankSoundState = null;
         this.stateStore.reset();
 
         this._resize();
@@ -93,6 +95,26 @@ class GameRenderer {
                     audioManager.play(ev.sound);
                 }
             });
+        }
+
+        // Tank movement looping sounds
+        const rp = rawState.player;
+        const pp = prev?.player;
+        const isMoving = rp && rp.alive && pp && pp.alive &&
+            (rp.row !== pp.row || rp.col !== pp.col);
+        const newTankSound = (rp && rp.alive) ? (isMoving ? "moving" : "idle") : "dead";
+        if (newTankSound !== this._tankSoundState) {
+            this._tankSoundState = newTankSound;
+            if (newTankSound === "moving") {
+                audioManager.stop("tank-idle");
+                audioManager.play("tank-move");
+            } else if (newTankSound === "idle") {
+                audioManager.stop("tank-move");
+                audioManager.play("tank-idle");
+            } else {
+                audioManager.stop("tank-move");
+                audioManager.stop("tank-idle");
+            }
         }
 
         if (prev) {
@@ -499,6 +521,9 @@ class GameRenderer {
             ctx.restore(); // end globalAlpha scope
         }
 
+        // Skeletons
+        this._drawSkeletons(ctx, cell);
+
         ctx.restore();
 
         if (this.state.paused) {
@@ -516,6 +541,182 @@ class GameRenderer {
         }
     }
 
+    _drawSkeletons(ctx, cell) {
+        const skeletons = this.state.skeletons || [];
+        const mega = this.state.mega_skeleton;
+        const now = Date.now();
+
+        const drawSkeleton = (skel) => {
+            if (!skel.alive) return;
+            const x = skel.col * cell;
+            const y = skel.row * cell;
+            const w = skel.w * cell;
+            const h = skel.h * cell;
+
+            ctx.save();
+            ctx.translate(x, y);
+
+            if (skel.is_mega) {
+                this._drawMegaSkeleton(ctx, w, h, skel, now);
+            } else {
+                this._drawNormalSkeleton(ctx, w, h, skel, now);
+            }
+
+            ctx.restore();
+        };
+
+        skeletons.forEach(drawSkeleton);
+        if (mega) drawSkeleton(mega);
+    }
+
+    _drawNormalSkeleton(ctx, w, h, skel, now) {
+        // 1×2 skeleton: 💀 head on top half, ribcage + limbs on bottom half
+        const bob = Math.sin(now / 300) * w * 0.06;
+
+        // 💀 skull emoji — top half, centered
+        const skullSize = h * 0.48;
+        ctx.font = `${skullSize}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("💀", w * 0.5 + bob, h * 0.24);
+
+        // Ribcage oval — bottom half
+        ctx.fillStyle = "rgba(230, 230, 210, 0.92)";
+        ctx.beginPath();
+        ctx.ellipse(w * 0.5 + bob, h * 0.63, w * 0.28, h * 0.16, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Ribs
+        ctx.strokeStyle = "rgba(100, 100, 80, 0.55)";
+        ctx.lineWidth = Math.max(1, w * 0.07);
+        for (let i = 0; i < 3; i++) {
+            const ry = h * 0.54 + i * h * 0.08;
+            ctx.beginPath();
+            ctx.moveTo(w * 0.24 + bob, ry);
+            ctx.lineTo(w * 0.76 + bob, ry);
+            ctx.stroke();
+        }
+
+        // Arms (bone stubs out from sides of ribcage)
+        ctx.strokeStyle = "#DEDED0";
+        ctx.lineWidth = Math.max(2, w * 0.09);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(w * 0.22 + bob, h * 0.57);
+        ctx.lineTo(w * 0.04 + bob, h * 0.68);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(w * 0.78 + bob, h * 0.57);
+        ctx.lineTo(w * 0.96 + bob, h * 0.68);
+        ctx.stroke();
+
+        // Legs
+        ctx.beginPath();
+        ctx.moveTo(w * 0.38 + bob, h * 0.78);
+        ctx.lineTo(w * 0.28 + bob, h * 0.97);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(w * 0.62 + bob, h * 0.78);
+        ctx.lineTo(w * 0.72 + bob, h * 0.97);
+        ctx.stroke();
+    }
+
+    _drawMegaSkeleton(ctx, w, h, skel, now) {
+        const pulse = (Math.sin(now / 250) + 1) / 2;
+        const bob = Math.sin(now / 400) * h * 0.02;
+
+        // Pulsing glow outline
+        ctx.save();
+        ctx.shadowColor = `rgba(180, 50, 50, ${0.5 + pulse * 0.5})`;
+        ctx.shadowBlur = 30 + pulse * 20;
+        ctx.strokeStyle = `rgba(220, 80, 80, ${0.7 + pulse * 0.3})`;
+        ctx.lineWidth = 4;
+        ctx.strokeRect(w * 0.05, h * 0.05 + bob, w * 0.9, h * 0.9);
+        ctx.restore();
+
+        // Torso — large ribcage
+        ctx.fillStyle = "rgba(225, 225, 205, 0.95)";
+        ctx.beginPath();
+        ctx.ellipse(w * 0.5, h * 0.58 + bob, w * 0.33, h * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Ribs
+        ctx.strokeStyle = "rgba(90, 90, 70, 0.6)";
+        ctx.lineWidth = Math.max(2, h * 0.04);
+        for (let i = 0; i < 5; i++) {
+            const ry = h * 0.38 + i * h * 0.09 + bob;
+            ctx.beginPath();
+            ctx.moveTo(w * 0.22, ry);
+            ctx.lineTo(w * 0.78, ry);
+            ctx.stroke();
+        }
+
+        // Skull — 💀 emoji, large centered at top
+        const skullR = Math.min(w, h) * 0.22;
+        const skullCX = w * 0.5;
+        const skullCY = h * 0.22 + bob;
+        const skullEmojiSize = skullR * 2.2;
+
+        // Pulsing red glow behind the skull
+        ctx.save();
+        ctx.shadowColor = `rgba(255, 0, 0, ${0.7 + pulse * 0.3})`;
+        ctx.shadowBlur = 20 + pulse * 20;
+        ctx.font = `${skullEmojiSize}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("💀", skullCX, skullCY);
+        ctx.restore();
+
+        // Crown/horns above the skull
+        ctx.fillStyle = "#E8D44D";
+        const hornPoints = [
+            [skullCX - skullR * 0.8, skullCY - skullR * 0.9],
+            [skullCX - skullR * 0.5, skullCY - skullR * 1.6],
+            [skullCX - skullR * 0.2, skullCY - skullR * 0.9],
+            [skullCX + skullR * 0.2, skullCY - skullR * 0.9],
+            [skullCX + skullR * 0.5, skullCY - skullR * 1.6],
+            [skullCX + skullR * 0.8, skullCY - skullR * 0.9],
+        ];
+        ctx.beginPath();
+        ctx.moveTo(hornPoints[0][0], hornPoints[0][1]);
+        hornPoints.forEach(([hx, hy]) => ctx.lineTo(hx, hy));
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "rgba(180,140,0,0.7)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Spine
+        ctx.strokeStyle = "#D8D8C0";
+        ctx.lineWidth = Math.max(3, w * 0.025);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(w * 0.5, h * 0.32 + bob);
+        ctx.lineTo(w * 0.5, h * 0.82 + bob);
+        ctx.stroke();
+
+        // Arms — long bone arms
+        ctx.lineWidth = Math.max(4, w * 0.032);
+        ctx.beginPath();
+        ctx.moveTo(w * 0.2, h * 0.45 + bob);
+        ctx.lineTo(w * 0.02, h * 0.7 + bob);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(w * 0.8, h * 0.45 + bob);
+        ctx.lineTo(w * 0.98, h * 0.7 + bob);
+        ctx.stroke();
+
+        // Legs
+        ctx.beginPath();
+        ctx.moveTo(w * 0.38, h * 0.82 + bob);
+        ctx.lineTo(w * 0.25, h * 0.97 + bob);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(w * 0.62, h * 0.82 + bob);
+        ctx.lineTo(w * 0.75, h * 0.97 + bob);
+        ctx.stroke();
+    }
+
     _drawTileDetail(ctx, tid, x, y, sz) {
         const dx = Math.round(x);
         const dy = Math.round(y);
@@ -524,7 +725,7 @@ class GameRenderer {
     const gridC = Math.round(x / sz);
     const gridR = Math.round(y / sz);
 
-    if (tid === 6 || tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 32 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 41)) {
+    if (tid === 6 || tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 32 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 42)) {
         ctx.save();
         const centerX = dx + (gridC % 2 === 0 ? ds : 0);
         const centerY = dy + (gridR % 2 === 0 ? ds : 0);
@@ -925,6 +1126,46 @@ class GameRenderer {
             shineGrad.addColorStop(1, "rgba(255,255,255,0)");
             ctx.fillStyle = shineGrad;
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+        } else if (tid === 42) {
+            // Bone frame — ivory/bone indestructible arch blocks
+            ctx.fillStyle = "#EFEED0";
+            ctx.fillRect(dx, dy, ds, ds);
+
+            // Cross-hatch bone texture
+            ctx.strokeStyle = "rgba(160, 150, 110, 0.55)";
+            ctx.lineWidth = 1;
+            const boneSpacing = ds * 0.28;
+            ctx.save();
+            ctx.rect(dx, dy, ds, ds);
+            ctx.clip();
+            for (let i = -ds; i < ds * 2; i += boneSpacing) {
+                ctx.beginPath();
+                ctx.moveTo(dx + i, dy);
+                ctx.lineTo(dx + i + boneSpacing * 0.6, dy + ds);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(dx + i + boneSpacing * 0.6, dy);
+                ctx.lineTo(dx + i, dy + ds);
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // Bone icon — two perpendicular small bones
+            const bx = dx + ds * 0.5;
+            const by = dy + ds * 0.5;
+            const bLen = ds * 0.3;
+            const bRad = ds * 0.09;
+            ctx.fillStyle = "#E0DEC0";
+            ctx.strokeStyle = "rgba(120,110,80,0.6)";
+            ctx.lineWidth = 1;
+            // horizontal bone
+            ctx.beginPath(); ctx.roundRect(bx - bLen, by - bRad, bLen * 2, bRad * 2, bRad); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(bx - bLen, by, bRad * 1.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(bx + bLen, by, bRad * 1.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            // vertical bone
+            ctx.beginPath(); ctx.roundRect(bx - bRad, by - bLen, bRad * 2, bLen * 2, bRad); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(bx, by - bLen, bRad * 1.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(bx, by + bLen, bRad * 1.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         } else if (tid === 6) {
             // Base eagle — big-type (2×2)
             this._atlas.draw(ctx, "base.heart.alive", -ds, -ds, ds * 2, ds * 2);

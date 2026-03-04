@@ -19,6 +19,7 @@ from .enemy_spawner import EnemySpawner
 from .ai_controller import AIController
 from .powerup_manager import PowerupManager
 from .sandworm_controller import SandwormController
+from .skeleton_controller import SkeletonController
 from .explosion_manager import ExplosionManager
 from .collision import can_big_tank_crush
 from .map_model import Map, GRID_WIDTH, GRID_HEIGHT
@@ -160,6 +161,7 @@ class GameEngine:
         self.ai_controller = AIController(self)
         self.powerup_manager = PowerupManager(self)
         self.sandworm_controller = SandwormController(self)
+        self.skeleton_ctrl = SkeletonController(self)
         self.explosion_manager = ExplosionManager(self)
 
 
@@ -450,6 +452,9 @@ class GameEngine:
         # Update sandworm
         self.sandworm_controller.tick()
 
+        # Update skeleton creatures
+        self.skeleton_ctrl.tick()
+
         # Spawn enemies
         self.enemy_spawner.tick()
 
@@ -669,6 +674,21 @@ class GameEngine:
                     best_target_row = worm_row
                     best_target_col = worm_col
 
+            # Also target skeletons (normal and mega)
+            skel_targets = list(self.skeleton_ctrl.skeletons)
+            if self.skeleton_ctrl.mega and self.skeleton_ctrl.mega["alive"]:
+                skel_targets.append(self.skeleton_ctrl.mega)
+            for skel in skel_targets:
+                if not skel["alive"]:
+                    continue
+                skel_row = skel["row"] + skel["h"] / 2
+                skel_col = skel["col"] + skel["w"] / 2
+                dist = math.hypot(skel_row - turret.row, skel_col - turret.col)
+                if dist < best_dist and dist < 10.0:
+                    best_dist = dist
+                    best_target_row = skel_row
+                    best_target_col = skel_col
+
             if best_target_row is not None:
                 dr = best_target_row - turret.row
                 dc = best_target_col - turret.col
@@ -735,6 +755,21 @@ class GameEngine:
                 best_dist = dist
                 best_target_row = worm_row
                 best_target_col = worm_col
+
+        # Also target skeletons (normal and mega)
+        skel_targets = list(self.skeleton_ctrl.skeletons)
+        if self.skeleton_ctrl.mega and self.skeleton_ctrl.mega["alive"]:
+            skel_targets.append(self.skeleton_ctrl.mega)
+        for skel in skel_targets:
+            if not skel["alive"]:
+                continue
+            skel_row = skel["row"] + skel["h"] / 2
+            skel_col = skel["col"] + skel["w"] / 2
+            dist = math.hypot(skel_row - companion.row, skel_col - companion.col)
+            if dist < best_dist:
+                best_dist = dist
+                best_target_row = skel_row
+                best_target_col = skel_col
 
         # ── 2. Aim: face threat every tick (fast response, no jitter) ──
         if best_target_row is not None:
@@ -1481,8 +1516,12 @@ class GameEngine:
         self.grid[r][c] = EMPTY
         if radius > 2:
             self._add_explosion(r + 0.5, c + 0.5, kind="super_tnt", radius=radius)
+            # Three overlapping clones → louder, distinct boom for super TNT
+            for _ in range(3):
+                self.events.append({"type": "sound", "sound": "enemy-explosion"})
         else:
             self._add_explosion(r + 0.5, c + 0.5)
+            self.events.append({"type": "sound", "sound": "enemy-explosion"})
         
         for nr in range(r - radius, r + radius + 1):
             for nc in range(c - radius, c + radius + 1):
@@ -1743,6 +1782,10 @@ class GameEngine:
             "items": self.items,
             "events": list(self.events),
             "sandworm": {**self.sandworm, "hp": self.sandworm.get("hp", 5)},
+            "skeletons": self.skeleton_ctrl.skeletons,
+            "mega_skeleton": self.skeleton_ctrl.mega,
+            "skeleton_kills": self.skeleton_ctrl.total_killed,
+            "bone_arch_active": self.skeleton_ctrl.bone_arch_built,
             "grid": full_grid,  # only sent on initial frame
             "grid_changes": grid_changes,
             "base_pos": {"row": self._base_pos[0], "col": self._base_pos[1]} if self._base_pos else None

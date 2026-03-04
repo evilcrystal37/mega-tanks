@@ -261,6 +261,12 @@ TILE_REGISTRY: Dict[int, TileType] = {
         tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
         non_repeating=True,
     ),
+    42: TileType(
+        id=42, name="bone_frame", label="Bone Frame",
+        color="#F5F5DC",
+        tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -306,6 +312,7 @@ MONEY_CRACK2 = 38
 MONEY_CRACK1 = 39
 MONEY_BOX = 40
 GOLDEN_FRAME = 41
+BONE_FRAME = 42
 
 CONVEYOR_IDS = {CONVEYOR_UP, CONVEYOR_DOWN, CONVEYOR_LEFT, CONVEYOR_RIGHT}
 GLASS_IDS = {GLASS, GLASS_CRACK1, GLASS_CRACK2}

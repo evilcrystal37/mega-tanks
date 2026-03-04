@@ -19,6 +19,16 @@ export class Hud {
         this._companionBarFill = document.getElementById("hud-companion-bar-fill");
         this._companionMaxTicks = 1800; // track max seen for bar scaling
 
+        this._skeletonSection  = document.getElementById("hud-skeleton-section");
+        this._skeletonKills    = document.getElementById("hud-skeleton-kills");
+        this._skeletonBarFill  = document.getElementById("hud-skeleton-bar-fill");
+        this._skeletonBanner   = document.getElementById("skeleton-banner");
+        this._skeletonBannerText = document.getElementById("skeleton-banner-text");
+        this._skeletonBannerTimer = null;
+        this._lastSkeletonKills = 0;
+        this._lastMegaAlive = false;
+        this._lastBoneArch = false;
+
         this._totalEnemies = 20;
     }
 
@@ -80,7 +90,58 @@ export class Hud {
             }
         }
 
+        // Skeleton counter
+        const skelKills = state.skeleton_kills ?? 0;
+        const megaAlive = !!(state.mega_skeleton && state.mega_skeleton.alive);
+        const boneArch  = !!(state.bone_arch_active);
+        const skelActive = skelKills > 0 || (state.skeletons && state.skeletons.length > 0) || megaAlive || boneArch;
 
+        if (this._skeletonSection) {
+            this._skeletonSection.style.display = skelActive ? "block" : "none";
+        }
+        if (skelActive) {
+            if (this._skeletonKills) {
+                if (megaAlive) {
+                    this._skeletonKills.textContent = "BOSS!";
+                    this._skeletonKills.style.color = "#ff4444";
+                } else if (boneArch) {
+                    this._skeletonKills.textContent = "5/5 ✓";
+                    this._skeletonKills.style.color = "#EFEED0";
+                } else {
+                    this._skeletonKills.textContent = `${skelKills}/5`;
+                    this._skeletonKills.style.color = "#EFEED0";
+                }
+            }
+            if (this._skeletonBarFill) {
+                const pct = Math.min(100, Math.round((skelKills / 5) * 100));
+                this._skeletonBarFill.style.width = `${pct}%`;
+                this._skeletonBarFill.style.background = megaAlive ? "#ff4444" : boneArch ? "#E8D44D" : "#EFEED0";
+            }
+        }
+
+        // Skeleton event banners
+        if (skelKills === 5 && this._lastSkeletonKills < 5 && !this._lastMegaAlive) {
+            this._showSkeletonBanner("☠ MEGA SKELETON INCOMING! ☠", "#ff4444", 4000);
+        } else if (megaAlive && !this._lastMegaAlive && skelKills >= 5) {
+            this._showSkeletonBanner("☠ MEGA SKELETON HAS ARRIVED! ☠", "#ff4444", 4000);
+        } else if (boneArch && !this._lastBoneArch) {
+            this._showSkeletonBanner("🦴 BONE ARCH EARNED! 🦴", "#E8D44D", 5000);
+        }
+        this._lastSkeletonKills = skelKills;
+        this._lastMegaAlive = megaAlive;
+        this._lastBoneArch = boneArch;
+    }
+
+    _showSkeletonBanner(text, color, duration) {
+        if (!this._skeletonBanner) return;
+        if (this._skeletonBannerTimer) clearTimeout(this._skeletonBannerTimer);
+        this._skeletonBannerText.textContent = text;
+        this._skeletonBannerText.style.color = color;
+        this._skeletonBannerText.style.borderColor = color;
+        this._skeletonBanner.style.display = "block";
+        this._skeletonBannerTimer = setTimeout(() => {
+            if (this._skeletonBanner) this._skeletonBanner.style.display = "none";
+        }, duration);
     }
 
     showOverlay(result, score) {
@@ -98,6 +159,15 @@ export class Hud {
     reset() {
         this.hideOverlay();
         this._companionMaxTicks = 1800;
+        this._lastSkeletonKills = 0;
+        this._lastMegaAlive = false;
+        this._lastBoneArch = false;
+        if (this._skeletonBannerTimer) {
+            clearTimeout(this._skeletonBannerTimer);
+            this._skeletonBannerTimer = null;
+        }
+        if (this._skeletonBanner) this._skeletonBanner.style.display = "none";
+        if (this._skeletonSection) this._skeletonSection.style.display = "none";
         this.update({ score: 0, lives: 3, enemies_remaining: 20, total_enemies: 20, player: null, companion_ticks: 0 });
     }
 }

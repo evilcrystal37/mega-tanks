@@ -9,6 +9,12 @@ export class GameStateStore {
         this._state = null;
         this._gridCache = null;
         this._explosions = [];
+        this._skeletonDefaults = {
+            skeletons: [],
+            mega_skeleton: null,
+            skeleton_kills: 0,
+            bone_arch_active: false,
+        };
     }
 
     get state() {
@@ -35,6 +41,12 @@ export class GameStateStore {
             const nowDead = [...(rawState.enemies ?? []), rawState.player].filter(t => t && !t.alive && prevAlive.has(t.id));
             nowDead.forEach(t => this._explosions.push({ x: t.col, y: t.row, t: 0, max: 20 }));
         }
+
+        // Ensure skeleton fields are always present
+        rawState.skeletons = rawState.skeletons ?? [];
+        rawState.mega_skeleton = rawState.mega_skeleton ?? null;
+        rawState.skeleton_kills = rawState.skeleton_kills ?? 0;
+        rawState.bone_arch_active = rawState.bone_arch_active ?? false;
 
         this._state = rawState;
         return { prev, state: rawState };

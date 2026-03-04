@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from .map_model import Map
 from .map_store import save_map, load_map, list_maps, delete_map
 from .session_store import session_store
-from .tile_registry import all_tiles, TILE_REGISTRY
+from .tile_registry import all_tiles, TILE_REGISTRY, BONE_FRAME
 
 router = APIRouter()
 
@@ -68,6 +68,7 @@ def get_tiles():
             "non_repeating": t.non_repeating,
         }
         for t in all_tiles()
+        if t.id != BONE_FRAME
     ]
 
 
