@@ -1588,6 +1588,9 @@ class GameEngine:
                                     self.events.append({"type": "sound", "sound": "enemy-explosion"})
                                 break
 
+                    # Skeleton damage from TNT blast
+                    self.skeleton_ctrl.apply_tnt_damage(nr + 0.5, nc + 0.5)
+
     def _find_box_group(self, r: int, c: int, low: int, high: int) -> list:
         """Return all tile positions belonging to the 2×2 box that contains (r, c),
         where every tile's ID is within [low, high].  Falls back to [(r, c)] alone.

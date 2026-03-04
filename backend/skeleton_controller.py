@@ -30,7 +30,7 @@ MEGA_W = 8
 MEGA_H = 4
 MEGA_MOVE_INTERVAL = 40
 
-MAX_NORMAL_ALIVE = 2
+MAX_NORMAL_ALIVE = 1
 TOTAL_NORMAL_CAP = 5        # kill 5 to trigger boss
 SPAWN_INTERVAL = 600        # ticks between spawn attempts (~10s at 60fps)
 CONTACT_DAMAGE_INTERVAL = 60  # ticks between contact hits
@@ -257,7 +257,9 @@ class SkeletonController:
                 if self._bullet_in_rect(bullet, skel):
                     skel["hp"] -= bullet.power
                     bullet.alive = False
-                    engine.events.append({"type": "sound", "sound": "brick-hit"})
+                    engine._on_bullet_gone(bullet)
+                    engine._add_explosion(bullet.row, bullet.col)
+                    engine.events.append({"type": "sound", "sound": "hit-steel"})
                     if skel["hp"] <= 0:
                         self._kill_skeleton(skel)
                     break
@@ -340,6 +342,20 @@ class SkeletonController:
 
     def _cleanup_dead(self) -> None:
         self.skeletons = [s for s in self.skeletons if s["alive"]]
+
+    def apply_tnt_damage(self, blast_row: float, blast_col: float) -> None:
+        """Apply 1 damage to any skeleton whose footprint contains (blast_row, blast_col)."""
+        targets = [s for s in self.skeletons if s["alive"]]
+        if self.mega and self.mega["alive"]:
+            targets.append(self.mega)
+        for skel in targets:
+            if not skel["alive"]:
+                continue
+            sr, sc = skel["row"], skel["col"]
+            if sr <= blast_row < sr + skel["h"] and sc <= blast_col < sc + skel["w"]:
+                skel["hp"] -= 1
+                if skel["hp"] <= 0:
+                    self._kill_skeleton(skel)
 
     # ------------------------------------------------------------------
     # Bone Arch
