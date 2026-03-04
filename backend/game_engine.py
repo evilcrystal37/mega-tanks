@@ -1638,6 +1638,8 @@ class GameEngine:
                 self.player.col = float(base[1] - 4) + 0.5
                 self.player.hp = 1
                 self.player.alive = True
+                self.player.mushroom_ticks = 0
+                self.player.rainbow_ticks = 0
                 self._clear_area_for_tank(self.player)
 
     def _clear_area_for_tank(self, tank: Tank, force: bool = False) -> None:

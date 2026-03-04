@@ -102,8 +102,8 @@ export class Hud {
         if (skelActive) {
             if (this._skeletonKills) {
                 if (megaAlive) {
-                    this._skeletonKills.textContent = "BOSS!";
-                    this._skeletonKills.style.color = "#ff4444";
+                    this._skeletonKills.textContent = "5/5";
+                    this._skeletonKills.style.color = "#EFEED0";
                 } else if (boneArch) {
                     this._skeletonKills.textContent = "5/5 ✓";
                     this._skeletonKills.style.color = "#EFEED0";
@@ -115,16 +115,12 @@ export class Hud {
             if (this._skeletonBarFill) {
                 const pct = Math.min(100, Math.round((skelKills / 5) * 100));
                 this._skeletonBarFill.style.width = `${pct}%`;
-                this._skeletonBarFill.style.background = megaAlive ? "#ff4444" : boneArch ? "#E8D44D" : "#EFEED0";
+                this._skeletonBarFill.style.background = boneArch ? "#E8D44D" : "#EFEED0";
             }
         }
 
         // Skeleton event banners
-        if (skelKills === 5 && this._lastSkeletonKills < 5 && !this._lastMegaAlive) {
-            this._showSkeletonBanner("☠ MEGA SKELETON INCOMING! ☠", "#ff4444", 4000);
-        } else if (megaAlive && !this._lastMegaAlive && skelKills >= 5) {
-            this._showSkeletonBanner("☠ MEGA SKELETON HAS ARRIVED! ☠", "#ff4444", 4000);
-        } else if (boneArch && !this._lastBoneArch) {
+        if (boneArch && !this._lastBoneArch) {
             this._showSkeletonBanner("🦴 BONE ARCH EARNED! 🦴", "#E8D44D", 5000);
         }
         this._lastSkeletonKills = skelKills;

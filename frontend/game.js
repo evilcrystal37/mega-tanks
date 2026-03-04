@@ -625,15 +625,6 @@ class GameRenderer {
         const pulse = (Math.sin(now / 250) + 1) / 2;
         const bob = Math.sin(now / 400) * h * 0.02;
 
-        // Pulsing glow outline
-        ctx.save();
-        ctx.shadowColor = `rgba(180, 50, 50, ${0.5 + pulse * 0.5})`;
-        ctx.shadowBlur = 30 + pulse * 20;
-        ctx.strokeStyle = `rgba(220, 80, 80, ${0.7 + pulse * 0.3})`;
-        ctx.lineWidth = 4;
-        ctx.strokeRect(w * 0.05, h * 0.05 + bob, w * 0.9, h * 0.9);
-        ctx.restore();
-
         // Torso — large ribcage
         ctx.fillStyle = "rgba(225, 225, 205, 0.95)";
         ctx.beginPath();
@@ -1127,45 +1118,16 @@ class GameRenderer {
             ctx.fillStyle = shineGrad;
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
         } else if (tid === 42) {
-            // Bone frame — ivory/bone indestructible arch blocks
-            ctx.fillStyle = "#EFEED0";
-            ctx.fillRect(dx, dy, ds, ds);
-
-            // Cross-hatch bone texture
-            ctx.strokeStyle = "rgba(160, 150, 110, 0.55)";
-            ctx.lineWidth = 1;
-            const boneSpacing = ds * 0.28;
-            ctx.save();
-            ctx.rect(dx, dy, ds, ds);
-            ctx.clip();
-            for (let i = -ds; i < ds * 2; i += boneSpacing) {
-                ctx.beginPath();
-                ctx.moveTo(dx + i, dy);
-                ctx.lineTo(dx + i + boneSpacing * 0.6, dy + ds);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(dx + i + boneSpacing * 0.6, dy);
-                ctx.lineTo(dx + i, dy + ds);
-                ctx.stroke();
-            }
-            ctx.restore();
-
-            // Bone icon — two perpendicular small bones
-            const bx = dx + ds * 0.5;
-            const by = dy + ds * 0.5;
-            const bLen = ds * 0.3;
-            const bRad = ds * 0.09;
-            ctx.fillStyle = "#E0DEC0";
-            ctx.strokeStyle = "rgba(120,110,80,0.6)";
-            ctx.lineWidth = 1;
-            // horizontal bone
-            ctx.beginPath(); ctx.roundRect(bx - bLen, by - bRad, bLen * 2, bRad * 2, bRad); ctx.fill(); ctx.stroke();
-            ctx.beginPath(); ctx.arc(bx - bLen, by, bRad * 1.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-            ctx.beginPath(); ctx.arc(bx + bLen, by, bRad * 1.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-            // vertical bone
-            ctx.beginPath(); ctx.roundRect(bx - bRad, by - bLen, bRad * 2, bLen * 2, bRad); ctx.fill(); ctx.stroke();
-            ctx.beginPath(); ctx.arc(bx, by - bLen, bRad * 1.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-            ctx.beginPath(); ctx.arc(bx, by + bLen, bRad * 1.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            // Bone frame — drawn as 🦴 emoji on an ivory background
+            // Origin is translated to (centerX, centerY), so use offsets relative to that
+            const ox = dx - centerX;
+            const oy = dy - centerY;
+            ctx.fillStyle = "#2a1f0f";
+            ctx.fillRect(ox, oy, ds, ds);
+            ctx.font = `${ds * 0.85}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🦴", ox + ds * 0.5, oy + ds * 0.5);
         } else if (tid === 6) {
             // Base eagle — big-type (2×2)
             this._atlas.draw(ctx, "base.heart.alive", -ds, -ds, ds * 2, ds * 2);

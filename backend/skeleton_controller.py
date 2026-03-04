@@ -25,7 +25,7 @@ NORMAL_H = 2          # cells tall
 NORMAL_MOVE_INTERVAL = 20   # ticks between steps
 NORMAL_SPEED = 1.0    # cells per step
 
-MEGA_HP = 25
+MEGA_HP = 12
 MEGA_W = 8
 MEGA_H = 4
 MEGA_MOVE_INTERVAL = 40
