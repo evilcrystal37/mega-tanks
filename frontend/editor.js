@@ -137,7 +137,8 @@ function _resize() {
 }
 
 function _getCellZoom() {
-    return getCellZoom("battle_tanks_settings", 2.0);
+    // Editor always fits the full map — tile-size setting only affects the game view.
+    return 1.0;
 }
 
 // ── Render ────────────────────────────────────────────────────────────

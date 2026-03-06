@@ -18,9 +18,8 @@ export function resizeCanvas(canvas, gridW, gridH, zoom, fallbackW = 800, fallba
     const maxH = Math.max(1, wrap?.clientHeight ?? fallbackH);
     const naturalCell = Math.min(maxW / gridW, maxH / gridH);
     const cell = Math.max(1, Math.round(naturalCell * zoom));
-    const width = Math.floor(maxW / cell) * cell;
-    const height = Math.floor(maxH / cell) * cell;
-    return { cell, width, height };
+    // Canvas always fills its container; zoom only changes cell size (fewer tiles visible at higher zoom).
+    return { cell, width: maxW, height: maxH };
 }
 
 export function computeViewport(focusRow, focusCol, canvasW, canvasH, cellSize, gridW, gridH) {
