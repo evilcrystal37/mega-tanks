@@ -13,7 +13,7 @@ import random
 import time
 from typing import Callable, Dict, List, Optional, Awaitable
 
-from .bullet import Bullet
+from .bullet import Bullet, MISSILE_SPEED
 from .bullet_manager import BulletManager
 from .enemy_spawner import EnemySpawner
 from .ai_controller import AIController
@@ -45,6 +45,9 @@ from .tile_registry import (
     GLASS_CRACK2,
     ICE,
     LAVA,
+    MEGAGUN_BOX,
+    MEGAGUN_BOX_IDS,
+    MEGAGUN_PAD,
     MONEY_BOX,
     MONEY_BOX_IDS,
     MONEY_PAD,
@@ -57,6 +60,9 @@ from .tile_registry import (
     RAINBOW_PAD,
     RAMP,
     STEEL,
+    SUN_BOX,
+    SUN_BOX_IDS,
+    SUN_PAD,
     SUNFLOWER,
     get_tile,
 )
@@ -131,6 +137,16 @@ class GameEngine:
         self._money_tile_pos: Optional[tuple[int, int]] = None     # (top-left row, col) when active
         self._money_tile_timer: int = 0
         self._saved_eagle_tiles: Dict[tuple[int, int], int] = {}
+
+        # Sun tile (homing missile powerup)
+        self._sun_spawn_timer: int = random.randint(900, 1800)
+        self._sun_tile_pos: Optional[tuple[int, int]] = None
+        self._sun_tile_timer: int = 0
+
+        # Mega Gun tile (dual grenade launcher powerup)
+        self._megagun_spawn_timer: int = random.randint(1200, 2400)
+        self._megagun_tile_pos: Optional[tuple[int, int]] = None
+        self._megagun_tile_timer: int = 0
 
         # Events to broadcast
         self.events: List[dict] = []
@@ -413,6 +429,38 @@ class GameEngine:
                         self._money_tile_pos = None
                         self._money_spawn_timer = random.randint(1200, 2400)
                         self.events.append({"type": "sound", "sound": "powerup-pickup"})
+                elif tid == SUN_PAD:
+                    if tank.is_player:
+                        for gr, gc in self._find_box_group(r, c, SUN_PAD, SUN_PAD):
+                            self.grid[gr][gc] = EMPTY
+                        self._sun_tile_pos = None
+                        self._sun_spawn_timer = random.randint(1800, 3000)
+                        target = self._find_nearest_skeleton_or_worm(tank.row, tank.col)
+                        if target:
+                            tr, tc = target
+                            missile = Bullet(
+                                owner_id=tank.id,
+                                is_player=True,
+                                row=tank.row,
+                                col=tank.col,
+                                direction=tank.direction,
+                                speed=MISSILE_SPEED,
+                                power=99,
+                                ttl=600,
+                                is_missile=True,
+                                target_row=tr,
+                                target_col=tc,
+                            )
+                            self.bullets[missile.id] = missile
+                        self.events.append({"type": "sound", "sound": "powerup-pickup"})
+                elif tid == MEGAGUN_PAD:
+                    if tank.is_player:
+                        tank.mega_gun_ticks = 1800  # 30 seconds
+                        for gr, gc in self._find_box_group(r, c, MEGAGUN_PAD, MEGAGUN_PAD):
+                            self.grid[gr][gc] = EMPTY
+                        self._megagun_tile_pos = None
+                        self._megagun_spawn_timer = random.randint(1800, 3000)
+                        self.events.append({"type": "sound", "sound": "powerup-pickup"})
 
             # Apply ticking buffs
             if tank.rainbow_ticks > 0:
@@ -442,6 +490,9 @@ class GameEngine:
 
             if tank.mushroom_ticks > 0:
                 tank.mushroom_ticks -= 1
+
+            if tank.mega_gun_ticks > 0:
+                tank.mega_gun_ticks -= 1
 
         # Move bullets
         self.bullet_manager.tick()
@@ -619,6 +670,123 @@ class GameEngine:
                 else:
                     # Retry soon if no spot found
                     self._money_spawn_timer = 120
+
+    def _tick_sun_tile(self) -> None:
+        if self._sun_tile_pos is not None:
+            self._sun_tile_timer -= 1
+            if self._sun_tile_timer <= 0:
+                r, c = self._sun_tile_pos
+                for gr in range(r, r + 2):
+                    for gc in range(c, c + 2):
+                        if 0 <= gr < GRID_HEIGHT and 0 <= gc < GRID_WIDTH and self.grid[gr][gc] in SUN_BOX_IDS | {SUN_PAD}:
+                            self.grid[gr][gc] = EMPTY
+                self._sun_tile_pos = None
+                self._sun_spawn_timer = random.randint(1800, 3000)
+        else:
+            self._sun_spawn_timer -= 1
+            if self._sun_spawn_timer <= 0:
+                valid_spots = []
+                base_r, base_c = self._base_pos if self._base_pos else (GRID_HEIGHT - 1, GRID_WIDTH // 2)
+                for r in range(0, GRID_HEIGHT - 1, 2):
+                    for c in range(0, GRID_WIDTH - 1, 2):
+                        if abs(r - base_r) < 3 and abs(c - base_c) < 3:
+                            continue
+                        is_empty = True
+                        for gr in range(r, r + 2):
+                            for gc in range(c, c + 2):
+                                if self.grid[gr][gc] != EMPTY:
+                                    is_empty = False
+                                    break
+                            if not is_empty:
+                                break
+                        if is_empty:
+                            valid_spots.append((r, c))
+                if valid_spots:
+                    spot = random.choice(valid_spots)
+                    self._sun_tile_pos = spot
+                    self._sun_tile_timer = 2700
+                    for gr in range(spot[0], spot[0] + 2):
+                        for gc in range(spot[1], spot[1] + 2):
+                            self.grid[gr][gc] = SUN_BOX
+                    self.events.append({"type": "sound", "sound": "powerup-appear"})
+                else:
+                    self._sun_spawn_timer = 120
+
+    def _tick_megagun_tile(self) -> None:
+        if self._megagun_tile_pos is not None:
+            self._megagun_tile_timer -= 1
+            if self._megagun_tile_timer <= 0:
+                r, c = self._megagun_tile_pos
+                for gr in range(r, r + 2):
+                    for gc in range(c, c + 2):
+                        if 0 <= gr < GRID_HEIGHT and 0 <= gc < GRID_WIDTH and self.grid[gr][gc] in MEGAGUN_BOX_IDS | {MEGAGUN_PAD}:
+                            self.grid[gr][gc] = EMPTY
+                self._megagun_tile_pos = None
+                self._megagun_spawn_timer = random.randint(1800, 3000)
+        else:
+            self._megagun_spawn_timer -= 1
+            if self._megagun_spawn_timer <= 0:
+                valid_spots = []
+                base_r, base_c = self._base_pos if self._base_pos else (GRID_HEIGHT - 1, GRID_WIDTH // 2)
+                for r in range(0, GRID_HEIGHT - 1, 2):
+                    for c in range(0, GRID_WIDTH - 1, 2):
+                        if abs(r - base_r) < 3 and abs(c - base_c) < 3:
+                            continue
+                        is_empty = True
+                        for gr in range(r, r + 2):
+                            for gc in range(c, c + 2):
+                                if self.grid[gr][gc] != EMPTY:
+                                    is_empty = False
+                                    break
+                            if not is_empty:
+                                break
+                        if is_empty:
+                            valid_spots.append((r, c))
+                if valid_spots:
+                    spot = random.choice(valid_spots)
+                    self._megagun_tile_pos = spot
+                    self._megagun_tile_timer = 2700
+                    for gr in range(spot[0], spot[0] + 2):
+                        for gc in range(spot[1], spot[1] + 2):
+                            self.grid[gr][gc] = MEGAGUN_BOX
+                    self.events.append({"type": "sound", "sound": "powerup-appear"})
+                else:
+                    self._megagun_spawn_timer = 120
+
+    def _find_nearest_skeleton_or_worm(self, from_row: float, from_col: float) -> Optional[tuple[float, float]]:
+        """Find the nearest skeleton or sandworm position for sun missile targeting."""
+        best_dist = float("inf")
+        best_pos = None
+
+        for skel in self.skeleton_ctrl.skeletons:
+            if not skel["alive"]:
+                continue
+            sr = skel["row"] + skel["h"] / 2
+            sc = skel["col"] + skel["w"] / 2
+            d = math.hypot(sr - from_row, sc - from_col)
+            if d < best_dist:
+                best_dist = d
+                best_pos = (sr, sc)
+
+        if self.skeleton_ctrl.mega and self.skeleton_ctrl.mega["alive"]:
+            mega = self.skeleton_ctrl.mega
+            sr = mega["row"] + mega["h"] / 2
+            sc = mega["col"] + mega["w"] / 2
+            d = math.hypot(sr - from_row, sc - from_col)
+            if d < best_dist:
+                best_dist = d
+                best_pos = (sr, sc)
+
+        if self.sandworm.get("active") and self.sandworm.get("parts"):
+            head = self.sandworm["parts"][0]
+            wr = head["row"] + 0.5
+            wc = head["col"] + 0.5
+            d = math.hypot(wr - from_row, wc - from_col)
+            if d < best_dist:
+                best_dist = d
+                best_pos = (wr, wc)
+
+        return best_pos
 
     def _build_golden_arch(self) -> None:
         if not self._base_pos:
@@ -1022,6 +1190,38 @@ class GameEngine:
     # ------------------------------------------------------------------
 
     def _try_fire(self, tank: Tank) -> None:
+        if tank.mega_gun_ticks > 0:
+            if not tank.can_fire():
+                return
+            tank.fire_cooldown = max(10, tank.fire_rate // 2)
+            tank.active_bullets += 2
+            muzzle = 0.6
+            side_offset = 0.4
+            dir_offsets = {
+                "up":    ((-muzzle, -side_offset), (-muzzle, side_offset)),
+                "down":  ((muzzle, -side_offset),  (muzzle, side_offset)),
+                "left":  ((-side_offset, -muzzle), (side_offset, -muzzle)),
+                "right": ((-side_offset, muzzle),  (side_offset, muzzle)),
+            }
+            offsets = dir_offsets.get(tank.direction, ((-muzzle, 0), (-muzzle, 0)))
+            for dr, dc in offsets:
+                grenade = Bullet(
+                    owner_id=tank.id,
+                    is_player=tank.is_player,
+                    row=tank.row + dr,
+                    col=tank.col + dc,
+                    direction=tank.direction,
+                    speed=0.22,
+                    power=2,
+                    ttl=180,
+                    is_grenade=True,
+                    start_row=tank.row,
+                    start_col=tank.col,
+                )
+                self.bullets[grenade.id] = grenade
+            self.events.append({"type": "sound", "sound": "fire"})
+            return
+
         bullet = tank.fire()
         if bullet:
             self.bullets[bullet.id] = bullet
@@ -1051,6 +1251,33 @@ class GameEngine:
 
             if not bullet.alive:
                 self._on_bullet_gone(bullet)
+                continue
+
+            # Sun missile: update target live and explode on arrival
+            if bullet.is_missile:
+                new_target = self._find_nearest_skeleton_or_worm(bullet.row, bullet.col)
+                if new_target:
+                    bullet.target_row, bullet.target_col = new_target
+                if bullet.target_row is not None and bullet.target_col is not None:
+                    if math.hypot(bullet.row - bullet.target_row, bullet.col - bullet.target_col) < 0.5:
+                        bullet.alive = False
+                        self._on_bullet_gone(bullet)
+                        continue
+                r, c = int(bullet.row), int(bullet.col)
+                if bullet.row < 0 or bullet.col < 0 or bullet.row >= GRID_HEIGHT or bullet.col >= GRID_WIDTH:
+                    bullet.alive = False
+                    self._on_bullet_gone(bullet)
+                continue
+
+            # Grenades pass through walls; explode at max range (handled in bullet.tick())
+            if bullet.is_grenade:
+                if not bullet.alive:
+                    self._on_bullet_gone(bullet)
+                    continue
+                r, c = int(bullet.row), int(bullet.col)
+                if bullet.row < 0 or bullet.col < 0 or bullet.row >= GRID_HEIGHT or bullet.col >= GRID_WIDTH:
+                    bullet.alive = False
+                    self._on_bullet_gone(bullet)
                 continue
 
             # Out of bounds
@@ -1121,6 +1348,48 @@ class GameEngine:
                             for gr, gc in self._find_box_group(r, c, min(MONEY_BOX_IDS), max(MONEY_BOX_IDS)):
                                 self.grid[gr][gc] -= 1
                             self.events.append({"type": "sound", "sound": "hit-brick"})
+                        elif tid in SUN_BOX_IDS:
+                            for gr, gc in self._find_box_group(r, c, min(SUN_BOX_IDS), max(SUN_BOX_IDS)):
+                                self.grid[gr][gc] -= 1
+                            self.events.append({"type": "sound", "sound": "hit-brick"})
+                        elif tid in MEGAGUN_BOX_IDS:
+                            for gr, gc in self._find_box_group(r, c, min(MEGAGUN_BOX_IDS), max(MEGAGUN_BOX_IDS)):
+                                self.grid[gr][gc] -= 1
+                            self.events.append({"type": "sound", "sound": "hit-brick"})
+                        elif tid == SUN_PAD:
+                            for gr, gc in self._find_box_group(r, c, SUN_PAD, SUN_PAD):
+                                self.grid[gr][gc] = EMPTY
+                            self._sun_tile_pos = None
+                            self._sun_spawn_timer = random.randint(1800, 3000)
+                            self.events.append({"type": "sound", "sound": "powerup-pickup"})
+                            owner_id = bullet.owner_id
+                            if self.player and self.player.id == owner_id:
+                                target = self._find_nearest_skeleton_or_worm(self.player.row, self.player.col)
+                                if target:
+                                    tr, tc = target
+                                    missile = Bullet(
+                                        owner_id=self.player.id,
+                                        is_player=True,
+                                        row=self.player.row,
+                                        col=self.player.col,
+                                        direction=self.player.direction,
+                                        speed=MISSILE_SPEED,
+                                        power=99,
+                                        ttl=600,
+                                        is_missile=True,
+                                        target_row=tr,
+                                        target_col=tc,
+                                    )
+                                    self.bullets[missile.id] = missile
+                        elif tid == MEGAGUN_PAD:
+                            for gr, gc in self._find_box_group(r, c, MEGAGUN_PAD, MEGAGUN_PAD):
+                                self.grid[gr][gc] = EMPTY
+                            self._megagun_tile_pos = None
+                            self._megagun_spawn_timer = random.randint(1800, 3000)
+                            self.events.append({"type": "sound", "sound": "powerup-pickup"})
+                            owner_id = bullet.owner_id
+                            if self.player and self.player.id == owner_id:
+                                self.player.mega_gun_ticks = 1800
                         elif tid == CHICK_PAD:
                             # Chick collected
                             for gr, gc in self._find_box_group(r, c, CHICK_PAD, CHICK_PAD):
@@ -1296,7 +1565,9 @@ class GameEngine:
 
     def _on_bullet_gone(self, bullet: Bullet) -> None:
         """Decrement active bullet counter for the owning tank."""
-        # Find the tank that owns the bullet
+        if bullet.is_grenade or bullet.is_missile:
+            self._explode_area(bullet)
+
         if self.player and self.player.id == bullet.owner_id:
             self.player.active_bullets = max(0, self.player.active_bullets - 1)
             return
@@ -1316,6 +1587,73 @@ class GameEngine:
             if turret.id == bullet.owner_id:
                 turret.active_bullets = max(0, turret.active_bullets - 1)
                 return
+
+    def _explode_area(self, bullet: Bullet) -> None:
+        """Area-of-effect explosion for grenades and sun missiles."""
+        radius = 3.0 if bullet.is_missile else 2.0
+        kind = "sun_explosion" if bullet.is_missile else "grenade"
+        ticks = 20 if bullet.is_missile else 12
+        self.explosions.append({
+            "row": bullet.row, "col": bullet.col,
+            "ticks": ticks, "kind": kind, "radius": int(radius),
+        })
+        self.events.append({"type": "sound", "sound": "enemy-explosion"})
+
+        # Damage enemies in radius
+        for enemy in list(self.enemies.values()):
+            if not enemy.alive:
+                continue
+            if math.hypot(enemy.row - bullet.row, enemy.col - bullet.col) < radius:
+                enemy.hp = 0
+                enemy.alive = False
+                self._add_explosion(enemy.row, enemy.col)
+                self.score += 100 * (list(ENEMY_TYPES).index(enemy.tank_type) + 1)
+                self.enemies_remaining -= 1
+
+        # Damage skeletons in radius
+        for skel in self.skeleton_ctrl.skeletons:
+            if not skel["alive"]:
+                continue
+            sr = skel["row"] + skel["h"] / 2
+            sc = skel["col"] + skel["w"] / 2
+            if math.hypot(sr - bullet.row, sc - bullet.col) < radius:
+                skel["alive"] = False
+                self._add_explosion(sr, sc)
+                self.skeleton_ctrl.total_killed += 1
+
+        if self.skeleton_ctrl.mega and self.skeleton_ctrl.mega["alive"]:
+            mega = self.skeleton_ctrl.mega
+            sr = mega["row"] + mega["h"] / 2
+            sc = mega["col"] + mega["w"] / 2
+            if math.hypot(sr - bullet.row, sc - bullet.col) < radius:
+                mega["hp"] = 0
+                mega["alive"] = False
+                self._add_explosion(sr, sc)
+
+        # Damage sandworm if in radius
+        if self.sandworm.get("active") and self.sandworm.get("parts"):
+            head = self.sandworm["parts"][0]
+            wr = head["row"] + 0.5
+            wc = head["col"] + 0.5
+            if math.hypot(wr - bullet.row, wc - bullet.col) < radius:
+                self.sandworm["hp"] = 0
+                self.sandworm["active"] = False
+                self.sandworm["despawning"] = False
+                self.sandworm["parts"] = []
+                self.sandworm["timer"] = random.randint(300, 600)
+                self.sandworm["hp"] = 5
+                self._add_explosion(wr, wc)
+
+        # Destroy tiles in radius
+        center_r, center_c = int(bullet.row), int(bullet.col)
+        r_int = int(radius)
+        for dr in range(-r_int, r_int + 1):
+            for dc in range(-r_int, r_int + 1):
+                gr, gc = center_r + dr, center_c + dc
+                if 0 <= gr < GRID_HEIGHT and 0 <= gc < GRID_WIDTH:
+                    tile = get_tile(self.grid[gr][gc])
+                    if tile.destructible and not tile.is_base:
+                        self.grid[gr][gc] = EMPTY
 
     # ------------------------------------------------------------------
     # Explosions

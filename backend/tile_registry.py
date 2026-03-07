@@ -267,6 +267,54 @@ TILE_REGISTRY: Dict[int, TileType] = {
         tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
         non_repeating=True,
     ),
+    43: TileType(
+        id=43, name="sun_pad", label="Sun",
+        color="#FF8C00",
+        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    44: TileType(
+        id=44, name="sun_crack2", label="Sun C2",
+        color="#FF8C00",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    45: TileType(
+        id=45, name="sun_crack1", label="Sun C1",
+        color="#FF8C00",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    46: TileType(
+        id=46, name="sun_box", label="Sun Box",
+        color="#FF8C00",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    47: TileType(
+        id=47, name="megagun_pad", label="Mega Gun",
+        color="#4A4A4A",
+        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    48: TileType(
+        id=48, name="megagun_crack2", label="MegaG C2",
+        color="#4A4A4A",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    49: TileType(
+        id=49, name="megagun_crack1", label="MegaG C1",
+        color="#4A4A4A",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
+    50: TileType(
+        id=50, name="megagun_box", label="MegaG Box",
+        color="#4A4A4A",
+        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
+        non_repeating=True,
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -313,6 +361,14 @@ MONEY_CRACK1 = 39
 MONEY_BOX = 40
 GOLDEN_FRAME = 41
 BONE_FRAME = 42
+SUN_PAD = 43
+SUN_CRACK2 = 44
+SUN_CRACK1 = 45
+SUN_BOX = 46
+MEGAGUN_PAD = 47
+MEGAGUN_CRACK2 = 48
+MEGAGUN_CRACK1 = 49
+MEGAGUN_BOX = 50
 
 CONVEYOR_IDS = {CONVEYOR_UP, CONVEYOR_DOWN, CONVEYOR_LEFT, CONVEYOR_RIGHT}
 GLASS_IDS = {GLASS, GLASS_CRACK1, GLASS_CRACK2}
@@ -320,14 +376,18 @@ MUSHROOM_BOX_IDS = {MUSHROOM_CRACK2, MUSHROOM_CRACK1, MUSHROOM_BOX}
 RAINBOW_BOX_IDS = {RAINBOW_CRACK2, RAINBOW_CRACK1, RAINBOW_BOX}
 CHICK_BOX_IDS = {CHICK_CRACK2, CHICK_CRACK1, CHICK_BOX}
 MONEY_BOX_IDS = {MONEY_CRACK2, MONEY_CRACK1, MONEY_BOX}
-BIG_BOX_IDS = MUSHROOM_BOX_IDS | RAINBOW_BOX_IDS | CHICK_BOX_IDS | MONEY_BOX_IDS
-BIG_BOX_OR_PAD_IDS = BIG_BOX_IDS | {MUSHROOM_PAD, RAINBOW_PAD, CHICK_PAD, MONEY_PAD}
+SUN_BOX_IDS = {SUN_CRACK2, SUN_CRACK1, SUN_BOX}
+MEGAGUN_BOX_IDS = {MEGAGUN_CRACK2, MEGAGUN_CRACK1, MEGAGUN_BOX}
+BIG_BOX_IDS = MUSHROOM_BOX_IDS | RAINBOW_BOX_IDS | CHICK_BOX_IDS | MONEY_BOX_IDS | SUN_BOX_IDS | MEGAGUN_BOX_IDS
+BIG_BOX_OR_PAD_IDS = BIG_BOX_IDS | {MUSHROOM_PAD, RAINBOW_PAD, CHICK_PAD, MONEY_PAD, SUN_PAD, MEGAGUN_PAD}
 
 GLASS_BOX_GROUPS = {
     "mushroom": (MUSHROOM_BOX, MUSHROOM_CRACK1, MUSHROOM_CRACK2, MUSHROOM_PAD),
     "rainbow": (RAINBOW_BOX, RAINBOW_CRACK1, RAINBOW_CRACK2, RAINBOW_PAD),
     "chick": (CHICK_BOX, CHICK_CRACK1, CHICK_CRACK2, CHICK_PAD),
     "money": (MONEY_BOX, MONEY_CRACK1, MONEY_CRACK2, MONEY_PAD),
+    "sun": (SUN_BOX, SUN_CRACK1, SUN_CRACK2, SUN_PAD),
+    "megagun": (MEGAGUN_BOX, MEGAGUN_CRACK1, MEGAGUN_CRACK2, MEGAGUN_PAD),
 }
 
 

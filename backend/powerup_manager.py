@@ -16,6 +16,8 @@ class PowerupManager:
 
     def tick(self) -> None:
         self.engine._tick_money_tile()
+        self.engine._tick_sun_tile()
+        self.engine._tick_megagun_tile()
         if self.engine.golden_eagle_ticks > 0:
             self.engine.golden_eagle_ticks -= 1
             if self.engine.golden_eagle_ticks == 0:

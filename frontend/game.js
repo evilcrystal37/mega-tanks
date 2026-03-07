@@ -716,7 +716,7 @@ class GameRenderer {
     const gridC = Math.round(x / sz);
     const gridR = Math.round(y / sz);
 
-    if (tid === 6 || tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 32 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 42)) {
+    if (tid === 6 || tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 32 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 50)) {
         ctx.save();
         const centerX = dx + (gridC % 2 === 0 ? ds : 0);
         const centerY = dy + (gridR % 2 === 0 ? ds : 0);
@@ -1027,6 +1027,111 @@ class GameRenderer {
             ctx.shadowBlur = 4;
             ctx.fillText("$", 0, ds * 0.05);
             ctx.restore();
+        } else if (tid >= 44 && tid <= 46) {
+            // Sun glass box — orange/yellow glow
+            ctx.fillStyle = "rgba(255, 140, 0, 0.25)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+
+            // Animated radial glow pulse
+            const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 400);
+            const sunGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, ds * 1.4 * pulse);
+            sunGrad.addColorStop(0, "rgba(255, 200, 0, 0.6)");
+            sunGrad.addColorStop(0.6, "rgba(255, 140, 0, 0.2)");
+            sunGrad.addColorStop(1, "rgba(255, 80, 0, 0)");
+            ctx.fillStyle = sunGrad;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+
+            // Inner border & 3D edges
+            ctx.strokeStyle = "rgba(255,200,0,0.6)";
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-ds + 3, -ds + 3, ds * 2 - 6, ds * 2 - 6);
+            ctx.strokeStyle = "rgba(255,255,200,0.9)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds);
+            ctx.stroke();
+            ctx.strokeStyle = "rgba(180,80,0,0.4)";
+            ctx.beginPath();
+            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds);
+            ctx.stroke();
+
+            // Sun emoji centered
+            ctx.font = `${ds * 1.4}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("☀️", 0, 0);
+
+            // Cracks
+            ctx.strokeStyle = "rgba(255,255,200,0.9)";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            if (tid <= 45) {
+                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
+            }
+            if (tid === 44) {
+                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
+                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
+            }
+            ctx.stroke();
+        } else if (tid === 43) {
+            // Sun Pad — sun emoji
+            ctx.font = `${ds * 1.4}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("☀️", 0, 0);
+        } else if (tid >= 48 && tid <= 50) {
+            // Mega Gun glass box — dark metallic
+            ctx.fillStyle = "rgba(50, 50, 60, 0.4)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+
+            // Animated metallic shine sweep
+            const cycle = ((Date.now() + 800) % 2500) / 2500;
+            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
+            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
+            shineGrad.addColorStop(0, "rgba(100,200,255,0)");
+            shineGrad.addColorStop(0.5, "rgba(100,200,255,0.5)");
+            shineGrad.addColorStop(1, "rgba(100,200,255,0)");
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+
+            // Inner border & 3D edges
+            ctx.strokeStyle = "rgba(120,180,255,0.5)";
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-ds + 3, -ds + 3, ds * 2 - 6, ds * 2 - 6);
+            ctx.strokeStyle = "rgba(200,200,220,0.8)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds);
+            ctx.stroke();
+            ctx.strokeStyle = "rgba(0,0,20,0.5)";
+            ctx.beginPath();
+            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds);
+            ctx.stroke();
+
+            // Pulsing dual gun emoji
+            ctx.font = `${ds * 1.3}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🔫", 0, ds * 0.05);
+
+            // Cracks
+            ctx.strokeStyle = "rgba(150,200,255,0.9)";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            if (tid <= 49) {
+                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
+            }
+            if (tid === 48) {
+                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
+                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
+            }
+            ctx.stroke();
+        } else if (tid === 47) {
+            // Mega Gun Pad — gun emoji
+            ctx.font = `${ds * 1.4}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🔫", 0, ds * 0.05);
         } else if (tid === 41) {
             // Golden shiny bricks
             ctx.fillStyle = "#D4AF37"; // Goldenrod base
@@ -1728,6 +1833,14 @@ class GameRenderer {
             this._drawSuperTntExplosion(ctx, exp, cell);
             return;
         }
+        if (exp.kind === "grenade") {
+            this._drawGrenadeExplosion(ctx, exp, cell);
+            return;
+        }
+        if (exp.kind === "sun_explosion") {
+            this._drawSunExplosion(ctx, exp, cell);
+            return;
+        }
         const maxTicks = 15;
         const elapsed = maxTicks - exp.ticks;
         const frames = [
@@ -1826,6 +1939,98 @@ class GameRenderer {
             ctx.lineWidth = cell * 0.2;
             ctx.stroke();
         }
+
+        ctx.restore();
+    }
+
+    _drawGrenadeExplosion(ctx, exp, cell) {
+        const maxTicks = 12;
+        const elapsed = maxTicks - exp.ticks;
+        const progress = elapsed / maxTicks;
+        const cx = exp.col * cell;
+        const cy = exp.row * cell;
+        const maxRadius = (exp.radius ?? 2) * cell;
+
+        ctx.save();
+
+        // Orange flash
+        if (progress < 0.3) {
+            const flashAlpha = (1 - progress / 0.3) * 0.8;
+            const flash = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxRadius * 0.5);
+            flash.addColorStop(0, `rgba(255,200,50,${flashAlpha})`);
+            flash.addColorStop(0.6, `rgba(255,100,0,${flashAlpha * 0.5})`);
+            flash.addColorStop(1, `rgba(200,50,0,0)`);
+            ctx.fillStyle = flash;
+            ctx.beginPath();
+            ctx.arc(cx, cy, maxRadius * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Expanding fire ring
+        const r = progress * maxRadius;
+        const alpha = Math.max(0, 1 - progress);
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(1, r), 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,140,0,${alpha})`;
+        ctx.lineWidth = Math.max(1, cell * 0.25 * (1 - progress));
+        ctx.stroke();
+
+        // Inner glow
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.8);
+        glow.addColorStop(0, `rgba(255,220,100,${alpha * 0.3})`);
+        glow.addColorStop(1, `rgba(255,80,0,0)`);
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(1, r * 0.8), 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    _drawSunExplosion(ctx, exp, cell) {
+        const maxTicks = 20;
+        const elapsed = maxTicks - exp.ticks;
+        const progress = elapsed / maxTicks;
+        const cx = exp.col * cell;
+        const cy = exp.row * cell;
+        const maxRadius = (exp.radius ?? 3) * cell;
+
+        ctx.save();
+
+        // Bright golden-white flash
+        if (progress < 0.2) {
+            const flashAlpha = (1 - progress / 0.2) * 1.0;
+            const flash = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxRadius * 0.6);
+            flash.addColorStop(0, `rgba(255,255,220,${flashAlpha})`);
+            flash.addColorStop(0.4, `rgba(255,200,0,${flashAlpha * 0.7})`);
+            flash.addColorStop(1, `rgba(255,100,0,0)`);
+            ctx.fillStyle = flash;
+            ctx.beginPath();
+            ctx.arc(cx, cy, maxRadius * 0.6, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Sun rays expanding
+        const numRays = 12;
+        const rayLen = progress * maxRadius;
+        const rayAlpha = Math.max(0, 1 - progress);
+        for (let i = 0; i < numRays; i++) {
+            const angle = (i / numRays) * Math.PI * 2 + progress * 0.5;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + Math.cos(angle) * rayLen, cy + Math.sin(angle) * rayLen);
+            ctx.strokeStyle = `rgba(255,200,0,${rayAlpha * 0.7})`;
+            ctx.lineWidth = Math.max(1, cell * 0.15 * (1 - progress));
+            ctx.stroke();
+        }
+
+        // Expanding golden ring
+        const r = progress * maxRadius;
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(1, r), 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,180,0,${rayAlpha})`;
+        ctx.lineWidth = Math.max(1, cell * 0.3 * (1 - progress));
+        ctx.stroke();
 
         ctx.restore();
     }

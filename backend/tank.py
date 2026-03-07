@@ -59,6 +59,7 @@ class Tank:
     # New buffs
     rainbow_ticks: int = 0
     mushroom_ticks: int = 0
+    mega_gun_ticks: int = 0
     is_big: bool = False  # Permanently big (like companion)
 
     # Companion support
@@ -128,6 +129,8 @@ class Tank:
             "airborne_ticks": self.airborne_ticks,
             "rainbow_ticks": self.rainbow_ticks,
             "mushroom_active": self.mushroom_ticks > 0,
+            "mega_gun_active": self.mega_gun_ticks > 0,
+            "mega_gun_ticks": self.mega_gun_ticks,
             "is_big": self.is_big,
         }
 

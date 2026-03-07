@@ -29,6 +29,11 @@ export class Hud {
         this._lastMegaAlive = false;
         this._lastBoneArch = false;
 
+        this._megagunSection  = document.getElementById("hud-megagun-section");
+        this._megagunTimer    = document.getElementById("hud-megagun-timer");
+        this._megagunBarFill  = document.getElementById("hud-megagun-bar-fill");
+        this._megagunMaxTicks = 1800;
+
         this._totalEnemies = 20;
     }
 
@@ -119,6 +124,28 @@ export class Hud {
             }
         }
 
+        // Mega Gun timer
+        const megaGunTicks = state.player ? (state.player.mega_gun_ticks ?? 0) : 0;
+        const hasMegaGun = megaGunTicks > 0;
+        if (this._megagunSection) {
+            this._megagunSection.style.display = hasMegaGun ? "block" : "none";
+        }
+        if (hasMegaGun && this._megagunTimer) {
+            if (megaGunTicks > this._megagunMaxTicks) this._megagunMaxTicks = megaGunTicks;
+            const totalSec = Math.ceil(megaGunTicks / 60);
+            const m = Math.floor(totalSec / 60);
+            const s = totalSec % 60;
+            this._megagunTimer.textContent = `${m}:${String(s).padStart(2, "0")}`;
+            this._megagunTimer.style.color = megaGunTicks < 300
+                ? (Math.floor(Date.now() / 300) % 2 === 0 ? "#ff4444" : "#90CAF9")
+                : "#90CAF9";
+            if (this._megagunBarFill) {
+                const pct = Math.round((megaGunTicks / this._megagunMaxTicks) * 100);
+                this._megagunBarFill.style.width = `${pct}%`;
+                this._megagunBarFill.style.background = megaGunTicks < 300 ? "#ff4444" : "#90CAF9";
+            }
+        }
+
         // Skeleton event banners
         if (boneArch && !this._lastBoneArch) {
             this._showSkeletonBanner("🦴 BONE ARCH EARNED! 🦴", "#E8D44D", 5000);
@@ -155,6 +182,7 @@ export class Hud {
     reset() {
         this.hideOverlay();
         this._companionMaxTicks = 1800;
+        this._megagunMaxTicks = 1800;
         this._lastSkeletonKills = 0;
         this._lastMegaAlive = false;
         this._lastBoneArch = false;
@@ -164,6 +192,7 @@ export class Hud {
         }
         if (this._skeletonBanner) this._skeletonBanner.style.display = "none";
         if (this._skeletonSection) this._skeletonSection.style.display = "none";
+        if (this._megagunSection) this._megagunSection.style.display = "none";
         this.update({ score: 0, lives: 3, enemies_remaining: 20, total_enemies: 20, player: null, companion_ticks: 0 });
     }
 }
