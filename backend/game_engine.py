@@ -481,7 +481,7 @@ class GameEngine:
                         })
                     
                     # Limit trail length to avoid huge WebSocket payloads
-                    max_points = 3600
+                    max_points = 80
                     if len(self.rainbow_trails[tank_key]["points"]) > max_points:
                         self.rainbow_trails[tank_key]["points"] = self.rainbow_trails[tank_key]["points"][-max_points:]
                     
@@ -1213,7 +1213,7 @@ class GameEngine:
                     direction=tank.direction,
                     speed=0.22,
                     power=2,
-                    ttl=180,
+                    ttl=36,  # ~7 tiles at 0.22 tiles/tick + small buffer
                     is_grenade=True,
                     start_row=tank.row,
                     start_col=tank.col,
@@ -1226,6 +1226,168 @@ class GameEngine:
         if bullet:
             self.bullets[bullet.id] = bullet
             self.events.append({"type": "sound", "sound": "fire"})
+
+    def _apply_bullet_hit_tile(
+        self,
+        r: int,
+        c: int,
+        owner_id: str,
+        is_player: bool,
+        power: int,
+        crush_bricks: bool = False,
+    ) -> None:
+        """Apply one bullet-hit worth of damage to the tile at (r, c).
+
+        Mirrors the destructive logic that was previously inlined in _tick_bullets
+        so that grenade area explosions go through the same incremental steps
+        (cracking glass/boxes, triggering powerup pickups) instead of wiping tiles.
+        """
+        tile = get_tile(self.grid[r][c])
+        if not tile.bullet_solid:
+            return
+
+        if tile.is_explosive:
+            self._detonate_tile(r, c, tile.explosion_radius)
+            return
+
+        if not tile.destructible:
+            self.events.append({"type": "sound", "sound": "hit-steel"})
+            return
+
+        if tile.is_base:
+            player_is_big = (is_player and self.player and
+                             (self.player.mushroom_ticks > 0 or self.player.is_big))
+            if not player_is_big:
+                if self.golden_eagle_ticks <= 0:
+                    self.grid[r][c] = EMPTY
+                    self._trigger_defeat()
+            return
+
+        tid = self.grid[r][c]
+        if not (power >= 2 or tid == BRICK or tid in BIG_BOX_OR_PAD_IDS or GLASS <= tid <= GLASS_CRACK2):
+            return
+
+        if GLASS <= tid <= GLASS_CRACK1:
+            self.grid[r][c] += 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid == GLASS_CRACK2:
+            self.grid[r][c] = EMPTY
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in MUSHROOM_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(MUSHROOM_BOX_IDS), max(MUSHROOM_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+                if self.grid[gr][gc] == AUTO_TURRET:
+                    self.grid[gr][gc] = MUSHROOM_PAD
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in CHICK_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(CHICK_BOX_IDS), max(CHICK_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+                if self.grid[gr][gc] == CHICK_PAD:
+                    self.grid[gr][gc] = CHICK_PAD
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in MONEY_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(MONEY_BOX_IDS), max(MONEY_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in SUN_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(SUN_BOX_IDS), max(SUN_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in MEGAGUN_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(MEGAGUN_BOX_IDS), max(MEGAGUN_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid == SUN_PAD:
+            for gr, gc in self._find_box_group(r, c, SUN_PAD, SUN_PAD):
+                self.grid[gr][gc] = EMPTY
+            self._sun_tile_pos = None
+            self._sun_spawn_timer = random.randint(1800, 3000)
+            self.events.append({"type": "sound", "sound": "powerup-pickup"})
+            if is_player and self.player and self.player.id == owner_id:
+                target = self._find_nearest_skeleton_or_worm(self.player.row, self.player.col)
+                if target:
+                    tr, tc = target
+                    missile = Bullet(
+                        owner_id=self.player.id,
+                        is_player=True,
+                        row=self.player.row,
+                        col=self.player.col,
+                        direction=self.player.direction,
+                        speed=MISSILE_SPEED,
+                        power=99,
+                        ttl=600,
+                        is_missile=True,
+                        target_row=tr,
+                        target_col=tc,
+                    )
+                    self.bullets[missile.id] = missile
+        elif tid == MEGAGUN_PAD:
+            for gr, gc in self._find_box_group(r, c, MEGAGUN_PAD, MEGAGUN_PAD):
+                self.grid[gr][gc] = EMPTY
+            self._megagun_tile_pos = None
+            self._megagun_spawn_timer = random.randint(1800, 3000)
+            self.events.append({"type": "sound", "sound": "powerup-pickup"})
+            if is_player and self.player and self.player.id == owner_id:
+                self.player.mega_gun_ticks = 1800
+        elif tid == CHICK_PAD:
+            for gr, gc in self._find_box_group(r, c, CHICK_PAD, CHICK_PAD):
+                self.grid[gr][gc] = EMPTY
+            self.events.append({"type": "sound", "sound": "powerup-pickup"})
+            owner_tank = None
+            if self.player and self.player.id == owner_id:
+                owner_tank = self.player
+            else:
+                for enemy in self.enemies.values():
+                    if enemy.id == owner_id:
+                        owner_tank = enemy
+                        break
+            if owner_tank:
+                self._spawn_companion_for(owner_tank)
+        elif tid == MUSHROOM_PAD:
+            for gr, gc in self._find_box_group(r, c, MUSHROOM_PAD, MUSHROOM_PAD):
+                self.grid[gr][gc] = EMPTY
+            self.events.append({"type": "sound", "sound": "powerup-pickup"})
+            if self.player and self.player.id == owner_id:
+                self.player.mushroom_ticks = max(self.player.mushroom_ticks, 0) + 600
+                self._clear_area_for_tank(self.player, force=True)
+            else:
+                for enemy in self.enemies.values():
+                    if enemy.id == owner_id:
+                        enemy.mushroom_ticks = max(enemy.mushroom_ticks, 0) + 600
+                        self._clear_area_for_tank(enemy, force=True)
+                        break
+                for turret in self.turrets.values():
+                    if turret.id == owner_id:
+                        turret.mushroom_ticks = max(turret.mushroom_ticks, 0) + 600
+                        self._clear_area_for_tank(turret, force=True)
+                        break
+        elif tid in RAINBOW_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(RAINBOW_BOX_IDS), max(RAINBOW_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+                if self.grid[gr][gc] == MUSHROOM_BOX:
+                    self.grid[gr][gc] = RAINBOW_PAD
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid == RAINBOW_PAD:
+            for gr, gc in self._find_box_group(r, c, RAINBOW_PAD, RAINBOW_PAD):
+                self.grid[gr][gc] = EMPTY
+            self.events.append({"type": "sound", "sound": "powerup-pickup"})
+            if self.player and self.player.id == owner_id:
+                bonus = 600 if self.player.rainbow_ticks > 0 else 1800
+                self.player.rainbow_ticks = max(self.player.rainbow_ticks, 0) + bonus
+            else:
+                for enemy in self.enemies.values():
+                    if enemy.id == owner_id:
+                        bonus = 600 if enemy.rainbow_ticks > 0 else 1800
+                        enemy.rainbow_ticks = max(enemy.rainbow_ticks, 0) + bonus
+                        break
+                for turret in self.turrets.values():
+                    if turret.id == owner_id:
+                        bonus = 600 if turret.rainbow_ticks > 0 else 1800
+                        turret.rainbow_ticks = max(turret.rainbow_ticks, 0) + bonus
+                        break
+        else:
+            self.grid[r][c] = EMPTY
+            self.events.append({"type": "sound", "sound": "hit-brick"})
 
     def _tick_bullets(self) -> None:
         for bullet in list(self.bullets.values()):
@@ -1269,15 +1431,9 @@ class GameEngine:
                     self._on_bullet_gone(bullet)
                 continue
 
-            # Grenades pass through walls; explode at max range (handled in bullet.tick())
-            if bullet.is_grenade:
-                if not bullet.alive:
-                    self._on_bullet_gone(bullet)
-                    continue
-                r, c = int(bullet.row), int(bullet.col)
-                if bullet.row < 0 or bullet.col < 0 or bullet.row >= GRID_HEIGHT or bullet.col >= GRID_WIDTH:
-                    bullet.alive = False
-                    self._on_bullet_gone(bullet)
+            # Grenades behave like normal bullets (hit walls/tanks) and explode on contact
+            if bullet.is_grenade and not bullet.alive:
+                self._on_bullet_gone(bullet)
                 continue
 
             # Out of bounds
@@ -1306,162 +1462,14 @@ class GameEngine:
                         bullet.col -= bullet.speed * 2
                     self.events.append({"type": "sound", "sound": "hit-steel"})
                     continue
-                elif tile.is_explosive:
-                    self._detonate_tile(r, c, tile.explosion_radius)
-                elif tile.destructible:
-                    if tile.is_base:
-                        # Big player tanks cannot accidentally destroy their own base
-                        player_is_big = (bullet.is_player and self.player and
-                                         (self.player.mushroom_ticks > 0 or self.player.is_big))
-                        if not player_is_big:
-                            if self.golden_eagle_ticks > 0:
-                                pass
-                            else:
-                                self.grid[r][c] = EMPTY
-                                self._trigger_defeat()
-                    elif bullet.power >= 2 or self.grid[r][c] == BRICK or self.grid[r][c] in BIG_BOX_OR_PAD_IDS or GLASS <= self.grid[r][c] <= GLASS_CRACK2:
-                        # Destroy brick or steel (if power bullet) or glass or mushroom or rainbow or chick or money
-                        tid = self.grid[r][c]
-                        
-                        if GLASS <= tid <= GLASS_CRACK1:
-                            self.grid[r][c] += 1
-                            self.events.append({"type": "sound", "sound": "hit-brick"})
-                        elif tid == GLASS_CRACK2:
-                            self.grid[r][c] = EMPTY
-                            self.events.append({"type": "sound", "sound": "hit-brick"})
-                        elif tid in MUSHROOM_BOX_IDS:
-                            # Crack the whole 2×2 mushroom box together
-                            for gr, gc in self._find_box_group(r, c, min(MUSHROOM_BOX_IDS), max(MUSHROOM_BOX_IDS)):
-                                self.grid[gr][gc] -= 1
-                                if self.grid[gr][gc] == AUTO_TURRET:
-                                    self.grid[gr][gc] = MUSHROOM_PAD
-                            self.events.append({"type": "sound", "sound": "hit-brick"})
-                        elif tid in CHICK_BOX_IDS:
-                            # Crack the whole 2×2 chick box together: 35→34→33→32
-                            for gr, gc in self._find_box_group(r, c, min(CHICK_BOX_IDS), max(CHICK_BOX_IDS)):
-                                self.grid[gr][gc] -= 1
-                                if self.grid[gr][gc] == CHICK_PAD:
-                                    self.grid[gr][gc] = CHICK_PAD
-                            self.events.append({"type": "sound", "sound": "hit-brick"})
-                        elif tid in MONEY_BOX_IDS:
-                            # Crack the whole 2×2 money box together: 40→39→38→37
-                            for gr, gc in self._find_box_group(r, c, min(MONEY_BOX_IDS), max(MONEY_BOX_IDS)):
-                                self.grid[gr][gc] -= 1
-                            self.events.append({"type": "sound", "sound": "hit-brick"})
-                        elif tid in SUN_BOX_IDS:
-                            for gr, gc in self._find_box_group(r, c, min(SUN_BOX_IDS), max(SUN_BOX_IDS)):
-                                self.grid[gr][gc] -= 1
-                            self.events.append({"type": "sound", "sound": "hit-brick"})
-                        elif tid in MEGAGUN_BOX_IDS:
-                            for gr, gc in self._find_box_group(r, c, min(MEGAGUN_BOX_IDS), max(MEGAGUN_BOX_IDS)):
-                                self.grid[gr][gc] -= 1
-                            self.events.append({"type": "sound", "sound": "hit-brick"})
-                        elif tid == SUN_PAD:
-                            for gr, gc in self._find_box_group(r, c, SUN_PAD, SUN_PAD):
-                                self.grid[gr][gc] = EMPTY
-                            self._sun_tile_pos = None
-                            self._sun_spawn_timer = random.randint(1800, 3000)
-                            self.events.append({"type": "sound", "sound": "powerup-pickup"})
-                            owner_id = bullet.owner_id
-                            if self.player and self.player.id == owner_id:
-                                target = self._find_nearest_skeleton_or_worm(self.player.row, self.player.col)
-                                if target:
-                                    tr, tc = target
-                                    missile = Bullet(
-                                        owner_id=self.player.id,
-                                        is_player=True,
-                                        row=self.player.row,
-                                        col=self.player.col,
-                                        direction=self.player.direction,
-                                        speed=MISSILE_SPEED,
-                                        power=99,
-                                        ttl=600,
-                                        is_missile=True,
-                                        target_row=tr,
-                                        target_col=tc,
-                                    )
-                                    self.bullets[missile.id] = missile
-                        elif tid == MEGAGUN_PAD:
-                            for gr, gc in self._find_box_group(r, c, MEGAGUN_PAD, MEGAGUN_PAD):
-                                self.grid[gr][gc] = EMPTY
-                            self._megagun_tile_pos = None
-                            self._megagun_spawn_timer = random.randint(1800, 3000)
-                            self.events.append({"type": "sound", "sound": "powerup-pickup"})
-                            owner_id = bullet.owner_id
-                            if self.player and self.player.id == owner_id:
-                                self.player.mega_gun_ticks = 1800
-                        elif tid == CHICK_PAD:
-                            # Chick collected
-                            for gr, gc in self._find_box_group(r, c, CHICK_PAD, CHICK_PAD):
-                                self.grid[gr][gc] = EMPTY
-                            self.events.append({"type": "sound", "sound": "powerup-pickup"})
-                            owner_id = bullet.owner_id
-                            owner_tank = None
-                            if self.player and self.player.id == owner_id:
-                                owner_tank = self.player
-                            else:
-                                for enemy in self.enemies.values():
-                                    if enemy.id == owner_id:
-                                        owner_tank = enemy
-                                        break
-                            if owner_tank:
-                                self._spawn_companion_for(owner_tank)
-                        elif tid == MUSHROOM_PAD:
-                            # Mushroom collected — clear entire 2×2 group, stacks +10s
-                            for gr, gc in self._find_box_group(r, c, MUSHROOM_PAD, MUSHROOM_PAD):
-                                self.grid[gr][gc] = EMPTY
-                            self.events.append({"type": "sound", "sound": "powerup-pickup"})
-                            owner_id = bullet.owner_id
-                            if self.player and self.player.id == owner_id:
-                                self.player.mushroom_ticks = max(self.player.mushroom_ticks, 0) + 600
-                                self._clear_area_for_tank(self.player, force=True)
-                            else:
-                                for enemy in self.enemies.values():
-                                    if enemy.id == owner_id:
-                                        enemy.mushroom_ticks = max(enemy.mushroom_ticks, 0) + 600
-                                        self._clear_area_for_tank(enemy, force=True)
-                                        break
-                                for turret in self.turrets.values():
-                                    if turret.id == owner_id:
-                                        turret.mushroom_ticks = max(turret.mushroom_ticks, 0) + 600
-                                        self._clear_area_for_tank(turret, force=True)
-                                        break
-                        elif tid in RAINBOW_BOX_IDS:
-                            # Crack the whole 2×2 rainbow box together: 31→30→29→23
-                            for gr, gc in self._find_box_group(r, c, min(RAINBOW_BOX_IDS), max(RAINBOW_BOX_IDS)):
-                                self.grid[gr][gc] -= 1
-                                if self.grid[gr][gc] == MUSHROOM_BOX:
-                                    self.grid[gr][gc] = RAINBOW_PAD
-                            self.events.append({"type": "sound", "sound": "hit-brick"})
-                        elif tid == RAINBOW_PAD:
-                            # Rainbow collected — clear entire 2×2 group, stacks +10s per pickup
-                            for gr, gc in self._find_box_group(r, c, RAINBOW_PAD, RAINBOW_PAD):
-                                self.grid[gr][gc] = EMPTY
-                            self.events.append({"type": "sound", "sound": "powerup-pickup"})
-                            owner_id = bullet.owner_id
-                            if self.player and self.player.id == owner_id:
-                                bonus = 600 if self.player.rainbow_ticks > 0 else 1800
-                                self.player.rainbow_ticks = max(self.player.rainbow_ticks, 0) + bonus
-                            else:
-                                for enemy in self.enemies.values():
-                                    if enemy.id == owner_id:
-                                        bonus = 600 if enemy.rainbow_ticks > 0 else 1800
-                                        enemy.rainbow_ticks = max(enemy.rainbow_ticks, 0) + bonus
-                                        break
-                                for turret in self.turrets.values():
-                                    if turret.id == owner_id:
-                                        bonus = 600 if turret.rainbow_ticks > 0 else 1800
-                                        turret.rainbow_ticks = max(turret.rainbow_ticks, 0) + bonus
-                                        break
-                        else:
-                            self.grid[r][c] = EMPTY
-                            self.events.append({"type": "sound", "sound": "hit-brick"})
-                            
-                            if bullet.crush_bricks and tid != STEEL:
-                                continue
                 else:
-                    self.events.append({"type": "sound", "sound": "hit-steel"})
-                
+                    crush = bullet.crush_bricks
+                    tid_before = self.grid[r][c]
+                    self._apply_bullet_hit_tile(r, c, bullet.owner_id, bullet.is_player, bullet.power, crush)
+                    # crush_bricks bullets pass through a brick they just destroyed
+                    if crush and tid_before != STEEL and self.grid[r][c] != tid_before:
+                        continue
+
                 # Explosion effect
                 self._add_explosion(bullet.row, bullet.col)
                 bullet.alive = False
@@ -1644,16 +1652,15 @@ class GameEngine:
                 self.sandworm["hp"] = 5
                 self._add_explosion(wr, wc)
 
-        # Destroy tiles in radius
+        # Damage tiles in radius — each cell gets one bullet-hit worth of damage
         center_r, center_c = int(bullet.row), int(bullet.col)
         r_int = int(radius)
         for dr in range(-r_int, r_int + 1):
             for dc in range(-r_int, r_int + 1):
                 gr, gc = center_r + dr, center_c + dc
                 if 0 <= gr < GRID_HEIGHT and 0 <= gc < GRID_WIDTH:
-                    tile = get_tile(self.grid[gr][gc])
-                    if tile.destructible and not tile.is_base:
-                        self.grid[gr][gc] = EMPTY
+                    if math.hypot(dr, dc) <= radius:
+                        self._apply_bullet_hit_tile(gr, gc, bullet.owner_id, bullet.is_player, 2)
 
     # ------------------------------------------------------------------
     # Explosions
