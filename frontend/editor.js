@@ -110,9 +110,10 @@ async function _loadTiles() {
     }
     // Cycling skips: Base (6), glass cracks (16, 17),
     // sandworm parts (20, 21), raw item pickups (23, 24, 32 — must stay inside their boxes),
-    // mushroom cracks (26, 27), rainbow cracks (29, 30), chick cracks (33, 34), money tiles (37, 38, 39, 40),
-    // golden frame (41), sun powerup (43–46), mega gun powerup (47–50)
-    const NOT_ALLOWED = new Set([6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30, 32, 33, 34, 37, 38, 39, 40, 41, 43, 44, 45, 46, 47, 48, 49, 50]);
+    // mushroom cracks (26, 27), rainbow cracks (29, 30), chick cracks (33, 34),
+    // money intermediate states (37 pad, 38, 39 cracks), golden frame (41),
+    // sun powerup (43–46), mega gun powerup (47–50)
+    const NOT_ALLOWED = new Set([6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30, 32, 33, 34, 37, 38, 39, 41, 43, 44, 45, 46, 47, 48, 49, 50]);
     const disabled = _getDisabledTileIds();
     tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id) && !disabled.has(t.id)).map(t => t.id);
     // Put empty last so Brick remains the default when opening the editor

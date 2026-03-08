@@ -25,6 +25,7 @@ export const TILE_TOGGLES = [
     { key: "tile_rainbow_box",  label: "RAINBOW",  ids: [31],            color: "#ff69b4", autoGen: { type: "powerup_2x2" } },
     { key: "tile_chick_box",    label: "CHICK BOX",ids: [35],            color: "#ffee58", autoGen: { type: "powerup_2x2" } },
     { key: "tile_spec_tnt",     label: "SPEC TNT", ids: [36],            color: "#ff6600", autoGen: { weight: 1 } },
+    { key: "tile_money_box",    label: "MONEY BOX",ids: [40],            color: "#FFD700", autoGen: { type: "powerup_2x2" } },
 ];
 
 export const TILE_GROUPS = TILE_TOGGLES.reduce((acc, toggle) => {
