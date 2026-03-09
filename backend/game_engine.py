@@ -289,6 +289,24 @@ class GameEngine:
             elapsed = time.monotonic() - t0
             await asyncio.sleep(max(0.0, TICK_INTERVAL - elapsed))
 
+    # ------------------------------------------------------------------
+    # Tile Settings Helpers
+    # ------------------------------------------------------------------
+
+    def _is_timed_tile_enabled(self, tile_key: str) -> bool:
+        """Check if a timed tile type is enabled in tile settings."""
+        tile_settings = self._settings.get('tile_settings', {})
+        return tile_settings.get(tile_key, True)  # Default to True if not set
+
+    def _is_money_enabled(self) -> bool:
+        return self._is_timed_tile_enabled('tile_money')
+
+    def _is_sun_enabled(self) -> bool:
+        return self._is_timed_tile_enabled('tile_sun')
+
+    def _is_megagun_enabled(self) -> bool:
+        return self._is_timed_tile_enabled('tile_megagun')
+
     def _tick(self) -> None:
         if not self.running:
             return
@@ -636,7 +654,7 @@ class GameEngine:
                 self._money_spawn_timer = random.randint(1200, 2400)
         else:
             self._money_spawn_timer -= 1
-            if self._money_spawn_timer <= 0:
+            if self._money_spawn_timer <= 0 and self._is_money_enabled():
                 # Find valid 2x2 empty block
                 valid_spots = []
                 base_r, base_c = self._base_pos if self._base_pos else (GRID_HEIGHT - 1, GRID_WIDTH // 2)
@@ -684,7 +702,7 @@ class GameEngine:
                 self._sun_spawn_timer = random.randint(1800, 3000)
         else:
             self._sun_spawn_timer -= 1
-            if self._sun_spawn_timer <= 0:
+            if self._sun_spawn_timer <= 0 and self._is_sun_enabled():
                 valid_spots = []
                 base_r, base_c = self._base_pos if self._base_pos else (GRID_HEIGHT - 1, GRID_WIDTH // 2)
                 for r in range(0, GRID_HEIGHT - 1, 2):
@@ -725,7 +743,7 @@ class GameEngine:
                 self._megagun_spawn_timer = random.randint(1800, 3000)
         else:
             self._megagun_spawn_timer -= 1
-            if self._megagun_spawn_timer <= 0:
+            if self._megagun_spawn_timer <= 0 and self._is_megagun_enabled():
                 valid_spots = []
                 base_r, base_c = self._base_pos if self._base_pos else (GRID_HEIGHT - 1, GRID_WIDTH // 2)
                 for r in range(0, GRID_HEIGHT - 1, 2):

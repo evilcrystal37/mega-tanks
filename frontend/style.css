@@ -667,8 +667,8 @@ body {
 /* Live canvas preview */
 .tile-toggle-canvas {
   display: block;
-  width: 56px;
-  height: 56px;
+  width: 14px;
+  height: 14px;
   image-rendering: pixelated;
   flex-shrink: 0;
 }

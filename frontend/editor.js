@@ -4,7 +4,7 @@
 
 import { Api } from "./api.js";
 import { SpriteAtlas } from "./spriteAtlas.js";
-import { CELL, GRID_H, GRID_W, TILE_GROUPS, TILE_TOGGLES } from "./constants.js";
+import { CELL, GRID_H, GRID_W, TILE_GROUPS, TILE_TOGGLES, TIMED_TILE_IDS, NON_MANUAL_TILE_IDS } from "./constants.js";
 import { drawSandTile, drawLavaTile } from "./tileRenderer.js";
 import { computeViewport, getCellZoom, resizeCanvas } from "./viewport.js";
 
@@ -109,14 +109,10 @@ async function _loadTiles() {
             { id: 6, label: "BASE", color: "#f8d818" },
         ];
     }
-    // Cycling skips: Base (6), glass cracks (16, 17),
-    // sandworm parts (20, 21), raw item pickups (23, 24, 32 — must stay inside their boxes),
-    // mushroom cracks (26, 27), rainbow cracks (29, 30), chick cracks (33, 34),
-    // money intermediate states (37 pad, 38, 39 cracks), golden frame (41),
-    // sun powerup (43–46), mega gun powerup (47–50)
-    const NOT_ALLOWED = new Set([6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30, 32, 33, 34, 37, 38, 39, 41, 43, 44, 45, 46, 47, 48, 49, 50]);
+    // Block timed tiles (spawn dynamically) and other non-manual tiles
+    const blockedTiles = new Set([...TIMED_TILE_IDS, ...NON_MANUAL_TILE_IDS]);
     const disabled = _getDisabledTileIds();
-    tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id) && !disabled.has(t.id)).map(t => t.id);
+    tileIds = tiles.filter(t => !blockedTiles.has(t.id) && !disabled.has(t.id)).map(t => t.id);
     // Put empty last so Brick remains the default when opening the editor
     tileIds.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
     tileIndex = 0;
@@ -695,165 +691,191 @@ function _validate() {
 // ── Event bindings ────────────────────────────────────────────────────
 
 function _generateRandomMap() {
-    _initGrid(); // clears the map and places the base
-    
-    // Pick symmetry mode: 2-way (left-right) or 4-way (quadrants)
-    const symMode = Math.random() > 0.5 ? 4 : 2;
+    _initGrid();
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // All placement works in MACRO-CELL space.
+    // One macro-cell = one 2×2 block of real grid cells.
+    // This guarantees every tile placement is strictly 2×2-aligned — no
+    // single-cell (1×1) fragments are ever written to the grid.
+    // ─────────────────────────────────────────────────────────────────────────
+    const MACRO_W = GRID_W / 2;   // 32 macro columns
+    const MACRO_H = GRID_H / 2;   // 21 macro rows
+
+    const symMode = Math.random() > 0.5 ? 4 : 2;  // 4-way quadrant or left↔right
     const disabled = _getDisabledTileIds();
 
-    // Build weighted fill pool and 2×2 placement lists dynamically from TILE_TOGGLES.
-    // Adding autoGen metadata to a TILE_TOGGLES entry is all that's needed for new tiles.
-    const placeableTiles = [];
+    // Tank-solid tile IDs — these block movement and should never fill corridors
+    const TANK_SOLID = new Set([1, 2, 3, 14, 15, 36]);
+
+    // Populate tile pools (timed tiles have no autoGen and are automatically skipped)
+    const blockingTiles = [];   // Impassable to tanks (brick, steel, water, glass…)
+    const softTiles     = [];   // Passable terrain   (forest, ice, lava, conveyor…)
     const powerupBoxIds = [];
-    let turretTileId = null;
+    let   turretTileId  = null;
 
     for (const toggle of TILE_TOGGLES) {
         const ag = toggle.autoGen;
         if (!ag) continue;
-        const anyDisabled = toggle.ids.some(id => disabled.has(id));
-        if (anyDisabled) continue;
+        if (toggle.ids.some(id => disabled.has(id))) continue;
 
-        if (ag.type === "powerup_2x2") {
+        if (ag.type === 'powerup_2x2') {
             powerupBoxIds.push(toggle.ids[0]);
-        } else if (ag.type === "turret_2x2") {
+        } else if (ag.type === 'turret_2x2') {
             turretTileId = toggle.ids[0];
         } else {
-            // Regular fill tile — repeat each id `weight` times
-            const w = ag.weight ?? 1;
-            for (let i = 0; i < w; i++) {
-                placeableTiles.push(...toggle.ids);
+            const w    = ag.weight ?? 1;
+            const pool = toggle.ids.some(id => TANK_SOLID.has(id)) ? blockingTiles : softTiles;
+            for (let i = 0; i < w; i++) pool.push(...toggle.ids);
+        }
+    }
+    if (blockingTiles.length === 0) blockingTiles.push(1);
+
+    // Macro-grid — each cell will be expanded to a 2×2 real-cell block later
+    const macro = Array.from({ length: MACRO_H }, () => Array(MACRO_W).fill(0));
+
+    // Generation zone: the quadrant/half we write to before mirroring.
+    // The bottom SAFE_ROWS are kept clear of blocking tiles for base approach.
+    const SAFE_ROWS = 4;
+    const genH = symMode === 4
+        ? Math.floor(MACRO_H / 2)    // rows 0-9  (4-way)
+        : MACRO_H - SAFE_ROWS;       // rows 0-16 (2-way)
+    const genW = Math.floor(MACRO_W / 2);  // cols 0-15 (both modes)
+
+    // Place one macro-cell with left↔right (and top↔bottom for 4-way) mirroring.
+    // Must only be called with (mr, mc) inside the generation zone.
+    function setMacro(mr, mc, tid) {
+        if (mr < 0 || mr >= genH || mc < 0 || mc >= genW) return;
+        const mc2 = MACRO_W - 1 - mc;
+        const mr2 = MACRO_H - 1 - mr;
+        macro[mr ][mc ] = tid;
+        macro[mr ][mc2] = tid;
+        if (symMode === 4) {
+            macro[mr2][mc ] = tid;
+            macro[mr2][mc2] = tid;
+        }
+    }
+
+    // ── Corridor rows: guaranteed horizontal passable lanes ───────────────────
+    // Blocking tiles will never be placed on these rows (and any that sneak in
+    // via mirroring are cleared in the post-process step below).
+    const numLanes    = 2 + Math.floor(Math.random() * 2);            // 2 or 3
+    const laneSpacing = Math.max(2, Math.floor(genH / (numLanes + 1)));
+    const corridorRows = new Set();
+    for (let i = 1; i <= numLanes; i++) {
+        const mr = i * laneSpacing;
+        if (mr < genH) corridorRows.add(mr);
+    }
+    // Register mirrored corridor rows for the post-processing pass
+    for (const mr of [...corridorRows]) {
+        if (symMode === 4) corridorRows.add(MACRO_H - 1 - mr);
+    }
+
+    // ── Blocking tile shapes ──────────────────────────────────────────────────
+    const isDense     = Math.random() > 0.5;
+    const numBlocking = isDense
+        ? 10 + Math.floor(Math.random() * 8)
+        :  5 + Math.floor(Math.random() * 5);
+
+    for (let i = 0; i < numBlocking; i++) {
+        const tid     = blockingTiles[Math.floor(Math.random() * blockingTiles.length)];
+        const isHoriz = Math.random() > 0.5;
+        const len     = 2 + Math.floor(Math.random() * 5);  // 2-6 macro-cells
+        const thick   = 1 + Math.floor(Math.random() * 2);  // 1-2 macro-cells
+        const sw      = isHoriz ? len   : thick;
+        const sh      = isHoriz ? thick : len;
+        if (genH <= sh || genW <= sw) continue;
+        const smr = Math.floor(Math.random() * (genH - sh));
+        const smc = Math.floor(Math.random() * (genW - sw));
+        for (let dr = 0; dr < sh; dr++) {
+            const mr = smr + dr;
+            if (corridorRows.has(mr)) continue;  // Preserve corridor rows
+            for (let dc = 0; dc < sw; dc++) {
+                setMacro(mr, smc + dc, tid);
             }
         }
     }
 
-    // Fallback to brick if every tile has been disabled
-    if (placeableTiles.length === 0) placeableTiles.push(1);
-    
-    const isDense = Math.random() > 0.5; // 50% chance for a more packed map
-    const baseShapes = isDense ? 30 + Math.floor(Math.random() * 30) : 15 + Math.floor(Math.random() * 15);
-    
-    const numShapes = symMode === 4 ? baseShapes : Math.floor(baseShapes * 1.5);
-    
-        const maxR = symMode === 4 ? Math.floor(GRID_H / 2) : GRID_H;
-        const maxC = Math.floor(GRID_W / 2);
-        
-        for (let i = 0; i < numShapes; i++) {
-            const tid = placeableTiles[Math.floor(Math.random() * placeableTiles.length)];
-            const isHorizontal = Math.random() > 0.5;
-            const length = ((isDense ? 3 : 2) + Math.floor(Math.random() * 6)) * 2;
-            const thickness = ((isDense ? 2 : 1) + Math.floor(Math.random() * 3)) * 2;
-            
-            let startR = Math.floor(Math.random() * (maxR - (isHorizontal ? thickness : length)));
-            let startC = Math.floor(Math.random() * (maxC - (isHorizontal ? length : thickness)));
-            
-            // Align to 2x2 grid for Battle City blocks (prevents non-repeating tiles from slicing)
-            startR = startR - (startR % 2);
-            startC = startC - (startC % 2);
-        
-        for (let dr = 0; dr < (isHorizontal ? thickness : length); dr++) {
-            for (let dc = 0; dc < (isHorizontal ? length : thickness); dc++) {
-                const r = startR + dr;
-                const c = startC + dc;
-                if (r >= 0 && r < maxR && c >= 0 && c < maxC) {
-                    grid[r][c] = tid;
-                    
-                    // Mirroring
-                    const mirrorC = GRID_W - 1 - c;
-                    const mirrorR = GRID_H - 1 - r;
-                    
-                    if (symMode === 2) {
-                        grid[r][mirrorC] = tid;
-                    } else if (symMode === 4) {
-                        grid[r][mirrorC] = tid;
-                        grid[mirrorR][c] = tid;
-                        grid[mirrorR][mirrorC] = tid;
-                    }
-                }
-            }
-        }
-    }
-    
-    // ── Auto-turrets — placed as 2×2 blocks at even positions ──
-    // Snap to even row/col so each block aligns with the engine's scan.
-    const numTurretPlacements = turretTileId == null ? 0 : 1 + Math.floor(Math.random() * 3);
-    for (let t = 0; t < numTurretPlacements; t++) {
-        // Snap to even row/col so the 2×2 block aligns with the engine's scan
-        let tr = Math.floor(Math.random() * Math.max(1, Math.floor((maxR - 4) / 2))) * 2;
-        let tc = Math.floor(Math.random() * Math.max(1, Math.floor((maxC - 4) / 2))) * 2;
-        tr = Math.max(0, Math.min(tr, maxR - 2));
-        tc = Math.max(0, Math.min(tc, maxC - 2));
-        for (let dr = 0; dr < 2; dr++) {
-            for (let dc = 0; dc < 2; dc++) {
-                const r = tr + dr;
-                const c = tc + dc;
-                if (r < maxR && c < maxC) {
-                    grid[r][c] = turretTileId;
-                    const mirrorC = GRID_W - 1 - c;
-                    const mirrorR = GRID_H - 1 - r;
-                    if (symMode === 2) {
-                        grid[r][mirrorC] = turretTileId;
-                    } else if (symMode === 4) {
-                        grid[r][mirrorC] = turretTileId;
-                        grid[mirrorR][c] = turretTileId;
-                        grid[mirrorR][mirrorC] = turretTileId;
-                    }
-                }
+    // ── Soft (passable) terrain patches ──────────────────────────────────────
+    // Soft tiles may sit on corridor rows — they don't block tank movement.
+    const numSoft = 3 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < numSoft; i++) {
+        if (softTiles.length === 0) break;
+        const tid   = softTiles[Math.floor(Math.random() * softTiles.length)];
+        const len   = 2 + Math.floor(Math.random() * 4);
+        const thick = 1 + Math.floor(Math.random() * 2);
+        const sw    = Math.random() > 0.5 ? len : thick;
+        const sh    = Math.random() > 0.5 ? thick : len;
+        if (genH <= sh || genW <= sw) continue;
+        const smr = Math.floor(Math.random() * (genH - sh));
+        const smc = Math.floor(Math.random() * (genW - sw));
+        for (let dr = 0; dr < sh; dr++) {
+            for (let dc = 0; dc < sw; dc++) {
+                setMacro(smr + dr, smc + dc, tid);
             }
         }
     }
 
-    // ── Power-up glass boxes — placed as 2×2 blocks (populated dynamically from TILE_TOGGLES) ──
-    const availableBoxes = powerupBoxIds;
-    const numBoxes = availableBoxes.length > 0 ? 1 + Math.floor(Math.random() * 3) : 0;
+    // ── Post-process: enforce passability on corridor rows and the safe zone ──
+    // The safe zone keeps the base approach area open; corridor rows are the
+    // guaranteed horizontal lanes. Any blocking tile landing there (including
+    // via 4-way mirroring) is replaced with empty.
+    const safeStart = MACRO_H - SAFE_ROWS;
+    for (let mr = 0; mr < MACRO_H; mr++) {
+        if (!corridorRows.has(mr) && mr < safeStart) continue;
+        for (let mc = 0; mc < MACRO_W; mc++) {
+            if (TANK_SOLID.has(macro[mr][mc])) macro[mr][mc] = 0;
+        }
+    }
+
+    // ── Turrets (1 macro-cell → 2×2 real cells, engine scans even positions) ─
+    const numTurrets = turretTileId == null ? 0 : 1 + Math.floor(Math.random() * 2);
+    for (let t = 0; t < numTurrets; t++) {
+        if (genH < 3 || genW < 3) break;
+        const mr = 1 + Math.floor(Math.random() * (genH - 2));
+        const mc = 1 + Math.floor(Math.random() * (genW - 2));
+        setMacro(mr, mc, turretTileId);
+    }
+
+    // ── Power-up glass boxes (1 macro-cell → 2×2 real cells) ─────────────────
+    const numBoxes = powerupBoxIds.length > 0 ? 1 + Math.floor(Math.random() * 3) : 0;
     for (let b = 0; b < numBoxes; b++) {
-        const boxTid = availableBoxes[Math.floor(Math.random() * availableBoxes.length)];
-        // Pick a random even top-left, staying away from the bottom rows
-        let br = Math.floor(Math.random() * Math.max(1, Math.floor((maxR - 4) / 2))) * 2;
-        let bc = Math.floor(Math.random() * Math.max(1, Math.floor((maxC - 2) / 2))) * 2;
-        br = Math.max(0, Math.min(br, maxR - 2));
-        bc = Math.max(0, Math.min(bc, maxC - 2));
-        for (let dr = 0; dr < 2; dr++) {
-            for (let dc = 0; dc < 2; dc++) {
-                const r = br + dr;
-                const c = bc + dc;
-                if (r < maxR && c < maxC) {
-                    grid[r][c] = boxTid;
-                    const mirrorC = GRID_W - 1 - c;
-                    const mirrorR = GRID_H - 1 - r;
-                    if (symMode === 2) {
-                        grid[r][mirrorC] = boxTid;
-                    } else if (symMode === 4) {
-                        grid[r][mirrorC] = boxTid;
-                        grid[mirrorR][c] = boxTid;
-                        grid[mirrorR][mirrorC] = boxTid;
-                    }
-                }
-            }
+        const boxTid = powerupBoxIds[Math.floor(Math.random() * powerupBoxIds.length)];
+        if (genH < 3 || genW < 2) break;
+        const mr = 1 + Math.floor(Math.random() * (genH - 2));
+        const mc = Math.floor(Math.random() * genW);
+        setMacro(mr, mc, boxTid);
+    }
+
+    // ── Expand macro-grid → real grid ─────────────────────────────────────────
+    // Each macro-cell becomes exactly four real cells (a 2×2 block).
+    for (let mr = 0; mr < MACRO_H; mr++) {
+        for (let mc = 0; mc < MACRO_W; mc++) {
+            const tid = macro[mr][mc];
+            if (tid === 0) continue;
+            const r = mr * 2, c = mc * 2;
+            grid[r    ][c    ] = tid;
+            grid[r    ][c + 1] = tid;
+            grid[r + 1][c    ] = tid;
+            grid[r + 1][c + 1] = tid;
         }
     }
 
-    // Base protection: Clear area around base and place base struct (base is 2×2 big-type)
-    const mid = Math.floor(GRID_W / 2);
+    // ── Base protection (identical to original) ───────────────────────────────
+    const mid    = Math.floor(GRID_W / 2);
     const bottom = GRID_H - 1;
-    
-    // Clear 5×6 area around base (base spans mid..mid+1, bottom-1..bottom)
     for (let r = bottom - 3; r <= bottom; r++) {
         for (let c = mid - 2; c <= mid + 3; c++) {
-            if (r >= 0 && r < GRID_H && c >= 0 && c < GRID_W) {
-                grid[r][c] = 0;
-            }
+            if (r >= 0 && r < GRID_H && c >= 0 && c < GRID_W) grid[r][c] = 0;
         }
     }
-    
-    // Re-place base structure — bricks must not overlap base 2×2
-    grid[bottom][mid] = 6;     // Base (spans mid..mid+1, bottom-1..bottom)
-    grid[bottom][mid - 1] = 1;   // West
-    grid[bottom][mid + 2] = 1;   // East
-    grid[bottom - 1][mid - 1] = 1; // Northwest
-    grid[bottom - 1][mid + 2] = 1; // Northeast
+    grid[bottom    ][mid    ] = 6;   // Base eagle
+    grid[bottom    ][mid - 1] = 1;   // West brick
+    grid[bottom    ][mid + 2] = 1;   // East brick
+    grid[bottom - 1][mid - 1] = 1;   // NW brick
+    grid[bottom - 1][mid + 2] = 1;   // NE brick
     grid[bottom - 2][mid - 1] = 1;
-    grid[bottom - 2][mid] = 1;
+    grid[bottom - 2][mid    ] = 1;
     grid[bottom - 2][mid + 1] = 1;
     grid[bottom - 2][mid + 2] = 1;
     _markValidationDirty();
@@ -1076,6 +1098,30 @@ export function renderTilePreview(ctx, tileId, canvasSize) {
     ctx.fillRect(0, 0, canvasSize, canvasSize);
     if (tileId === 0) return;
 
+    // Special emoji rendering for timed tiles
+    if (tileId === 37) {
+        // Money tile - 💰
+        ctx.font = `${canvasSize * 0.8}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("💰", canvasSize / 2, canvasSize / 2);
+        return;
+    } else if (tileId === 43) {
+        // Sun tile - ☀️
+        ctx.font = `${canvasSize * 0.8}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("☀️", canvasSize / 2, canvasSize / 2);
+        return;
+    } else if (tileId === 47) {
+        // Mega gun tile - 🔫
+        ctx.font = `${canvasSize * 0.8}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("🔫", canvasSize / 2, canvasSize / 2);
+        return;
+    }
+
     if (tileId === 4) {
         // Forest uses reduced alpha in the editor
         ctx.save();
@@ -1100,9 +1146,11 @@ export function renderTilePreview(ctx, tileId, canvasSize) {
  * Synchronous — no API call needed because `tiles` is already cached.
  */
 export function refreshTileFilter() {
-    const NOT_ALLOWED = new Set([6, 16, 17, 20, 21, 23, 24, 26, 27, 29, 30, 32, 33, 34, 37, 38, 39, 41, 43, 44, 45, 46, 47, 48, 49, 50]);
+    // Block timed tiles (spawn dynamically during gameplay) and other non-manual tiles.
+    // Timed tiles must never be manually placeable in the editor - they have spawn timers and lifespans.
+    const blockedTiles = new Set([...TIMED_TILE_IDS, ...NON_MANUAL_TILE_IDS]);
     const disabled = _getDisabledTileIds();
-    tileIds = tiles.filter(t => !NOT_ALLOWED.has(t.id) && !disabled.has(t.id)).map(t => t.id);
+    tileIds = tiles.filter(t => !blockedTiles.has(t.id) && !disabled.has(t.id)).map(t => t.id);
     tileIds.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
     // Keep tileIndex in bounds after the list shrinks/grows
     tileIndex = Math.min(tileIndex, Math.max(0, tileIds.length - 1));
@@ -1190,6 +1238,60 @@ function _handleImageUpload(e) {
     reader.readAsDataURL(file);
 }
 
+const IMAGE_IMPORT_PALETTE = [
+    // Brown -> Brick
+    { id: 1,  color: "#8B4513" }, 
+    { id: 1,  color: "#7B4024" }, // Screenshot avg
+    { id: 1,  color: "#80300D" }, // Sprite avg
+
+    // Grey -> Steel
+    { id: 2,  color: "#808080" }, 
+    { id: 2,  color: "#A8A8A8" }, // Screenshot avg
+    { id: 2,  color: "#A6A6A6" }, // Screenshot avg
+    { id: 2,  color: "#B3B3B3" }, // Sprite avg
+
+    // Blue -> Water
+    { id: 3,  color: "#0000FF" }, 
+    { id: 3,  color: "#1A7AAD" }, // Sprite avg
+
+    // Green -> Forest
+    { id: 4,  color: "#008000" }, 
+    { id: 4,  color: "#2D5B08" }, // Screenshot avg
+    { id: 4,  color: "#1F871F" }, // Sprite avg
+
+    // Dark grey -> Conveyor
+    { id: 8,  color: "#555555" }, 
+    { id: 8,  color: "#373737" }, // Screenshot avg
+
+    // Pale yellow -> Sand/Mud
+    { id: 12, color: "#FFFACD" }, 
+    { id: 12, color: "#D0B787" }, // Screenshot avg
+    { id: 12, color: "#CFB787" }, // Screenshot avg
+
+    // Yellow -> Sunflower
+    { id: 18, color: "#FFFF00" }, 
+
+    // Purple -> Turret
+    { id: 25, color: "#800080" }, 
+
+    // Red -> Lava
+    { id: 7,  color: "#FF0000" }, 
+    { id: 7,  color: "#B42305" }, // Screenshot avg
+
+    // Orange -> Spec TNT
+    { id: 36, color: "#FFA500" }, 
+
+    // Light blue -> Glass
+    { id: 15, color: "#ADD8E6" }, 
+
+    // Black -> Empty
+    { id: 0,  color: "#000000" }, 
+
+    // White -> Ice
+    { id: 5,  color: "#FFFFFF" },
+    { id: 5,  color: "#CDF7FF" }  // Sprite avg
+];
+
 function _generateMapFromImage(img) {
     // Create offscreen canvas to scale image to grid size
     const offCanvas = document.createElement('canvas');
@@ -1205,23 +1307,14 @@ function _generateMapFromImage(img) {
     const disabled = _getDisabledTileIds();
     const palette = [];
     
-    // Pure black mapped to Empty
-    palette.push({ id: 0, rgb: { r: 0, g: 0, b: 0 } });
-
-    for (const toggle of TILE_TOGGLES) {
-        if (!toggle.color) continue;
+    for (const item of IMAGE_IMPORT_PALETTE) {
+        // Skip if tile is disabled, but never skip Empty (0)
+        if (item.id !== 0 && disabled.has(item.id)) continue;
         
-        // Exclude big/special tiles, only use 1x1 fills
-        const ag = toggle.autoGen;
-        if (ag && (ag.type === "powerup_2x2" || ag.type === "turret_2x2")) continue;
-        
-        // Check if any id in toggle is disabled
-        const anyDisabled = toggle.ids.some(id => disabled.has(id));
-        if (anyDisabled) continue;
-
-        const rgb = hexToRgb(toggle.color);
-        // Add the first id of this tile type to palette
-        palette.push({ id: toggle.ids[0], rgb });
+        palette.push({
+            id: item.id,
+            rgb: hexToRgb(item.color)
+        });
     }
 
     // Fallback to empty if palette is somehow just empty

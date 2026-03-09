@@ -35,7 +35,7 @@ let editorReady = false;
 let _lastLaunchedMap = null;
 
 // ── Tile preview animation loop ───────────────────────────────────────
-const TILE_PREVIEW_PX = 56; // canvas buffer size in pixels
+const TILE_PREVIEW_PX = 14; // canvas buffer size in pixels (4x smaller than before)
 
 let _previewRaf = null;
 let _previewCtxs = []; // { ctx, tileId }[]
@@ -411,8 +411,11 @@ async function launchGame(mapName) {
     switchScreen("play");
     const settings = getSettings();
     const { cell_zoom, ...gameSettings } = settings;
+    // Also include tile settings for controlling timed tile spawning
+    const tileSettings = loadTileSettings();
+    const fullSettings = { ...gameSettings, tile_settings: tileSettings };
     try {
-        await gameRenderer.startGame(mapName, "default", gameSettings);
+        await gameRenderer.startGame(mapName, "default", fullSettings);
     } catch (e) {
         alert("ERROR: " + e.message);
         switchScreen("editor");

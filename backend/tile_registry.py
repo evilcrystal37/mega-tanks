@@ -237,6 +237,8 @@ TILE_REGISTRY: Dict[int, TileType] = {
         tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
         non_repeating=True,
     ),
+    # NOTE: Money, Sun, and Mega Gun tiles (IDs 37-50) are timed powerups that spawn
+    # dynamically during gameplay. They should NEVER be manually placeable in the map editor.
     38: TileType(
         id=38, name="money_crack2", label="Money C2",
         color="#FFD700",

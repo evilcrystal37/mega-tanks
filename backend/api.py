@@ -37,6 +37,7 @@ class GameSettings(BaseModel):
     max_active_enemies: int = Field(default=4, ge=1, le=12)
     spawn_interval: int = Field(default=90, ge=10, le=600)
     friendly_mode: int = Field(default=0)
+    tile_settings: Optional[Dict[str, bool]] = Field(default=None, description="Tile type enable/disable settings")
 
 
 class StartGamePayload(BaseModel):
