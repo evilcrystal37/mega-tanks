@@ -242,277 +242,270 @@ function _render(ts = 0) {
 
 function _drawSandTile(ctx, dx, dy, ds) { drawSandTile(ctx, dx, dy, ds); }
 
-const _editorTileCache = new Map();
-
-function _createOffscreen(w, h) {
-    if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
-    const c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    return c;
-}
-
-function _editorGlassBoxCracks(ctx, tid, ds, color) {
-    let level;
-    if (tid >= 26 && tid <= 28) level = tid - 26;
-    else if (tid >= 29 && tid <= 31) level = tid - 29;
-    else if (tid >= 33 && tid <= 35) level = tid - 33;
-    else return;
-    if (level >= 2) return;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    if (level <= 1) { ctx.moveTo(-ds*0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds*0.4); }
-    if (level === 0) { ctx.moveTo(0, 0); ctx.lineTo(ds*0.7, ds*0.7); ctx.moveTo(-ds, ds*0.3); ctx.lineTo(-ds*0.2, 0); }
-    ctx.stroke();
-}
-
-function _editorGlassBoxBorders(ctx, ds, outerColor, topColor, bottomColor) {
-    ctx.strokeStyle = outerColor;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(-ds + 0.5, -ds + 0.5, ds * 2 - 1, ds * 2 - 1);
-    ctx.strokeStyle = topColor;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds); ctx.stroke();
-    ctx.strokeStyle = bottomColor;
-    ctx.beginPath();
-    ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
-}
-
-function _renderEditorBigTileStatic(ctx, tid, ds) {
-    if (tid === 18) {
-        ctx.font = `${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText("🌼", 0, ds * 0.1);
-    } else if (tid === 14 || tid === 36) {
-        ctx.fillStyle = "#d32f2f";
-        ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-        ctx.fillStyle = "#eeeeee";
-        ctx.fillRect(-ds, -ds * 0.3, ds * 2, ds * 0.6);
-        ctx.fillStyle = "#000000";
-        ctx.font = `bold ${Math.max(6, ds * 0.5)}px monospace`;
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText("TNT", 0, 0);
-        ctx.strokeStyle = "rgba(0,0,0,0.3)";
-        ctx.lineWidth = ds * 0.05;
-        ctx.beginPath();
-        for (let i = -0.6; i <= 0.6; i += 0.4) {
-            ctx.moveTo(ds * i, -ds); ctx.lineTo(ds * i, -ds * 0.3);
-            ctx.moveTo(ds * i, ds * 0.3); ctx.lineTo(ds * i, ds);
-        }
-        ctx.stroke();
-    } else if (tid === 25) {
-        const bagR = ds * 0.42;
-        for (let i = 0; i < 8; i++) {
-            const a = (i / 8) * Math.PI * 2;
-            const bx = Math.cos(a) * bagR, by = Math.sin(a) * bagR;
-            const bg = ctx.createRadialGradient(bx - ds*0.03, by - ds*0.03, ds*0.01, bx, by, ds*0.1);
-            bg.addColorStop(0, "#a89060"); bg.addColorStop(1, "#6b5030");
-            ctx.fillStyle = bg;
-            ctx.beginPath(); ctx.ellipse(bx, by, ds*0.11, ds*0.08, a, 0, Math.PI*2); ctx.fill();
-        }
-        const bpg = ctx.createRadialGradient(-ds*0.06, -ds*0.06, ds*0.04, 0, 0, ds*0.33);
-        bpg.addColorStop(0, "#95918e"); bpg.addColorStop(0.7, "#706c69"); bpg.addColorStop(1, "#524f4c");
-        ctx.fillStyle = bpg;
-        ctx.beginPath(); ctx.arc(0, 0, ds*0.33, 0, Math.PI*2); ctx.fill();
-        const dg = ctx.createRadialGradient(-ds*0.07, -ds*0.07, ds*0.02, 0, 0, ds*0.24);
-        dg.addColorStop(0, "#90a4ae"); dg.addColorStop(0.5, "#546e7a"); dg.addColorStop(1, "#2e4050");
-        ctx.fillStyle = dg;
-        ctx.beginPath(); ctx.arc(0, ds*0.04, ds*0.23, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = "rgba(0,0,0,0.75)";
-        ctx.fillRect(-ds*0.13, ds*0.02, ds*0.26, ds*0.05);
-        ctx.fillStyle = "rgba(0,220,255,0.6)";
-        ctx.fillRect(-ds*0.13, ds*0.02, ds*0.26, ds*0.05);
-        ctx.fillStyle = "#455a64";
-        ctx.fillRect(-ds*0.11, -ds*0.18, ds*0.22, ds*0.17);
-        const barrelGrad = ctx.createLinearGradient(-ds*0.07, 0, ds*0.07, 0);
-        barrelGrad.addColorStop(0, "#1c2b33"); barrelGrad.addColorStop(0.35, "#607d8b");
-        barrelGrad.addColorStop(0.65, "#455a64"); barrelGrad.addColorStop(1, "#1c2b33");
-        ctx.fillStyle = barrelGrad;
-        ctx.fillRect(-ds*0.07, -ds*0.95, ds*0.14, ds*0.77);
-        ctx.fillStyle = "rgba(160,200,220,0.45)";
-        ctx.fillRect(-ds*0.05, -ds*0.95, ds*0.025, ds*0.77);
-        ctx.fillStyle = "#263238";
-        ctx.fillRect(-ds*0.11, -ds*1.0, ds*0.22, ds*0.08);
-        ctx.fillStyle = "#000";
-        ctx.fillRect(-ds*0.085, -ds*0.98, ds*0.04, ds*0.055);
-        ctx.fillRect(ds*0.045, -ds*0.98, ds*0.04, ds*0.055);
-    } else if (tid === 32) {
-        ctx.font = `${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText("🐥", 0, ds * 0.1);
-    } else if (tid >= 26 && tid <= 28) {
-        ctx.fillStyle = "rgba(139, 195, 74, 0.15)";
-        ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-        _editorGlassBoxBorders(ctx, ds, "rgba(139, 195, 74, 0.7)", "rgba(255,255,255,0.5)", "rgba(0,0,0,0.15)");
-        ctx.fillStyle = "#f5f5dc";
-        ctx.fillRect(-ds * 0.12, ds * 0.1, ds * 0.24, ds * 0.5);
-        ctx.fillStyle = "#e52521";
-        ctx.beginPath(); ctx.arc(0, ds * 0.1, ds * 0.5, Math.PI, 0); ctx.fill();
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath(); ctx.arc(-ds * 0.25, -ds * 0.1, ds * 0.1, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(ds * 0.25, -ds * 0.1, ds * 0.1, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(0, -ds * 0.35, ds * 0.12, 0, Math.PI * 2); ctx.fill();
-        _editorGlassBoxCracks(ctx, tid, ds, "rgba(255,255,255,0.9)");
-    } else if (tid >= 29 && tid <= 31) {
-        ctx.fillStyle = "rgba(255, 105, 180, 0.15)";
-        ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-        _editorGlassBoxBorders(ctx, ds, "rgba(255, 105, 180, 0.7)", "rgba(255,255,255,0.5)", "rgba(0,0,0,0.15)");
-        ctx.font = `${ds * 1.2}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText("🌈", 0, ds * 0.05);
-        _editorGlassBoxCracks(ctx, tid, ds, "rgba(255,255,255,0.9)");
-    } else if (tid >= 33 && tid <= 35) {
-        ctx.fillStyle = "rgba(255, 238, 88, 0.15)";
-        ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-        _editorGlassBoxBorders(ctx, ds, "rgba(255, 238, 88, 0.7)", "rgba(255,255,255,0.5)", "rgba(0,0,0,0.15)");
-        ctx.font = `${ds * 1.2}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText("🐥", 0, ds * 0.05);
-        _editorGlassBoxCracks(ctx, tid, ds, "rgba(255,255,255,0.9)");
-    }
-}
-
-function _renderEditorSmallTileStatic(ctx, tid, ds) {
-    if (tid >= 15 && tid <= 17) {
-        ctx.fillStyle = "rgba(170, 221, 255, 0.4)";
-        ctx.fillRect(0, 0, ds, ds);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-        ctx.lineWidth = Math.max(1, ds * 0.05);
-        ctx.strokeRect(1, 1, ds - 2, ds - 2);
-        ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-        ctx.beginPath();
-        ctx.moveTo(ds*0.1, ds*0.1); ctx.lineTo(ds*0.4, ds*0.1); ctx.lineTo(ds*0.1, ds*0.4);
-        ctx.fill();
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-        ctx.lineWidth = Math.max(1, ds * 0.04);
-        ctx.beginPath();
-        if (tid >= 16) {
-            ctx.moveTo(ds*0.5, ds*0.5); ctx.lineTo(ds*0.2, ds*0.2);
-            ctx.moveTo(ds*0.5, ds*0.5); ctx.lineTo(ds*0.8, ds*0.3);
-            ctx.moveTo(ds*0.5, ds*0.5); ctx.lineTo(ds*0.4, ds*0.8);
-        }
-        if (tid >= 17) {
-            ctx.moveTo(ds*0.5, ds*0.5); ctx.lineTo(ds*0.9, ds*0.8);
-            ctx.moveTo(ds*0.5, ds*0.5); ctx.lineTo(ds*0.1, ds*0.7);
-            ctx.moveTo(ds*0.2, ds*0.2); ctx.lineTo(ds*0.4, ds*0.1);
-            ctx.moveTo(ds*0.4, ds*0.8); ctx.lineTo(ds*0.6, ds*0.9);
-        }
-        ctx.stroke();
-    }
-}
-
-function _getCachedEditorBigTile(tid, ds) {
-    const key = `${tid}_${ds}`;
-    let cached = _editorTileCache.get(key);
-    if (cached) return cached;
-    const size = ds * 2;
-    const canvas = _createOffscreen(size, size);
-    const octx = canvas.getContext('2d');
-    octx.imageSmoothingEnabled = false;
-    octx.translate(ds, ds);
-    _renderEditorBigTileStatic(octx, tid, ds);
-    _editorTileCache.set(key, canvas);
-    return canvas;
-}
-
-function _getCachedEditorSmallTile(tid, ds) {
-    const key = `s_${tid}_${ds}`;
-    let cached = _editorTileCache.get(key);
-    if (cached) return cached;
-    const canvas = _createOffscreen(ds, ds);
-    const octx = canvas.getContext('2d');
-    octx.imageSmoothingEnabled = false;
-    _renderEditorSmallTileStatic(octx, tid, ds);
-    _editorTileCache.set(key, canvas);
-    return canvas;
-}
-
-function _drawEditorGlassBoxShine(ctx, tid, dx, dy, ds, gridC, gridR) {
-    let offset, period;
-    if (tid >= 26 && tid <= 28) { offset = 0; period = 2000; }
-    else if (tid >= 29 && tid <= 31) { offset = 500; period = 2000; }
-    else if (tid >= 33 && tid <= 35) { offset = 1000; period = 2000; }
-    else return;
-    ctx.save();
-    ctx.beginPath(); ctx.rect(dx, dy, ds, ds); ctx.clip();
-    const centerX = dx + (gridC % 2 === 0 ? ds : 0);
-    const centerY = dy + (gridR % 2 === 0 ? ds : 0);
-    const cycle = ((Date.now() + offset) % period) / period;
-    const shineX = centerX + (cycle * 2.5 - 0.75) * ds * 2 - ds;
-    const shineGrad = ctx.createLinearGradient(shineX, centerY - ds, shineX + ds * 0.6, centerY + ds);
-    shineGrad.addColorStop(0, "rgba(255,255,255,0)");
-    shineGrad.addColorStop(0.5, "rgba(255,255,255,0.4)");
-    shineGrad.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = shineGrad;
-    ctx.fillRect(dx, dy, ds, ds);
-    ctx.restore();
-}
-
 function _drawTileDetail(ctx, tid, x, y, sz) {
-    if (tid === 0) return;
+    if (tid === 0) return; // Empty tile — nothing to draw
     const dx = Math.round(x);
     const dy = Math.round(y);
     const ds = Math.round(sz);
+
     const gridC = Math.round(x / sz);
     const gridR = Math.round(y / sz);
 
-    // Fully static big tiles — blit from cache
-    if (tid === 14 || tid === 18 || tid === 25 || tid === 32) {
-        const cached = _getCachedEditorBigTile(tid, ds);
-        const sx = gridC % 2 === 0 ? 0 : ds;
-        const sy = gridR % 2 === 0 ? 0 : ds;
-        ctx.drawImage(cached, sx, sy, ds, ds, dx, dy, ds, ds);
-        return;
-    }
-
-    // Glass boxes — cached static + animated shine
-    if ((tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 35)) {
-        const cached = _getCachedEditorBigTile(tid, ds);
-        const sx = gridC % 2 === 0 ? 0 : ds;
-        const sy = gridR % 2 === 0 ? 0 : ds;
-        ctx.drawImage(cached, sx, sy, ds, ds, dx, dy, ds, ds);
-        _drawEditorGlassBoxShine(ctx, tid, dx, dy, ds, gridC, gridR);
-        return;
-    }
-
-    // Special TNT — cached base + animated glow
-    if (tid === 36) {
-        const cached = _getCachedEditorBigTile(36, ds);
-        const sx = gridC % 2 === 0 ? 0 : ds;
-        const sy = gridR % 2 === 0 ? 0 : ds;
-        ctx.drawImage(cached, sx, sy, ds, ds, dx, dy, ds, ds);
-        ctx.save();
-        ctx.beginPath(); ctx.rect(dx, dy, ds, ds); ctx.clip();
-        ctx.translate(dx + (gridC % 2 === 0 ? ds : 0), dy + (gridR % 2 === 0 ? ds : 0));
-        const glowAlpha = 0.7 + Math.sin(Date.now() / 200) * 0.3;
-        for (const [lw, a] of [[ds*0.30, 0.18], [ds*0.22, 0.35], [ds*0.14, 0.65], [ds*0.08, glowAlpha]]) {
-            ctx.strokeStyle = `rgba(255, 224, 0, ${a})`;
-            ctx.lineWidth = lw;
-            ctx.strokeRect(-ds + lw/2, -ds + lw/2, ds*2 - lw, ds*2 - lw);
-        }
-        ctx.restore();
-        return;
-    }
-
-    // Base — still needs clip/translate (atlas-based, only 1 tile)
-    if (tid === 6) {
+    if (tid === 6 || tid === 14 || tid === 18 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 36) || tid === 32) {
         ctx.save();
         const centerX = dx + (gridC % 2 === 0 ? ds : 0);
         const centerY = dy + (gridR % 2 === 0 ? ds : 0);
         ctx.beginPath();
-        ctx.rect(centerX - ds, centerY - ds, ds * 2, ds * 2);
+        // Base occupies 1 cell but draws 2×2 — use 2×2 clip so full sprite is visible
+        if (tid === 6) {
+            ctx.rect(centerX - ds, centerY - ds, ds * 2, ds * 2);
+        } else {
+            ctx.rect(dx, dy, ds, ds);
+        }
         ctx.clip();
         ctx.translate(centerX, centerY);
-        _atlas.draw(ctx, "base.heart.alive", -ds, -ds, ds * 2, ds * 2);
-        ctx.restore();
-        return;
-    }
 
-    // Glass 1×1 — cached
-    if (tid >= 15 && tid <= 17) {
-        const cached = _getCachedEditorSmallTile(tid, ds);
-        ctx.drawImage(cached, dx, dy);
+        if (tid === 18) {
+            // Big Sunflower Emoji — always full brightness (no darkening)
+            ctx.globalAlpha = 1.0;
+            ctx.font = `${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🌼", 0, ds * 0.1); // Slight offset for better centering
+        } else if (tid === 14) {
+            // Minecraft TNT look
+            // Background red
+            ctx.fillStyle = "#d32f2f";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            
+            // White band across the middle
+            ctx.fillStyle = "#eeeeee";
+            ctx.fillRect(-ds, -ds * 0.3, ds * 2, ds * 0.6);
+            
+            // TNT text in black on the white band
+            ctx.fillStyle = "#000000";
+            ctx.font = `bold ${Math.max(6, ds * 0.5)}px monospace`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("TNT", 0, 0);
+            
+            // Some subtle vertical lines to look like dynamite sticks
+            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.lineWidth = ds * 0.05;
+            ctx.beginPath();
+            for (let i = -0.6; i <= 0.6; i += 0.4) {
+                ctx.moveTo(ds * i, -ds);
+                ctx.lineTo(ds * i, -ds * 0.3);
+                ctx.moveTo(ds * i, ds * 0.3);
+                ctx.lineTo(ds * i, ds);
+            }
+            ctx.stroke();
+        } else if (tid === 36) {
+            // Special TNT — same as TNT but with a neon yellow pulsing glow border
+            ctx.fillStyle = "#d32f2f";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            ctx.fillStyle = "#eeeeee";
+            ctx.fillRect(-ds, -ds * 0.3, ds * 2, ds * 0.6);
+            ctx.fillStyle = "#000000";
+            ctx.font = `bold ${Math.max(6, ds * 0.5)}px monospace`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("TNT", 0, 0);
+            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.lineWidth = ds * 0.05;
+            ctx.beginPath();
+            for (let i = -0.6; i <= 0.6; i += 0.4) {
+                ctx.moveTo(ds * i, -ds);
+                ctx.lineTo(ds * i, -ds * 0.3);
+                ctx.moveTo(ds * i, ds * 0.3);
+                ctx.lineTo(ds * i, ds);
+            }
+            ctx.stroke();
+            // Neon yellow highlight border — layered strokes instead of shadowBlur (much cheaper)
+            const glowAlpha = 0.7 + Math.sin(Date.now() / 200) * 0.3;
+            for (const [lw, a] of [[ds*0.30, 0.18], [ds*0.22, 0.35], [ds*0.14, 0.65], [ds*0.08, glowAlpha]]) {
+                ctx.strokeStyle = `rgba(255, 224, 0, ${a})`;
+                ctx.lineWidth = lw;
+                ctx.strokeRect(-ds + lw/2, -ds + lw/2, ds*2 - lw, ds*2 - lw);
+            }
+        } else if (tid === 25) {
+            // Turret placement preview — sandbag ring + dome + prominent barrel (pointing up)
+            // Sandbag ring
+            const bagR = ds * 0.42;
+            for (let i = 0; i < 8; i++) {
+                const a = (i / 8) * Math.PI * 2;
+                const bx = Math.cos(a) * bagR;
+                const by = Math.sin(a) * bagR;
+                const bg = ctx.createRadialGradient(bx - ds*0.03, by - ds*0.03, ds*0.01, bx, by, ds*0.1);
+                bg.addColorStop(0, "#a89060"); bg.addColorStop(1, "#6b5030");
+                ctx.fillStyle = bg;
+                ctx.beginPath();
+                ctx.ellipse(bx, by, ds * 0.11, ds * 0.08, a, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            // Base plate
+            const bpg = ctx.createRadialGradient(-ds*0.06, -ds*0.06, ds*0.04, 0, 0, ds*0.33);
+            bpg.addColorStop(0, "#95918e"); bpg.addColorStop(0.7, "#706c69"); bpg.addColorStop(1, "#524f4c");
+            ctx.fillStyle = bpg;
+            ctx.beginPath(); ctx.arc(0, 0, ds * 0.33, 0, Math.PI * 2); ctx.fill();
+            // Dome
+            const dg = ctx.createRadialGradient(-ds*0.07, -ds*0.07, ds*0.02, 0, 0, ds*0.24);
+            dg.addColorStop(0, "#90a4ae"); dg.addColorStop(0.5, "#546e7a"); dg.addColorStop(1, "#2e4050");
+            ctx.fillStyle = dg;
+            ctx.beginPath(); ctx.arc(0, ds*0.04, ds * 0.23, 0, Math.PI * 2); ctx.fill();
+            // Sensor slit
+            const scanP = (Math.sin(Date.now() / 120) + 1) * 0.5;
+            ctx.fillStyle = "rgba(0,0,0,0.75)";
+            ctx.fillRect(-ds*0.13, ds*0.02, ds*0.26, ds*0.05);
+            ctx.fillStyle = `rgba(0,220,255,${0.4 + scanP * 0.4})`;
+            ctx.fillRect(-ds*0.13, ds*0.02, ds*0.26, ds*0.05);
+            // Mantlet
+            ctx.fillStyle = "#455a64";
+            ctx.fillRect(-ds*0.11, -ds*0.18, ds*0.22, ds*0.17);
+            // Barrel (prominent, points up)
+            const barrelGrad = ctx.createLinearGradient(-ds*0.07, 0, ds*0.07, 0);
+            barrelGrad.addColorStop(0, "#1c2b33"); barrelGrad.addColorStop(0.35, "#607d8b");
+            barrelGrad.addColorStop(0.65, "#455a64"); barrelGrad.addColorStop(1, "#1c2b33");
+            ctx.fillStyle = barrelGrad;
+            ctx.fillRect(-ds*0.07, -ds*0.95, ds*0.14, ds*0.77);
+            // Highlight stripe on barrel
+            ctx.fillStyle = "rgba(160,200,220,0.45)";
+            ctx.fillRect(-ds*0.05, -ds*0.95, ds*0.025, ds*0.77);
+            // Muzzle brake
+            ctx.fillStyle = "#263238";
+            ctx.fillRect(-ds*0.11, -ds*1.0, ds*0.22, ds*0.08);
+            ctx.fillStyle = "#000";
+            ctx.fillRect(-ds*0.085, -ds*0.98, ds*0.04, ds*0.055);
+            ctx.fillRect( ds*0.045, -ds*0.98, ds*0.04, ds*0.055);
+        } else if (tid >= 26 && tid <= 28) {
+            // Mushroom glass box — big-type, centered at (0,0)
+            ctx.fillStyle = "rgba(139, 195, 74, 0.15)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            const cycle = (Date.now() % 2000) / 2000;
+            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
+            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
+            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
+            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.4)");
+            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            ctx.strokeStyle = "rgba(139, 195, 74, 0.7)";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(-ds + 0.5, -ds + 0.5, ds * 2 - 1, ds * 2 - 1);
+            ctx.strokeStyle = "rgba(255,255,255,0.5)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds); ctx.stroke();
+            ctx.strokeStyle = "rgba(0,0,0,0.15)";
+            ctx.beginPath();
+            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
+            const bounce = Math.sin(Date.now() / 200) * ds * 0.05;
+            ctx.fillStyle = "#f5f5dc";
+            ctx.fillRect(-ds * 0.12, ds * 0.1 + bounce, ds * 0.24, ds * 0.5);
+            ctx.fillStyle = "#e52521";
+            ctx.beginPath();
+            ctx.arc(0, ds * 0.1 + bounce, ds * 0.5, Math.PI, 0);
+            ctx.fill();
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath(); ctx.arc(-ds * 0.25, -ds * 0.1 + bounce, ds * 0.1, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(ds * 0.25, -ds * 0.1 + bounce, ds * 0.1, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, -ds * 0.35 + bounce, ds * 0.12, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = "rgba(255,255,255,0.9)";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            if (tid <= 27) {
+                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
+            }
+            if (tid === 26) {
+                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
+                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
+            }
+            ctx.stroke();
+        } else if (tid >= 29 && tid <= 31) {
+            // Rainbow glass box — big-type, centered at (0,0)
+            ctx.fillStyle = "rgba(255, 105, 180, 0.15)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            const cycle = ((Date.now() + 500) % 2000) / 2000;
+            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
+            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
+            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
+            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.4)");
+            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            ctx.strokeStyle = "rgba(255, 105, 180, 0.7)";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(-ds + 0.5, -ds + 0.5, ds * 2 - 1, ds * 2 - 1);
+            ctx.strokeStyle = "rgba(255,255,255,0.5)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds); ctx.stroke();
+            ctx.strokeStyle = "rgba(0,0,0,0.15)";
+            ctx.beginPath();
+            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
+            ctx.font = `${ds * 1.2}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🌈", 0, ds * 0.05);
+            ctx.strokeStyle = "rgba(255,255,255,0.9)";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            if (tid <= 30) {
+                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
+            }
+            if (tid === 29) {
+                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
+                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
+            }
+            ctx.stroke();
+        } else if (tid >= 33 && tid <= 35) {
+            // Chick glass box — yellow, big-type centered at (0,0)
+            ctx.fillStyle = "rgba(255, 238, 88, 0.15)";
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            const cycle = ((Date.now() + 1000) % 2000) / 2000;
+            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
+            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
+            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
+            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.4)");
+            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
+            ctx.fillStyle = shineGrad;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+            ctx.strokeStyle = "rgba(255, 238, 88, 0.7)";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(-ds + 0.5, -ds + 0.5, ds * 2 - 1, ds * 2 - 1);
+            ctx.strokeStyle = "rgba(255,255,255,0.5)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds); ctx.stroke();
+            ctx.strokeStyle = "rgba(0,0,0,0.15)";
+            ctx.beginPath();
+            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
+            ctx.font = `${ds * 1.2}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🐥", 0, ds * 0.05);
+            ctx.strokeStyle = "rgba(255,255,255,0.9)";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            if (tid <= 34) {
+                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
+            }
+            if (tid === 33) {
+                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
+                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
+            }
+            ctx.stroke();
+        } else if (tid === 32) {
+            ctx.font = `${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🐥", 0, ds * 0.1);
+        } else if (tid === 6) {
+            // Base eagle — big-type (2×2)
+            _atlas.draw(ctx, "base.heart.alive", -ds, -ds, ds * 2, ds * 2);
+        }
+
+        ctx.restore();
         return;
     }
 
@@ -533,27 +526,31 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
         else if (tid === 9) arrow = "↓";
         else if (tid === 10) arrow = "←";
         else if (tid === 11) arrow = "→";
+        
         const offset = (Date.now() / 30) % ds;
         ctx.save();
-        ctx.beginPath(); ctx.rect(dx, dy, ds, ds); ctx.clip();
+        ctx.beginPath();
+        ctx.rect(dx, dy, ds, ds);
+        ctx.clip();
         if (tid === 8) {
-            ctx.fillText(arrow, dx + ds/2, dy + ds/2 + ds*0.05 - offset);
-            ctx.fillText(arrow, dx + ds/2, dy + ds/2 + ds*0.05 - offset + ds);
+            ctx.fillText(arrow, dx + ds / 2, dy + ds / 2 + ds * 0.05 - offset);
+            ctx.fillText(arrow, dx + ds / 2, dy + ds / 2 + ds * 0.05 - offset + ds);
         } else if (tid === 9) {
-            ctx.fillText(arrow, dx + ds/2, dy + ds/2 + ds*0.05 + offset);
-            ctx.fillText(arrow, dx + ds/2, dy + ds/2 + ds*0.05 + offset - ds);
+            ctx.fillText(arrow, dx + ds / 2, dy + ds / 2 + ds * 0.05 + offset);
+            ctx.fillText(arrow, dx + ds / 2, dy + ds / 2 + ds * 0.05 + offset - ds);
         } else if (tid === 10) {
-            ctx.fillText(arrow, dx + ds/2 - offset, dy + ds/2 + ds*0.05);
-            ctx.fillText(arrow, dx + ds/2 - offset + ds, dy + ds/2 + ds*0.05);
+            ctx.fillText(arrow, dx + ds / 2 - offset, dy + ds / 2 + ds * 0.05);
+            ctx.fillText(arrow, dx + ds / 2 - offset + ds, dy + ds / 2 + ds * 0.05);
         } else if (tid === 11) {
-            ctx.fillText(arrow, dx + ds/2 + offset, dy + ds/2 + ds*0.05);
-            ctx.fillText(arrow, dx + ds/2 + offset - ds, dy + ds/2 + ds*0.05);
+            ctx.fillText(arrow, dx + ds / 2 + offset, dy + ds / 2 + ds * 0.05);
+            ctx.fillText(arrow, dx + ds / 2 + offset - ds, dy + ds / 2 + ds * 0.05);
         }
         ctx.restore();
         return;
     }
 
     if (tid === 1) {
+        // cattle-bity bricks are 16x16 sub-tiles; compose a full tile from 4 distinct quarters (no flip to avoid misalignment).
         const half = Math.floor(ds / 2);
         _atlas.draw(ctx, "terrain.brick.1", dx, dy, half, half);
         _atlas.draw(ctx, "terrain.brick.2", dx + half, dy, ds - half, half);
@@ -568,33 +565,95 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
     }
 
     if (tid === 13) {
+        // Jumping tile / Spring
         ctx.fillStyle = "#222222";
         ctx.fillRect(dx, dy, ds, ds);
+
         const bob = Math.sin(Date.now() / 150) * ds * 0.15;
+        
+        // Base plate
         ctx.fillStyle = "#555555";
         ctx.fillRect(dx + ds * 0.1, dy + ds * 0.8, ds * 0.8, ds * 0.15);
+        
+        // Spring coils
         ctx.strokeStyle = "#aaaaaa";
         ctx.lineWidth = ds * 0.12;
-        ctx.lineCap = "round"; ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        
         const startY = dy + ds * 0.8;
         const endY = dy + ds * 0.3 + bob;
         const coils = 3;
         const step = (startY - endY) / coils;
+        
         ctx.beginPath();
         ctx.moveTo(dx + ds * 0.5, startY);
         for (let i = 0; i < coils; i++) {
             const y = startY - i * step;
             const nextY = y - step;
-            if (i % 2 === 0) { ctx.lineTo(dx + ds*0.8, y - step*0.5); ctx.lineTo(dx + ds*0.2, nextY); }
-            else { ctx.lineTo(dx + ds*0.2, y - step*0.5); ctx.lineTo(dx + ds*0.8, nextY); }
+            if (i % 2 === 0) {
+                ctx.lineTo(dx + ds * 0.8, y - step * 0.5);
+                ctx.lineTo(dx + ds * 0.2, nextY);
+            } else {
+                ctx.lineTo(dx + ds * 0.2, y - step * 0.5);
+                ctx.lineTo(dx + ds * 0.8, nextY);
+            }
         }
         ctx.lineTo(dx + ds * 0.5, endY);
         ctx.stroke();
+        
+        // Top platform
         ctx.fillStyle = "#ff3333";
-        ctx.fillRect(dx + ds*0.15, endY - ds*0.15, ds*0.7, ds*0.15);
+        ctx.fillRect(dx + ds * 0.15, endY - ds * 0.15, ds * 0.7, ds * 0.15);
         ctx.strokeStyle = "#cc0000";
         ctx.lineWidth = ds * 0.05;
-        ctx.strokeRect(dx + ds*0.15, endY - ds*0.15, ds*0.7, ds*0.15);
+        ctx.strokeRect(dx + ds * 0.15, endY - ds * 0.15, ds * 0.7, ds * 0.15);
+        return;
+    }
+
+
+    if (tid >= 15 && tid <= 17) {
+        // Glass
+        ctx.fillStyle = "rgba(170, 221, 255, 0.4)";
+        ctx.fillRect(dx, dy, ds, ds);
+        
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+        ctx.lineWidth = Math.max(1, ds * 0.05);
+        ctx.strokeRect(dx + 1, dy + 1, ds - 2, ds - 2);
+
+        // Highlight
+        ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+        ctx.beginPath();
+        ctx.moveTo(dx + ds * 0.1, dy + ds * 0.1);
+        ctx.lineTo(dx + ds * 0.4, dy + ds * 0.1);
+        ctx.lineTo(dx + ds * 0.1, dy + ds * 0.4);
+        ctx.fill();
+
+        // Cracks
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+        ctx.lineWidth = Math.max(1, ds * 0.04);
+        ctx.beginPath();
+        if (tid >= 16) {
+            // First crack
+            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
+            ctx.lineTo(dx + ds * 0.2, dy + ds * 0.2);
+            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
+            ctx.lineTo(dx + ds * 0.8, dy + ds * 0.3);
+            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
+            ctx.lineTo(dx + ds * 0.4, dy + ds * 0.8);
+        }
+        if (tid >= 17) {
+            // More cracks
+            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
+            ctx.lineTo(dx + ds * 0.9, dy + ds * 0.8);
+            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
+            ctx.lineTo(dx + ds * 0.1, dy + ds * 0.7);
+            ctx.moveTo(dx + ds * 0.2, dy + ds * 0.2);
+            ctx.lineTo(dx + ds * 0.4, dy + ds * 0.1);
+            ctx.moveTo(dx + ds * 0.4, dy + ds * 0.8);
+            ctx.lineTo(dx + ds * 0.6, dy + ds * 0.9);
+        }
+        ctx.stroke();
         return;
     }
 
@@ -1107,16 +1166,12 @@ function hexToRgb(hex) {
 }
 
 function colorDistance(rgb1, rgb2) {
-    // Redmean color difference (more accurate to human perception than simple Euclidean)
-    const rmean = (rgb1.r + rgb2.r) / 2;
-    const r = rgb1.r - rgb2.r;
-    const g = rgb1.g - rgb2.g;
-    const b = rgb1.b - rgb2.b;
-    const weightR = 2 + rmean / 256;
-    const weightG = 4.0;
-    const weightB = 2 + (255 - rmean) / 256;
-    
-    return Math.sqrt(weightR * r * r + weightG * g * g + weightB * b * b);
+    // Euclidean distance
+    return Math.sqrt(
+        Math.pow(rgb1.r - rgb2.r, 2) +
+        Math.pow(rgb1.g - rgb2.g, 2) +
+        Math.pow(rgb1.b - rgb2.b, 2)
+    );
 }
 
 function _handleImageUpload(e) {
@@ -1146,12 +1201,6 @@ function _generateMapFromImage(img) {
     offCtx.drawImage(img, 0, 0, GRID_W, GRID_H);
     const imgData = offCtx.getImageData(0, 0, GRID_W, GRID_H).data;
 
-    // Convert imgData to Float32Array to preserve error in dithering
-    const floatData = new Float32Array(imgData.length);
-    for (let i = 0; i < imgData.length; i++) {
-        floatData[i] = imgData[i];
-    }
-
     // Initialize color palette
     const disabled = _getDisabledTileIds();
     const palette = [];
@@ -1178,11 +1227,14 @@ function _generateMapFromImage(img) {
     // Fallback to empty if palette is somehow just empty
     if (palette.length === 0) palette.push({ id: 0, rgb: { r: 0, g: 0, b: 0 } });
 
-    // Map pixels with Floyd-Steinberg Dithering
+    // Map pixels
     for (let r = 0; r < GRID_H; r++) {
         for (let c = 0; c < GRID_W; c++) {
             const idx = (r * GRID_W + c) * 4;
-            const pxA = floatData[idx + 3];
+            const pxR = imgData[idx];
+            const pxG = imgData[idx + 1];
+            const pxB = imgData[idx + 2];
+            const pxA = imgData[idx + 3];
 
             // If transparent, map to empty
             if (pxA < 128) {
@@ -1190,49 +1242,19 @@ function _generateMapFromImage(img) {
                 continue;
             }
 
-            const oldR = floatData[idx];
-            const oldG = floatData[idx + 1];
-            const oldB = floatData[idx + 2];
-            
-            const pxRgb = { r: oldR, g: oldG, b: oldB };
+            const pxRgb = { r: pxR, g: pxG, b: pxB };
             let bestId = 0;
             let minDist = Infinity;
-            let newR = 0, newG = 0, newB = 0;
 
             for (const p of palette) {
                 const dist = colorDistance(pxRgb, p.rgb);
                 if (dist < minDist) {
                     minDist = dist;
                     bestId = p.id;
-                    newR = p.rgb.r;
-                    newG = p.rgb.g;
-                    newB = p.rgb.b;
                 }
             }
 
             grid[r][c] = bestId;
-
-            // Compute quantization error
-            const errR = oldR - newR;
-            const errG = oldG - newG;
-            const errB = oldB - newB;
-
-            // Distribute error to neighbors (Floyd-Steinberg)
-            const distributeError = (dr, dc, factor) => {
-                const nr = r + dr;
-                const nc = c + dc;
-                if (nr < GRID_H && nc >= 0 && nc < GRID_W) {
-                    const nIdx = (nr * GRID_W + nc) * 4;
-                    floatData[nIdx]     += errR * factor;
-                    floatData[nIdx + 1] += errG * factor;
-                    floatData[nIdx + 2] += errB * factor;
-                }
-            };
-
-            distributeError(0, 1, 7 / 16);
-            distributeError(1, -1, 3 / 16);
-            distributeError(1, 0, 5 / 16);
-            distributeError(1, 1, 1 / 16);
         }
     }
 
