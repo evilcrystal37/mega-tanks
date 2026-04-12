@@ -10,7 +10,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List
 
-from .tile_registry import TILE_REGISTRY, get_tile
+try:
+    from .tile_registry import TILE_REGISTRY, get_tile
+except ImportError:
+    from tile_registry import TILE_REGISTRY, get_tile
 
 GRID_HEIGHT = 42
 GRID_WIDTH = 64

@@ -6,14 +6,17 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any, Dict, Optional
+from io import BytesIO
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, Field
 
 from .map_model import Map
 from .map_store import save_map, load_map, list_maps, delete_map
 from .session_store import session_store
 from .tile_registry import all_tiles, TILE_REGISTRY, BONE_FRAME
+from .map_generator import generate_map, generate_symmetric_arena, generate_cave_map, MapGenerationParams, AdvancedMapGenerator
+from .image_to_map import convert_image_to_map, ImageConversionParams, ImageToMapConverter
 
 router = APIRouter()
 
@@ -45,6 +48,30 @@ class StartGamePayload(BaseModel):
     mode: str = "construction_play"
     session_id: str = "default"
     settings: Optional[GameSettings] = None
+
+
+class MapGenerationPayload(BaseModel):
+    """Payload for generating a new map."""
+    name: Optional[str] = None
+    seed: Optional[int] = None
+    symmetry: str = "horizontal"  # horizontal, vertical, both, none
+    complexity: str = "medium"    # simple, medium, complex
+    style: str = "normal"         # normal, arena, cave
+    water_bodies: bool = True
+    forest_patches: bool = True
+    ice_regions: bool = False
+    lava_pools: bool = False
+    tnt_scatter: bool = True
+    auto_turrets: bool = True
+    save_map_flag: bool = True    # Whether to save the generated map
+
+
+class ImageToMapPayload(BaseModel):
+    """Payload for image-to-map conversion."""
+    name: Optional[str] = None
+    symmetry: str = "horizontal"  # none, horizontal, vertical, both
+    style: str = "balanced"       # balanced, faithful, playable, decorative
+    save_map_flag: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +153,141 @@ def validate_map(name: str):
         raise HTTPException(status_code=404, detail=f"Map '{name}' not found.")
     errors = m.validate()
     return {"valid": len(errors) == 0, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Map generation
+# ---------------------------------------------------------------------------
+
+@router.post("/api/maps/generate")
+def generate_new_map(payload: MapGenerationPayload):
+    """
+    Generate a new map using procedural algorithms.
+
+    Uses a combination of:
+    - Perlin noise for natural terrain distribution
+    - Cellular automata for organic cave-like structures
+    - Symmetry patterns for balanced layouts
+    - Strategic placement of interactive elements
+    """
+    # Build generation params
+    params = MapGenerationParams(
+        seed=payload.seed,
+        symmetry=payload.symmetry,
+        water_bodies=payload.water_bodies,
+        forest_patches=payload.forest_patches,
+        ice_regions=payload.ice_regions,
+        lava_pools=payload.lava_pools,
+        tnt_scatter=payload.tnt_scatter,
+        auto_turrets=payload.auto_turrets,
+    )
+
+    # Adjust terrain scale based on complexity
+    if payload.complexity == "simple":
+        params.terrain_scale = 50.0
+        params.cave_density = 0.35
+    elif payload.complexity == "complex":
+        params.terrain_scale = 20.0
+        params.cave_density = 0.5
+    else:  # medium
+        params.terrain_scale = 30.0
+        params.cave_density = 0.45
+
+    # Generate based on style
+    if payload.style == "arena":
+        generated_map = generate_symmetric_arena(name=payload.name, seed=payload.seed)
+    elif payload.style == "cave":
+        generated_map = generate_cave_map(name=payload.name, seed=payload.seed)
+    else:
+        generator = AdvancedMapGenerator(params)
+        generated_map = generator.generate(name=payload.name)
+
+    # Validate
+    errors = generated_map.validate()
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
+
+    # Save if requested
+    saved_path = None
+    if payload.save_map_flag:
+        saved_path = str(save_map(generated_map))
+
+    return {
+        "generated": True,
+        "name": generated_map.name,
+        "seed": params.seed,
+        "grid_size": f"{len(generated_map.grid[0])}x{len(generated_map.grid)}",
+        "saved_path": saved_path,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Image-to-Map conversion
+# ---------------------------------------------------------------------------
+
+@router.post("/api/maps/from-image")
+def convert_image_to_new_map(
+    file: UploadFile = File(..., description="Image file to convert"),
+    name: Optional[str] = Form(None),
+    symmetry: str = Form("horizontal"),
+    style: str = Form("balanced"),
+    save_map_flag: bool = Form(True)
+):
+    """
+    Convert an image to a Battle Tanks map using smart algorithms.
+
+    Uses a combination of:
+    - Canny edge detection for wall placement
+    - Color-based terrain classification (water, forest, ice, lava)
+    - K-means clustering for coherent structures
+    - Brightness-based obstacle placement
+    - Morphological operations for structure cleanup
+    - A* pathfinding validation for playability
+
+    Styles:
+    - balanced: Good balance between visual fidelity and playability
+    - faithful: Maximizes visual similarity to the original image
+    - playable: Prioritizes gameplay over visual accuracy
+    - decorative: Creates visually rich maps with more decorative elements
+    """
+    try:
+        # Read image bytes
+        image_bytes = file.file.read()
+        
+        # Convert using image-to-map algorithm
+        from PIL import Image
+        from io import BytesIO
+        
+        image = Image.open(BytesIO(image_bytes))
+        
+        # Convert based on style
+        generated_map = convert_image_to_map(
+            image,
+            name=name,
+            symmetry=symmetry,
+            style=style
+        )
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Failed to process image: {str(e)}")
+
+    # Validate
+    errors = generated_map.validate()
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
+
+    # Save if requested
+    saved_path = None
+    if save_map_flag:
+        saved_path = str(save_map(generated_map))
+
+    return {
+        "converted": True,
+        "name": generated_map.name,
+        "grid_size": f"{len(generated_map.grid[0])}x{len(generated_map.grid)}",
+        "style": style,
+        "symmetry": symmetry,
+        "saved_path": saved_path,
+    }
 
 
 # ---------------------------------------------------------------------------

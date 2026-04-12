@@ -9,9 +9,9 @@ import { audioManager } from "./audio.js";
 import { CELL, GRID_H, GRID_W } from "./constants.js";
 import { GameInput } from "./gameInput.js";
 import { GameStateStore } from "./gameState.js";
-import { renderBullets, renderExplosions } from "./effectRenderer.js";
+import { renderBullets, renderExplosions, renderLetterEffects, renderAnts } from "./effectRenderer.js";
 import { renderTanks } from "./tankRenderer.js";
-import { drawSandTile, drawLavaTile } from "./tileRenderer.js";
+import { drawSandTile, drawLavaTile, drawTreeTile, drawAppleTile, drawAntPileTile } from "./tileRenderer.js";
 import { computeViewport, getCellZoom, resizeCanvas } from "./viewport.js";
 
 const FALLBACK_TILE_COLORS = {};
@@ -188,7 +188,7 @@ class GameRenderer {
         for (let r = startR; r <= endR; r++) {
             for (let c = startC; c <= endC; c++) {
                 const tid = grid[r]?.[c] ?? 0;
-                if (tid === 0 || tid === 4 || tid === 18) continue; // Forest and Sunflower handled separately for top layer
+                if (tid === 0 || tid === 4 || tid === 18 || tid === 91) continue; // Forest, Sunflower, Tree handled separately for top layer
                 this._drawTileDetail(ctx, tid, c * cell, r * cell, cell);
             }
         }
@@ -302,10 +302,10 @@ class GameRenderer {
     for (let r = startR; r <= endR; r++) {
         for (let c = startC; c <= endC; c++) {
             const tid = grid[r]?.[c] ?? 0;
-            if (tid === 4 || tid === 18) {
+            if (tid === 4 || tid === 18 || tid === 91) {
                 ctx.save();
                 if (tid === 4) ctx.globalAlpha = 0.65;
-                if (tid === 18) ctx.globalAlpha = 1.0;  // Sunflower always bright (no darkening cycle)
+                if (tid === 18 || tid === 91) ctx.globalAlpha = 1.0;
                 this._drawTileDetail(ctx, tid, c * cell, r * cell, cell);
                 ctx.restore();
             }
@@ -313,6 +313,10 @@ class GameRenderer {
     }
 
         renderExplosions(this, ctx, this.state, cell);
+
+        // Letter powerup effects
+        renderLetterEffects(ctx, this.state, cell);
+        renderAnts(ctx, this.state, cell);
 
         // Sandworm
         if (this.state.sandworm && this.state.sandworm.active) {
@@ -717,6 +721,7 @@ class GameRenderer {
         else if (tid >= 38 && tid <= 40) level = tid - 38;
         else if (tid >= 44 && tid <= 46) level = tid - 44;
         else if (tid >= 48 && tid <= 50) level = tid - 48;
+        else if (tid >= 51 && tid <= 90) level = (tid - 52 + 4) % 4;  // Letter tiles: pad→3, crack2→0, crack1→1, box→2
         else return;
         if (level >= 2) return;
         ctx.strokeStyle = color;
@@ -846,6 +851,31 @@ class GameRenderer {
             ctx.textAlign = "center"; ctx.textBaseline = "middle";
             ctx.fillText("🔫", 0, ds * 0.05);
             this._renderGlassBoxCracks(ctx, tid, ds, "rgba(150,200,255,0.9)");
+        } else if (tid >= 51 && tid <= 90) {
+            // Letter powerup boxes - glass box with borders and cracks
+            const letterColors = {
+                51: "rgba(255, 225, 53, 0.2)", 52: "rgba(255, 225, 53, 0.2)", 53: "rgba(255, 225, 53, 0.2)", 54: "rgba(255, 225, 53, 0.2)",  // B - Banana (yellow)
+                55: "rgba(0, 206, 209, 0.2)", 56: "rgba(0, 206, 209, 0.2)", 57: "rgba(0, 206, 209, 0.2)", 58: "rgba(0, 206, 209, 0.2)",  // C - Clone (cyan)
+                59: "rgba(255, 20, 147, 0.2)", 60: "rgba(255, 20, 147, 0.2)", 61: "rgba(255, 20, 147, 0.2)", 62: "rgba(255, 20, 147, 0.2)",  // F - Fireworks (pink)
+                63: "rgba(147, 112, 219, 0.2)", 64: "rgba(147, 112, 219, 0.2)", 65: "rgba(147, 112, 219, 0.2)", 66: "rgba(147, 112, 219, 0.2)",  // J - Jump (purple)
+                67: "rgba(255, 105, 180, 0.2)", 68: "rgba(255, 105, 180, 0.2)", 69: "rgba(255, 105, 180, 0.2)", 70: "rgba(255, 105, 180, 0.2)",  // R - Rainbow (hot pink)
+                71: "rgba(135, 206, 235, 0.2)", 72: "rgba(135, 206, 235, 0.2)", 73: "rgba(135, 206, 235, 0.2)", 74: "rgba(135, 206, 235, 0.2)",  // A - Airplane (sky blue)
+                75: "rgba(220, 20, 60, 0.2)", 76: "rgba(220, 20, 60, 0.2)", 77: "rgba(220, 20, 60, 0.2)", 78: "rgba(220, 20, 60, 0.2)",  // M - Magnet (crimson)
+                79: "rgba(255, 140, 0, 0.2)", 80: "rgba(255, 140, 0, 0.2)", 81: "rgba(255, 140, 0, 0.2)", 82: "rgba(255, 140, 0, 0.2)",  // S - Sahur (dark orange)
+                83: "rgba(153, 50, 204, 0.2)", 84: "rgba(153, 50, 204, 0.2)", 85: "rgba(153, 50, 204, 0.2)", 86: "rgba(153, 50, 204, 0.2)",  // Z - Zzz (dark orchid)
+                87: "rgba(32, 178, 170, 0.2)", 88: "rgba(32, 178, 170, 0.2)", 89: "rgba(32, 178, 170, 0.2)", 90: "rgba(32, 178, 170, 0.2)",  // O - Octopus (light sea green)
+            };
+            const color = letterColors[tid] || "rgba(255, 255, 255, 0.2)";
+
+            // Glass box background (same as mushroom/rainbow/chick/sun boxes)
+            ctx.fillStyle = color;
+            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
+
+            // Glass borders (same as mushroom/rainbow/chick/sun boxes)
+            this._renderGlassBoxBorders(ctx, ds, "rgba(255,255,255,0.5)", "rgba(255,255,255,0.8)", "rgba(0,0,0,0.3)");
+
+            // Cracks for damaged states (same as mushroom/rainbow/chick/sun boxes)
+            this._renderGlassBoxCracks(ctx, tid, ds, "rgba(255,255,255,0.9)");
         } else if (tid === 41) {
             ctx.fillStyle = "#D4AF37";
             ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
@@ -1052,6 +1082,71 @@ class GameRenderer {
             return;
         }
 
+        // Letter powerup boxes — glass box + cracks + rotating letter
+        if (tid >= 51 && tid <= 90) {
+            const state = (tid - 51) % 4;  // 0=pad, 1=crack2, 2=crack1, 3=box
+            
+            // Letter mapping
+            const letterMap = {
+                51: "B", 52: "B", 53: "B", 54: "B",
+                55: "C", 56: "C", 57: "C", 58: "C",
+                59: "F", 60: "F", 61: "F", 62: "F",
+                63: "J", 64: "J", 65: "J", 66: "J",
+                67: "R", 68: "R", 69: "R", 70: "R",
+                71: "A", 72: "A", 73: "A", 74: "A",
+                75: "M", 76: "M", 77: "M", 78: "M",
+                79: "S", 80: "S", 81: "S", 82: "S",
+                83: "Z", 84: "Z", 85: "Z", 86: "Z",
+                87: "O", 88: "O", 89: "O", 90: "O",
+            };
+            const letter = letterMap[tid] || "?";
+
+            // PAD state (0) - box destroyed, only rotating letter (no glass background)
+            if (state === 0) {
+                ctx.save();
+                ctx.beginPath(); ctx.rect(dx, dy, ds, ds); ctx.clip();
+                const cX = dx + (gridC % 2 === 0 ? ds : 0);
+                const cY = dy + (gridR % 2 === 0 ? ds : 0);
+
+                ctx.translate(cX, cY);
+                ctx.save();
+                ctx.scale(Math.cos(Date.now() / 300), 1);  // Rotating effect like money tile
+                ctx.font = `bold ${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillStyle = "#ffffff";
+                ctx.fillText(letter, 0, ds * 0.05);
+                ctx.restore();
+                ctx.restore();
+                return;
+            }
+            
+            // CRACK2, CRACK1, BOX states (1, 2, 3) - cached glass box + cracks + rotating letter
+            const cached = this._getCachedBigTile(tid, ds);
+            const sx = gridC % 2 === 0 ? 0 : ds;
+            const sy = gridR % 2 === 0 ? 0 : ds;
+            ctx.drawImage(cached, sx, sy, ds, ds, dx, dy, ds, ds);
+
+            // Draw rotating letter on top
+            ctx.save();
+            ctx.beginPath(); ctx.rect(dx, dy, ds, ds); ctx.clip();
+            const cX = dx + (gridC % 2 === 0 ? ds : 0);
+            const cY = dy + (gridR % 2 === 0 ? ds : 0);
+
+            ctx.translate(cX, cY);
+            ctx.save();
+            ctx.scale(Math.cos(Date.now() / 300), 1);  // Rotating effect like money tile
+            ctx.font = `bold ${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "#ffffff";
+            ctx.fillText(letter, 0, ds * 0.05);
+            ctx.restore();
+            ctx.restore();
+            return;
+        }
+
+        // Base and money pad — still need clip/translate (cheap, rare tiles)
         // Base and money pad — still need clip/translate (cheap, rare tiles)
         if (tid === 6 || tid === 37) {
             ctx.save();
@@ -1083,9 +1178,38 @@ class GameRenderer {
             ctx.drawImage(cached, dx, dy);
             return;
         }
-
         if (tid === 7) {
             drawLavaTile(ctx, dx, dy, ds);
+            return;
+        }
+
+        if (tid === 91) {
+            drawTreeTile(ctx, dx, dy, ds);
+            return;
+        }
+
+        // Apple (big tile) and Ant Pile (friendly only)
+        if (tid === 92 || tid === 93) {
+            ctx.save();
+            let cX = dx + ds / 2;
+            let cY = dy + ds / 2;
+            
+            // Adjust to center of 2x2 block
+            cX = dx + (gridC % 2 === 0 ? ds : 0);
+            cY = dy + (gridR % 2 === 0 ? ds : 0);
+            // Draw once from the top-left (even r/c)
+            if (gridR % 2 !== 0 || gridC % 2 !== 0) {
+                ctx.restore();
+                return;
+            }
+
+            if (tid === 92) {
+                drawAppleTile(ctx, cX - ds/2, cY - ds/2, ds);
+            } else {
+                const count = this.state?.ant_stats?.friendly_apples || 0;
+                drawAntPileTile(ctx, cX - ds/2, cY - ds/2, ds, true, count);
+            }
+            ctx.restore();
             return;
         }
 

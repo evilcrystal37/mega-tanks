@@ -17,6 +17,10 @@ class AIController:
     def tick_enemies(self) -> None:
         for enemy in list(self.engine.enemies.values()):
             if enemy.alive:
+                # Z — Sleep: skip AI if sleeping
+                if enemy.sleep_ticks > 0:
+                    enemy.sleep_ticks -= 1
+                    continue
                 enemy.tick_cooldown()
                 self.engine._ai_tick(enemy)
 

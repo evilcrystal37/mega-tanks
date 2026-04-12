@@ -5,7 +5,7 @@
 import { Api } from "./api.js";
 import { SpriteAtlas } from "./spriteAtlas.js";
 import { CELL, GRID_H, GRID_W, TILE_GROUPS, TILE_TOGGLES, TIMED_TILE_IDS, NON_MANUAL_TILE_IDS } from "./constants.js";
-import { drawSandTile, drawLavaTile } from "./tileRenderer.js";
+import { drawSandTile, drawLavaTile, drawTreeTile, drawAppleTile, drawAntPileTile } from "./tileRenderer.js";
 import { computeViewport, getCellZoom, resizeCanvas } from "./viewport.js";
 
 const BRUSH_SIZE = 2; // 2x2 tiles (4 tiles at once)
@@ -247,7 +247,7 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
     const gridC = Math.round(x / sz);
     const gridR = Math.round(y / sz);
 
-    if (tid === 6 || tid === 14 || tid === 18 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 36) || tid === 32) {
+    if (tid === 6 || tid === 14 || tid === 18 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 36) || tid === 32 || tid === 92 || tid === 93 || tid === 94) {
         ctx.save();
         const centerX = dx + (gridC % 2 === 0 ? ds : 0);
         const centerY = dy + (gridR % 2 === 0 ? ds : 0);
@@ -496,6 +496,13 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🐥", 0, ds * 0.1);
+        } else if (tid === 92) {
+            // Big Apple centered at (0,0)
+            drawAppleTile(ctx, -ds/2, -ds/2, ds);
+        } else if (tid === 93) {
+            drawAntPileTile(ctx, -ds/2, -ds/2, ds, true);
+        } else if (tid === 94) {
+            drawAntPileTile(ctx, -ds/2, -ds/2, ds, false);
         } else if (tid === 6) {
             // Base eagle — big-type (2×2)
             _atlas.draw(ctx, "base.heart.alive", -ds, -ds, ds * 2, ds * 2);
@@ -507,6 +514,40 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
 
     if (tid === 7) {
         drawLavaTile(ctx, dx, dy, ds);
+        return;
+    }
+    if (tid === 37) {
+        ctx.font = `${ds * 0.8}px "Segoe UI Emoji", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("💰", dx + ds / 2, dy + ds / 2);
+        return;
+    }
+    if (tid === 43) {
+        ctx.font = `${ds * 0.8}px "Segoe UI Emoji", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("☀️", dx + ds / 2, dy + ds / 2);
+        return;
+    }
+    if (tid === 47) {
+        ctx.font = `${ds * 0.8}px "Segoe UI Emoji", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("🔫", dx + ds / 2, dy + ds / 2);
+        return;
+    }
+
+    if (tid === 91) {
+        drawTreeTile(ctx, dx, dy, ds);
+        return;
+    }
+    if (tid === 93) {
+        drawAntPileTile(ctx, dx, dy, ds, true);
+        return;
+    }
+    if (tid === 94) {
+        drawAntPileTile(ctx, dx, dy, ds, false);
         return;
     }
 
@@ -706,7 +747,7 @@ function _generateRandomMap() {
     const disabled = _getDisabledTileIds();
 
     // Tank-solid tile IDs — these block movement and should never fill corridors
-    const TANK_SOLID = new Set([1, 2, 3, 14, 15, 36]);
+    const TANK_SOLID = new Set([1, 2, 3, 14, 15, 36, 91, 92, 93, 94]);
 
     // Populate tile pools (timed tiles have no autoGen and are automatically skipped)
     const blockingTiles = [];   // Impassable to tanks (brick, steel, water, glass…)
@@ -1119,6 +1160,29 @@ export function renderTilePreview(ctx, tileId, canvasSize) {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText("🔫", canvasSize / 2, canvasSize / 2);
+        return;
+    }
+    
+    // Letter powerup tiles - show the letter emoji
+    // B=51, C=55, F=59, J=63, R=67, A=71, M=75, S=79, Z=83, O=87
+    const letterEmojis = {
+        51: "🅱️",  // Banana
+        55: "🅰️",  // Clone (using A as placeholder, visually shows it's a letter tile)
+        59: "🎆",  // Fireworks
+        63: "🦘",  // Jump
+        67: "🌈",  // Rainbow World
+        71: "✈️",  // Airplane
+        75: "🧲",  // Magnet
+        79: "🏃",  // Sahur (runner)
+        83: "💤",  // Zzz (sleep)
+        87: "🐙",  // Octopus
+    };
+    
+    if (letterEmojis[tileId]) {
+        ctx.font = `${canvasSize * 0.7}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(letterEmojis[tileId], canvasSize / 2, canvasSize / 2);
         return;
     }
 

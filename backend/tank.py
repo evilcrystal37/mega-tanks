@@ -62,6 +62,11 @@ class Tank:
     mega_gun_ticks: int = 0
     is_big: bool = False  # Permanently big (like companion)
 
+    # Letter powerup buffs/debuffs
+    clone_ticks: int = 0       # Clone effect duration (player only)
+    jump_ticks: int = 0        # Jump ability duration (player only)
+    sleep_ticks: int = 0       # Sleep duration (enemies only)
+
     # Companion support
     companion: Optional['Tank'] = None
     companion_ticks: int = 0
@@ -132,6 +137,9 @@ class Tank:
             "mega_gun_active": self.mega_gun_ticks > 0,
             "mega_gun_ticks": self.mega_gun_ticks,
             "is_big": self.is_big,
+            "clone_ticks": self.clone_ticks,
+            "jump_ticks": self.jump_ticks,
+            "sleep_ticks": self.sleep_ticks,
         }
 
 

@@ -48,6 +48,10 @@ export class GameStateStore {
         rawState.skeleton_kills = rawState.skeleton_kills ?? 0;
         rawState.bone_arch_active = rawState.bone_arch_active ?? false;
 
+        rawState.ant_stats = rawState.ant_stats ?? {
+            friendly_apples: 0,
+            friendly_pile_pos: null
+        };
         this._state = rawState;
         return { prev, state: rawState };
     }

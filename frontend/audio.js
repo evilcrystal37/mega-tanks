@@ -11,9 +11,10 @@ class AudioManager {
         }
         
         const soundList = [
-            "fire", "hit-brick", "enemy-explosion", "tank-idle", 
-            "hit-steel", "player-explosion", "score-bonus", 
-            "tank-move", "victory", "game-over", "level-intro"
+            "fire", "hit-brick", "enemy-explosion", "tank-idle",
+            "hit-steel", "player-explosion", "score-bonus",
+            "tank-move", "victory", "game-over", "level-intro",
+            "powerup-appear", "powerup-pickup",
         ];
         
         soundList.forEach(name => {

@@ -20,10 +20,12 @@ from .ai_controller import AIController
 from .powerup_manager import PowerupManager
 from .sandworm_controller import SandwormController
 from .skeleton_controller import SkeletonController
+from .ant_controller import AntController  # friendly ants only
 from .explosion_manager import ExplosionManager
 from .collision import can_big_tank_crush
 from .map_model import Map, GRID_WIDTH, GRID_HEIGHT
 from .tank import Tank, make_player_tank, make_enemy_tank, ENEMY_TYPES
+from .input_recorder import InputRecorder
 from .tile_registry import (
     AUTO_TURRET,
     BASE,
@@ -64,6 +66,24 @@ from .tile_registry import (
     SUN_BOX_IDS,
     SUN_PAD,
     SUNFLOWER,
+    # Letter powerups
+    BANANA_PAD, BANANA_BOX_IDS,
+    CLONE_PAD, CLONE_BOX_IDS,
+    FIREWORKS_PAD, FIREWORKS_BOX_IDS,
+    JUMP_PAD, JUMP_BOX_IDS,
+    RAINBOW_WORLD_PAD, RAINBOW_WORLD_BOX_IDS,
+    AIRPLANE_PAD, AIRPLANE_BOX_IDS,
+    MAGNET_PAD, MAGNET_BOX_IDS,
+    SAHUR_PAD, SAHUR_BOX_IDS,
+    ZZZ_PAD, ZZZ_BOX_IDS,
+    OCTOPUS_PAD, OCTOPUS_BOX_IDS,
+    LETTER_BOX_IDS,
+    LETTER_PAD_IDS,
+    LETTER_EFFECT_MAP,
+    APPLE,
+    TREE,
+    ANT_PILE_FRIENDLY,
+    ANT_PILE_EVIL,
     get_tile,
 )
 
@@ -83,7 +103,11 @@ ENEMY_SEQUENCE = ["basic", "basic", "fast", "basic", "armor", "power", "fast", "
 class GameEngine:
     def __init__(self, map_obj: Map, mode_name: str = "construction_play", settings: Optional[dict] = None) -> None:
         from .mode_registry import get_mode
-        
+
+        # Seeded random for deterministic simulation (multiplayer safe)
+        seed = settings.get("seed", int(time.time() * 1000)) if settings else int(time.time() * 1000)
+        self.random = random.Random(seed)
+
         self.map = map_obj
         self.mode = get_mode(mode_name)
         self.grid: List[List[int]] = [row[:] for row in map_obj.grid]  # mutable copy
@@ -171,6 +195,21 @@ class GameEngine:
         self._player_fire: bool = False
         self._last_grid_snapshot: Optional[List[List[int]]] = None
 
+        # Input recorder for Clone effect
+        self._input_recorder = InputRecorder(max_frames=1200)
+
+        # Letter powerup effects state
+        self.rainbow_world_ticks: int = 0       # R — Rainbow world transform
+        self.base_shield_ticks: int = 0         # O — Octopus base shield
+        self.clone_tank: Optional[Tank] = None  # C — Clone tank
+        self.bananas: List[dict] = []           # B — Banana impacts: [{row, col, phase, ttl}]
+        self.fireworks: List[dict] = []         # F — Fireworks bursts
+        self.jump_active: bool = False          # J — Jump ability (derived from player.jump_ticks)
+        self.airplanes: List[dict] = []         # A — Airplane drops
+        self.bombs: List[dict] = []             # A — Airplane bombs: [{row, col, target_row, ttl}]
+        self.magnets: List[dict] = []           # M — Magnet pull zones
+        self.sahur_runners: List[dict] = []     # S — Sahur runners
+
         # Subsystems
         self.bullet_manager = BulletManager(self)
         self.enemy_spawner = EnemySpawner(self)
@@ -179,6 +218,7 @@ class GameEngine:
         self.sandworm_controller = SandwormController(self)
         self.skeleton_ctrl = SkeletonController(self)
         self.explosion_manager = ExplosionManager(self)
+        self.ant_ctrl = AntController(self)
 
 
     # ------------------------------------------------------------------
@@ -228,6 +268,10 @@ class GameEngine:
             self.player = make_player_tank(float(GRID_HEIGHT - 1) + 0.5, float(GRID_WIDTH // 2 - 4) + 0.5)
         self._clear_area_for_tank(self.player)
         
+        # Ant pile positions are NOT pre-assigned here.
+        # The first ant of each team to pick up an apple calls _initiate_pile()
+        # which chooses a random empty spot at that moment.
+
         # Parse Auto-Turrets — treated as 2×2 blocks.
         # Scan only even positions so each block is registered once.
         for r in range(0, GRID_HEIGHT, 2):
@@ -306,6 +350,37 @@ class GameEngine:
 
     def _is_megagun_enabled(self) -> bool:
         return self._is_timed_tile_enabled('tile_megagun')
+
+    # Letter powerup tile settings
+    def _is_banana_enabled(self) -> bool:
+        return self._is_timed_tile_enabled('tile_banana')
+
+    def _is_clone_enabled(self) -> bool:
+        return self._is_timed_tile_enabled('tile_clone')
+
+    def _is_fireworks_enabled(self) -> bool:
+        return self._is_timed_tile_enabled('tile_fireworks')
+
+    def _is_jump_enabled(self) -> bool:
+        return self._is_timed_tile_enabled('tile_jump')
+
+    def _is_rainbow_world_enabled(self) -> bool:
+        return self._is_timed_tile_enabled('tile_rainbow_world')
+
+    def _is_airplane_enabled(self) -> bool:
+        return self._is_timed_tile_enabled('tile_airplane')
+
+    def _is_magnet_enabled(self) -> bool:
+        return self._is_timed_tile_enabled('tile_magnet')
+
+    def _is_sahur_enabled(self) -> bool:
+        return self._is_timed_tile_enabled('tile_sahur')
+
+    def _is_zzz_enabled(self) -> bool:
+        return self._is_timed_tile_enabled('tile_zzz')
+
+    def _is_octopus_enabled(self) -> bool:
+        return self._is_timed_tile_enabled('tile_octopus')
 
     def _tick(self) -> None:
         if not self.running:
@@ -480,6 +555,12 @@ class GameEngine:
                         self._megagun_spawn_timer = random.randint(1800, 3000)
                         self.events.append({"type": "sound", "sound": "powerup-pickup"})
 
+                # Letter powerup pad pickup
+                elif tid in LETTER_PAD_IDS:
+                    effect = LETTER_EFFECT_MAP.get(tid)
+                    if effect and tank.is_player:
+                        self._trigger_letter_effect(effect, r, c)
+
             # Apply ticking buffs
             if tank.rainbow_ticks > 0:
                 tank.rainbow_ticks -= 1
@@ -524,6 +605,9 @@ class GameEngine:
         # Update skeleton creatures
         self.skeleton_ctrl.tick()
 
+        # Update ant ecosystem
+        self.ant_ctrl.tick()
+
         # Spawn enemies
         self.enemy_spawner.tick()
 
@@ -535,6 +619,20 @@ class GameEngine:
 
         # Tick money tile and timed powerups
         self.powerup_manager.tick()
+
+        # Tick letter powerup effects
+        self._tick_letter_buffs()
+        self._tick_bananas()
+        self._tick_clone()
+        self._tick_fireworks()
+        self._tick_airplanes()
+        self._tick_bombs()
+        self._tick_magnets()
+        self._tick_sahur_runners()
+
+        # Record player input for clone effect
+        if self.player and self.player.alive:
+            self._input_recorder.record(self._player_direction, self._player_fire)
 
         # Check win/loss
         self._check_end_conditions()
@@ -770,6 +868,568 @@ class GameEngine:
                     self.events.append({"type": "sound", "sound": "powerup-appear"})
                 else:
                     self._megagun_spawn_timer = 120
+
+    # ------------------------------------------------------------------
+    # Letter Powerup Effects
+    # ------------------------------------------------------------------
+
+    def _trigger_letter_effect(self, effect: str, pad_r: int, pad_c: int) -> None:
+        """Trigger a letter powerup effect when pad is collected."""
+        # Clear the 2x2 box
+        box_ids = {
+            "banana": BANANA_BOX_IDS, "clone": CLONE_BOX_IDS,
+            "fireworks": FIREWORKS_BOX_IDS, "jump": JUMP_BOX_IDS,
+            "rainbow_world": RAINBOW_WORLD_BOX_IDS, "airplane": AIRPLANE_BOX_IDS,
+            "magnet": MAGNET_BOX_IDS, "sahur": SAHUR_BOX_IDS,
+            "zzz": ZZZ_BOX_IDS, "octopus": OCTOPUS_BOX_IDS,
+        }.get(effect, set())
+        pad_id = {
+            "banana": BANANA_PAD, "clone": CLONE_PAD,
+            "fireworks": FIREWORKS_PAD, "jump": JUMP_PAD,
+            "rainbow_world": RAINBOW_WORLD_PAD, "airplane": AIRPLANE_PAD,
+            "magnet": MAGNET_PAD, "sahur": SAHUR_PAD,
+            "zzz": ZZZ_PAD, "octopus": OCTOPUS_PAD,
+        }.get(effect)
+
+        if pad_id:
+            for gr, gc in self._find_box_group(pad_r, pad_c, pad_id, pad_id):
+                self.grid[gr][gc] = EMPTY
+
+        # Trigger effect
+        if effect == "banana":
+            self._spawn_banana()
+        elif effect == "clone":
+            self._spawn_clone()
+        elif effect == "fireworks":
+            self._trigger_fireworks()
+        elif effect == "jump":
+            self._activate_jump()
+        elif effect == "rainbow_world":
+            self._activate_rainbow_world()
+        elif effect == "airplane":
+            self._spawn_airplane()
+        elif effect == "magnet":
+            self._spawn_magnet()
+        elif effect == "sahur":
+            self._spawn_sahur()
+        elif effect == "zzz":
+            self._trigger_sleep()
+        elif effect == "octopus":
+            self._activate_base_shield()
+
+        self.events.append({"type": "sound", "sound": "powerup-pickup"})
+
+    def _spawn_banana(self) -> None:
+        """B — Banana: Falls from above, bounces 3 times with explosions, final super TNT."""
+        # Pre-select 3 target locations for the bounces
+        target1 = self._find_random_12x12_spot()
+        target2 = self._find_random_12x12_spot()
+        target3 = self._find_random_12x12_spot()
+        
+        if target1 and target2 and target3:
+            # Banana spawns ABOVE the map at first target's column
+            self.bananas.append({
+                "row": -5.0,  # Start above the map
+                "col": float(target1[1]),  # Same column as first target
+                "target_row": float(target1[0]),
+                "target_col": float(target1[1]),
+                "velocity": 0.0,  # Start with zero velocity
+                "bounce_count": 0,
+                "state": "falling",  # "falling" or "rising"
+                "targets": [target1, target2, target3],  # Pre-selected targets
+            })
+
+    def _find_random_12x12_spot(self) -> Optional[tuple[int, int]]:
+        """Find a random spot where a 12x12 area fits inside bounds."""
+        valid_spots = []
+        for r in range(6, GRID_HEIGHT - 6):
+            for c in range(6, GRID_WIDTH - 6):
+                valid_spots.append((r, c))
+        if valid_spots:
+            return self.random.choice(valid_spots)
+        return None
+
+    def _banana_impact(self, center_r: int, center_c: int, final_explosion: bool = False) -> None:
+        """Apply banana impact: destroy all destructibles in 12x12 area."""
+        # 12x12 area centered on the spot (6-tile radius)
+        destroyed_any = False
+        for dr in range(-6, 7):
+            for dc in range(-6, 7):
+                gr, gc = center_r + dr, center_c + dc
+                if 0 <= gr < GRID_HEIGHT and 0 <= gc < GRID_WIDTH:
+                    tid = self.grid[gr][gc]
+                    tile = get_tile(tid)
+                    # Don't destroy base, steel
+                    if tid == BASE or tid == STEEL:
+                        continue
+                    if tile.destructible:
+                        self.grid[gr][gc] = EMPTY
+                        destroyed_any = True
+
+        if final_explosion:
+            # Final impact: super TNT explosion (radius 6)
+            self._add_explosion(center_r + 0.5, center_c + 0.5, kind="super_tnt", radius=6)
+            for _ in range(3):
+                self.events.append({"type": "sound", "sound": "enemy-explosion"})
+        elif destroyed_any:
+            self.events.append({"type": "sound", "sound": "enemy-explosion"})
+
+    def _tick_bananas(self) -> None:
+        """Tick banana effects: fall, bounce, explode - repeat 3 times."""
+        new_bananas = []
+        for banana in self.bananas:
+            if banana["state"] == "falling":
+                # Apply gravity (accelerate downward)
+                banana["velocity"] += 0.015
+                banana["row"] += banana["velocity"]
+                
+                # Check if reached target
+                if banana["row"] >= banana["target_row"]:
+                    banana["row"] = banana["target_row"]
+                    # Impact!
+                    self._banana_impact(
+                        int(banana["target_row"]), 
+                        int(banana["target_col"]),
+                        final_explosion=(banana["bounce_count"] >= 2)
+                    )
+                    banana["bounce_count"] += 1
+                    
+                    if banana["bounce_count"] < 2:
+                        # Bounce back up
+                        banana["state"] = "rising"
+                        banana["velocity"] = -0.25  # Initial upward velocity
+                        # Pick next target (different column)
+                        if banana["bounce_count"] < len(banana["targets"]):
+                            next_target = banana["targets"][banana["bounce_count"]]
+                            banana["target_col"] = float(next_target[1])
+                            banana["target_row"] = float(next_target[0])
+                        new_bananas.append(banana)
+                    # If bounce_count >= 2, final explosion happened - remove banana
+                    
+            elif banana["state"] == "rising":
+                # Apply gravity (decelerate upward motion)
+                banana["velocity"] += 0.015
+                banana["row"] += banana["velocity"]
+                
+                # Check if reached peak (velocity became positive)
+                if banana["velocity"] >= 0:
+                    # Start falling again
+                    banana["state"] = "falling"
+                    banana["velocity"] = 0.0
+                    new_bananas.append(banana)
+                else:
+                    new_bananas.append(banana)
+
+        self.bananas = new_bananas
+
+    def _spawn_clone(self) -> None:
+        """C — Clone: Spawn clone tank that replays player inputs with delay."""
+        if self.player and self.player.alive:
+            self.player.clone_ticks = 720  # 12 seconds
+            # Clone spawns near player
+            clone = Tank(
+                row=self.player.row + 2.0,
+                col=self.player.col,
+                direction=self.player.direction,
+                speed=self.player.speed,
+                hp=1,
+                is_player=True,  # Clone is ally
+                fire_rate=25,
+                bullet_limit=1,
+                tank_type="clone",
+                color="#00ced1",  # Distinct cyan color
+            )
+            self.clone_tank = clone
+            self.events.append({"type": "sound", "sound": "powerup-pickup"})
+
+    def _tick_clone(self) -> None:
+        """Tick clone effect: replay player inputs with delay."""
+        if self.clone_tank and self.player and self.player.alive and self.player.clone_ticks > 0:
+            self.player.clone_ticks -= 1
+            if not self.clone_tank.alive:
+                # Respawn clone if dead
+                self.clone_tank.row = self.player.row + 2.0
+                self.clone_tank.col = self.player.col
+                self.clone_tank.alive = True
+
+            # Replay input from 15 ticks ago
+            direction, fire = self._input_recorder.get_input(15)
+            self.clone_tank.tick_cooldown()
+
+            # Move clone
+            if direction:
+                self._move_tank(self.clone_tank, direction)
+            if fire:
+                self._try_fire(self.clone_tank)
+        elif self.clone_tank and (not self.player or not self.player.alive or self.player.clone_ticks <= 0):
+            self.clone_tank = None
+
+    def _trigger_fireworks(self) -> None:
+        """F — Fireworks: 8-directional rays that crack glass and stun enemies."""
+        if not self.player or not self.player.alive:
+            return
+
+        directions = ["up", "up-right", "right", "down-right", "down", "down-left", "left", "up-left"]
+        dir_vectors = {
+            "up": (-1, 0), "up-right": (-1, 1), "right": (0, 1), "down-right": (1, 1),
+            "down": (1, 0), "down-left": (1, -1), "left": (0, -1), "up-left": (-1, -1),
+        }
+
+        for d in directions:
+            dr, dc = dir_vectors[d]
+            ray_tiles = []
+            for i in range(1, 50):  # Ray length
+                gr = int(self.player.row + dr * i)
+                gc = int(self.player.col + dc * i)
+                if not (0 <= gr < GRID_HEIGHT and 0 <= gc < GRID_WIDTH):
+                    break
+                tid = self.grid[gr][gc]
+                tile = get_tile(tid)
+                if tile.bullet_solid:
+                    ray_tiles.append((gr, gc, tid))
+                    if tile.destructible and tid in LETTER_BOX_IDS:
+                        # Crack glass boxes
+                        self._apply_bullet_hit_tile(gr, gc, self.player.id, True, 1)
+                    break
+                ray_tiles.append((gr, gc, tid))
+
+            # Stun enemies hit by ray
+            for enemy in self.enemies.values():
+                if enemy.alive:
+                    for gr, gc, _ in ray_tiles:
+                        if abs(enemy.row - (gr + 0.5)) < 0.8 and abs(enemy.col - (gc + 0.5)) < 0.8:
+                            enemy.sleep_ticks = 120  # 2 seconds stun
+                            break
+
+        self.fireworks.append({"origin": (self.player.row, self.player.col), "ttl": 30})
+        self.events.append({"type": "sound", "sound": "enemy-explosion"})
+
+    def _tick_fireworks(self) -> None:
+        """Tick fireworks effects."""
+        self.fireworks = [fw for fw in self.fireworks if fw["ttl"] > 0]
+        for fw in self.fireworks:
+            fw["ttl"] -= 1
+
+    def _activate_jump(self) -> None:
+        """J — Jump: Enable jumping over 1 blocking tile for 10 seconds."""
+        if self.player:
+            self.player.jump_ticks = 600  # 10 seconds
+            self.jump_active = True
+
+    def _activate_rainbow_world(self) -> None:
+        """R — Rainbow World: Global rainbow mode for 30 seconds."""
+        self.rainbow_world_ticks = 1800  # 30 seconds
+        self.events.append({"type": "sound", "sound": "powerup-pickup"})
+
+    def _spawn_airplane(self) -> None:
+        """A — Airplane: Fly across map in random straight-line trajectory, dropping 3 crates."""
+        # Define 8 possible flight directions (dx, dy, rotation_degrees)
+        # dx = column change, dy = row change
+        directions = [
+            (0.15, 0, 0),      # East →
+            (-0.15, 0, 180),   # West ←
+            (0, 0.15, 90),     # South ↓
+            (0, -0.15, 270),   # North ↑
+            (0.11, 0.11, 45),  # Southeast ↘
+            (-0.11, 0.11, 135),# Southwest ↙
+            (0.11, -0.11, 315),# Northeast ↗
+            (-0.11, -0.11, 225),# Northwest ↖
+        ]
+        
+        # Pick random direction
+        dx, dy, rotation = self.random.choice(directions)
+        
+        # Determine spawn position based on direction (spawn on edge, facing into map)
+        if dx > 0:
+            start_col = -2.0  # Spawn left of map
+        elif dx < 0:
+            start_col = GRID_WIDTH + 2.0  # Spawn right of map
+        else:
+            start_col = self.random.randint(5, GRID_WIDTH - 5)
+        
+        if dy > 0:
+            start_row = -2.0  # Spawn above map
+        elif dy < 0:
+            start_row = GRID_HEIGHT + 2.0  # Spawn below map
+        else:
+            start_row = self.random.randint(5, GRID_HEIGHT - 5)
+        
+        # Ensure we have valid spawn position
+        if dx == 0 and dy == 0:
+            # Fallback: fly east
+            dx, dy, rotation = 0.15, 0, 0
+            start_row = self.random.randint(2, 10)
+            start_col = -2.0
+        
+        self.airplanes.append({
+            "row": start_row,
+            "col": start_col,
+            "dx": dx,
+            "dy": dy,
+            "rotation": rotation,
+            "drops_remaining": 3,
+            "next_drop_tick": 60,
+            "ttl": 600,  # 10 seconds
+        })
+        self.events.append({"type": "sound", "sound": "airplane"})
+
+    def _tick_airplanes(self) -> None:
+        """Tick airplane effects."""
+        new_airplanes = []
+        for airplane in self.airplanes:
+            airplane["ttl"] -= 1
+            # Move airplane in its direction
+            airplane["col"] += airplane["dx"]
+            airplane["row"] += airplane["dy"]
+
+            if airplane["drops_remaining"] > 0:
+                airplane["next_drop_tick"] -= 1
+                if airplane["next_drop_tick"] <= 0:
+                    # Drop bomb from airplane position
+                    drop_col = int(airplane["col"])
+                    drop_row = int(airplane["row"])
+                    # Spawn bomb that will fall down
+                    self.bombs.append({
+                        "row": float(drop_row),
+                        "col": float(drop_col),
+                        "target_row": self.random.randint(5, GRID_HEIGHT - 5),
+                        "ttl": 180,  # 3 seconds to fall
+                    })
+                    airplane["drops_remaining"] -= 1
+                    airplane["next_drop_tick"] = 90
+
+            if airplane["ttl"] > 0 and airplane["drops_remaining"] >= 0:
+                new_airplanes.append(airplane)
+
+        self.airplanes = new_airplanes
+
+    def _tick_bombs(self) -> None:
+        """Tick airplane bombs falling."""
+        new_bombs = []
+        for bomb in self.bombs:
+            bomb["ttl"] -= 1
+            # Bomb falls down toward target row
+            progress = 1.0 - (bomb["ttl"] / 180.0)
+            bomb["row"] = bomb["row"] + (bomb["target_row"] - bomb["row"]) * 0.1
+
+            if bomb["ttl"] > 0:
+                new_bombs.append(bomb)
+            else:
+                # Bomb reached ground - explode like super TNT, then grant reward
+                drop_col = int(bomb["col"])
+                drop_row = int(bomb["row"])
+                
+                # Add super TNT explosion
+                self._add_explosion(drop_row + 0.5, drop_col + 0.5, kind="super_tnt", radius=3)
+                for _ in range(3):
+                    self.events.append({"type": "sound", "sound": "enemy-explosion"})
+                
+                # Destroy tiles in 3-tile radius
+                for dr in range(-3, 4):
+                    for dc in range(-3, 4):
+                        gr, gc = drop_row + dr, drop_col + dc
+                        if 0 <= gr < GRID_HEIGHT and 0 <= gc < GRID_WIDTH:
+                            tid = self.grid[gr][gc]
+                            tile = get_tile(tid)
+                            if tid not in (BASE, STEEL) and tile.destructible:
+                                self.grid[gr][gc] = EMPTY
+                
+                # Grant reward if landing spot is empty
+                if 0 <= drop_col < GRID_WIDTH and 0 <= drop_row < GRID_HEIGHT:
+                    if self.grid[drop_row][drop_col] == EMPTY:
+                        self._grant_airdrop_reward(drop_row, drop_col)
+
+        self.bombs = new_bombs
+
+    def _grant_airdrop_reward(self, row: int, col: int) -> None:
+        """Grant a random airdrop reward."""
+        rewards = ["shield", "homing", "score"]
+        reward = self.random.choice(rewards)
+        if reward == "shield" and self.player:
+            self.player.rainbow_ticks = max(self.player.rainbow_ticks, 480)  # 8s shield
+        elif reward == "homing" and self.player:
+            # Grant one homing missile
+            target = self._find_nearest_skeleton_or_worm(self.player.row, self.player.col)
+            if target:
+                tr, tc = target
+                from .bullet import MISSILE_SPEED
+                missile = Bullet(
+                    owner_id=self.player.id,
+                    is_player=True,
+                    row=self.player.row,
+                    col=self.player.col,
+                    direction=self.player.direction,
+                    speed=MISSILE_SPEED,
+                    power=99,
+                    ttl=600,
+                    is_missile=True,
+                    target_row=tr,
+                    target_col=tc,
+                )
+                self.bullets[missile.id] = missile
+        elif reward == "score":
+            self.score += 500
+        self.events.append({"type": "sound", "sound": "score-bonus"})
+
+    def _spawn_magnet(self) -> None:
+        """M — Magnet: Pull tiles toward magnet for 5 seconds."""
+        # Spawn magnet at random location
+        spot = self._find_random_empty_spot()
+        if spot:
+            self.magnets.append({
+                "row": spot[0] + 0.5,
+                "col": spot[1] + 0.5,
+                "ttl": 300,  # 5 seconds
+                "radius": 4,
+            })
+
+    def _find_random_empty_spot(self) -> Optional[tuple[int, int]]:
+        """Find a random empty 1x1 spot."""
+        valid_spots = []
+        for r in range(2, GRID_HEIGHT - 2):
+            for c in range(2, GRID_WIDTH - 2):
+                if self.grid[r][c] == EMPTY:
+                    valid_spots.append((r, c))
+        if valid_spots:
+            return self.random.choice(valid_spots)
+        return None
+
+    def _tick_magnets(self) -> None:
+        """Tick magnet effects: pull tiles toward magnet center."""
+        new_magnets = []
+        for magnet in self.magnets:
+            magnet["ttl"] -= 1
+            if magnet["ttl"] % 10 == 0:  # Pull every 10 ticks
+                self._pull_tiles(magnet)
+            if magnet["ttl"] > 0:
+                new_magnets.append(magnet)
+        self.magnets = new_magnets
+
+    def _pull_tiles(self, magnet: dict) -> None:
+        """Pull tiles within magnet radius toward center."""
+        center_r, center_c = int(magnet["row"]), int(magnet["col"])
+        radius = magnet["radius"]
+
+        # Collect all tiles to move (far to near order)
+        tiles_to_move = []
+        for dr in range(-radius, radius + 1):
+            for dc in range(-radius, radius + 1):
+                if dr == 0 and dc == 0:
+                    continue
+                dist = max(abs(dr), abs(dc))  # Chebyshev distance
+                if dist > radius:
+                    continue
+                gr, gc = center_r + dr, center_c + dc
+                if 0 <= gr < GRID_HEIGHT and 0 <= gc < GRID_WIDTH:
+                    tid = self.grid[gr][gc]
+                    tile = get_tile(tid)
+                    # Don't move base, tanks, or already empty
+                    if tid == BASE or tid == EMPTY:
+                        continue
+                    if tile.tank_solid and not tile.destructible:
+                        continue  # Don't move steel, etc.
+                    tiles_to_move.append((dist, gr, gc, dr, dc, tid))
+
+        # Sort by distance (far first) for stable ordering
+        tiles_to_move.sort(key=lambda x: -x[0])
+
+        for _, gr, gc, dr, dc, tid in tiles_to_move:
+            # Direction toward center
+            step_r = -1 if dr > 0 else (1 if dr < 0 else 0)
+            step_c = -1 if dc > 0 else (1 if dc < 0 else 0)
+            new_r, new_c = gr + step_r, gc + step_c
+
+            if 0 <= new_r < GRID_HEIGHT and 0 <= new_c < GRID_WIDTH:
+                target_tid = self.grid[new_r][new_c]
+                if target_tid == EMPTY:
+                    # Move tile
+                    self.grid[new_r][new_c] = tid
+                    self.grid[gr][gc] = EMPTY
+
+    def _spawn_sahur(self) -> None:
+        """S — Sahur: Fast runner that destroys destructibles for 5 seconds."""
+        if self.player:
+            self.sahur_runners.append({
+                "row": self.player.row + 5.0,
+                "col": self.player.col,
+                "dir": self.random.choice(["up", "down", "left", "right"]),
+                "ttl": 300,  # 5 seconds
+                "dir_timer": 0,
+            })
+
+    def _tick_sahur_runners(self) -> None:
+        """Tick sahur runners."""
+        new_runners = []
+        for runner in self.sahur_runners:
+            runner["ttl"] -= 1
+            runner["dir_timer"] -= 1
+
+            # Move fast
+            speed = 0.15
+            deltas = {"up": (-1, 0), "down": (1, 0), "left": (0, -1), "right": (0, 1)}
+            dr, dc = deltas[runner["dir"]]
+            runner["row"] += dr * speed
+            runner["col"] += dc * speed
+
+            # Change direction on timer or wall hit
+            if runner["dir_timer"] <= 0:
+                runner["dir_timer"] = self.random.randint(30, 90)
+                runner["dir"] = self.random.choice(["up", "down", "left", "right"])
+
+            # Check bounds bounce
+            if runner["row"] < 1 or runner["row"] > GRID_HEIGHT - 1:
+                runner["dir"] = "down" if runner["dir"] == "up" else "up"
+            if runner["col"] < 1 or runner["col"] > GRID_WIDTH - 1:
+                runner["dir"] = "right" if runner["dir"] == "left" else "left"
+
+            # Destroy destructibles on contact
+            gr, gc = int(runner["row"]), int(runner["col"])
+            if 0 <= gr < GRID_HEIGHT and 0 <= gc < GRID_WIDTH:
+                tid = self.grid[gr][gc]
+                tile = get_tile(tid)
+                if tile.destructible and tid not in {BASE}:
+                    self.grid[gr][gc] = EMPTY
+                    self.events.append({"type": "sound", "sound": "hit-brick"})
+
+            # Stun enemies on contact
+            for enemy in self.enemies.values():
+                if enemy.alive and abs(enemy.row - runner["row"]) < 1.0 and abs(enemy.col - runner["col"]) < 1.0:
+                    enemy.sleep_ticks = 60  # 1 second stun
+
+            if runner["ttl"] > 0:
+                new_runners.append(runner)
+
+        self.sahur_runners = new_runners
+
+    def _trigger_sleep(self) -> None:
+        """Z — Zzz: Put all enemies to sleep for 8 seconds."""
+        for enemy in self.enemies.values():
+            if enemy.alive:
+                enemy.sleep_ticks = 480  # 8 seconds
+        self.events.append({"type": "sound", "sound": "powerup-pickup"})
+
+    def _activate_base_shield(self) -> None:
+        """O — Octopus: Protect base for 60 seconds."""
+        self.base_shield_ticks = 3600  # 60 seconds
+        self.events.append({"type": "sound", "sound": "powerup-pickup"})
+
+    def _tick_letter_buffs(self) -> None:
+        """Tick letter powerup buff timers."""
+        if self.rainbow_world_ticks > 0:
+            self.rainbow_world_ticks -= 1
+
+        if self.base_shield_ticks > 0:
+            self.base_shield_ticks -= 1
+
+        if self.player and self.player.jump_ticks > 0:
+            self.player.jump_ticks -= 1
+            self.jump_active = self.player.jump_ticks > 0
+        else:
+            self.jump_active = False
+
+    # ------------------------------------------------------------------
+    # Skeleton / Sandworm helpers
+    # ------------------------------------------------------------------
 
     def _find_nearest_skeleton_or_worm(self, from_row: float, from_col: float) -> Optional[tuple[float, float]]:
         """Find the nearest skeleton or sandworm position for sun missile targeting."""
@@ -1276,16 +1936,35 @@ class GameEngine:
             player_is_big = (is_player and self.player and
                              (self.player.mushroom_ticks > 0 or self.player.is_big))
             if not player_is_big:
+                # Octopus shield (O powerup) protects base
+                if self.base_shield_ticks > 0:
+                    # Shield absorbs hit - no damage
+                    return
                 if self.golden_eagle_ticks <= 0:
                     self.grid[r][c] = EMPTY
                     self._trigger_defeat()
             return
 
         tid = self.grid[r][c]
-        if not (power >= 2 or tid == BRICK or tid in BIG_BOX_OR_PAD_IDS or GLASS <= tid <= GLASS_CRACK2):
-            return
+        # Ant Pile destruction logic (friendly pile only)
+        if tid == ANT_PILE_FRIENDLY:
+            self.grid[r][c] = EMPTY
+            self.ant_ctrl.apply_pile_strike(r, c)
+            self.events.append({"type": "sound", "sound": "enemy-explosion"})
 
-        if GLASS <= tid <= GLASS_CRACK1:
+        elif tid == BRICK:
+            self.grid[r][c] = EMPTY
+            self.events.append({"type": "sound", "sound": "brick-hit"})
+        elif tid == APPLE:
+            self.grid[r][c] = EMPTY
+            self.events.append({"type": "sound", "sound": "brick-hit"})
+        elif tid == TREE:
+            self.grid[r][c] = EMPTY
+            self.events.append({"type": "sound", "sound": "brick-hit"})
+        elif tid in BIG_BOX_OR_PAD_IDS and tid not in BIG_BOX_IDS:
+            self.grid[r][c] = EMPTY
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif GLASS <= tid <= GLASS_CRACK1:
             self.grid[r][c] += 1
             self.events.append({"type": "sound", "sound": "hit-brick"})
         elif tid == GLASS_CRACK2:
@@ -1315,6 +1994,49 @@ class GameEngine:
             for gr, gc in self._find_box_group(r, c, min(MEGAGUN_BOX_IDS), max(MEGAGUN_BOX_IDS)):
                 self.grid[gr][gc] -= 1
             self.events.append({"type": "sound", "sound": "hit-brick"})
+
+        # Letter powerup boxes — crack progressively like money/sun boxes
+        elif tid in BANANA_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(BANANA_BOX_IDS), max(BANANA_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in CLONE_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(CLONE_BOX_IDS), max(CLONE_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in FIREWORKS_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(FIREWORKS_BOX_IDS), max(FIREWORKS_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in JUMP_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(JUMP_BOX_IDS), max(JUMP_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in RAINBOW_WORLD_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(RAINBOW_WORLD_BOX_IDS), max(RAINBOW_WORLD_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in AIRPLANE_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(AIRPLANE_BOX_IDS), max(AIRPLANE_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in MAGNET_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(MAGNET_BOX_IDS), max(MAGNET_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in SAHUR_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(SAHUR_BOX_IDS), max(SAHUR_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in ZZZ_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(ZZZ_BOX_IDS), max(ZZZ_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+        elif tid in OCTOPUS_BOX_IDS:
+            for gr, gc in self._find_box_group(r, c, min(OCTOPUS_BOX_IDS), max(OCTOPUS_BOX_IDS)):
+                self.grid[gr][gc] -= 1
+            self.events.append({"type": "sound", "sound": "hit-brick"})
+
         elif tid == SUN_PAD:
             for gr, gc in self._find_box_group(r, c, SUN_PAD, SUN_PAD):
                 self.grid[gr][gc] = EMPTY
@@ -1518,6 +2240,11 @@ class GameEngine:
                 if hit_worm:
                     continue
 
+            # Ant collision — any bullet can kill ants
+            self._check_bullet_ant_hit(bullet)
+            if not bullet.alive:
+                continue
+
             # Tank collision
             self._check_bullet_tank_hit(bullet)
 
@@ -1526,6 +2253,19 @@ class GameEngine:
 
         # Clean up dead bullets
         self.bullets = {bid: b for bid, b in self.bullets.items() if b.alive}
+
+    def _check_bullet_ant_hit(self, bullet: Bullet) -> None:
+        """Check if a bullet hits any ant. Any bullet can kill ants."""
+        for ant in self.ant_ctrl.ants:
+            if not ant.alive:
+                continue
+            if abs(ant.row - bullet.row) < 0.6 and abs(ant.col - bullet.col) < 0.6:
+                bullet.alive = False
+                self._on_bullet_gone(bullet)
+                self._add_explosion(ant.row, ant.col)
+                self.ant_ctrl.hit_ant(ant.id)
+                self.events.append({"type": "sound", "sound": "enemy-explosion"})
+                break
 
     def _check_bullet_tank_hit(self, bullet: Bullet) -> None:
         targets = []
@@ -2151,12 +2891,36 @@ class GameEngine:
             "events": list(self.events),
             "sandworm": {**self.sandworm, "hp": self.sandworm.get("hp", 5)},
             "skeletons": self.skeleton_ctrl.skeletons,
+            "ants": [
+                {
+                    "id": a.id,
+                    "row": a.row,
+                    "col": a.col,
+                    "is_friendly": a.is_friendly,
+                    "carrying": a.carrying,
+                    "carried_tile": a.carried_tile
+                } for a in self.ant_ctrl.ants
+            ],
+            "ant_stats": {
+                "friendly_apples": self.ant_ctrl.friendly_apples,
+                "friendly_pile_pos": self.ant_ctrl.friendly_pile_pos,
+            },
             "mega_skeleton": self.skeleton_ctrl.mega,
             "skeleton_kills": self.skeleton_ctrl.total_killed,
             "bone_arch_active": self.skeleton_ctrl.bone_arch_built,
             "grid": full_grid,  # only sent on initial frame
             "grid_changes": grid_changes,
-            "base_pos": {"row": self._base_pos[0], "col": self._base_pos[1]} if self._base_pos else None
+            "base_pos": {"row": self._base_pos[0], "col": self._base_pos[1]} if self._base_pos else None,
+            # Letter powerup effects
+            "rainbow_world_ticks": self.rainbow_world_ticks,
+            "base_shield_ticks": self.base_shield_ticks,
+            "clone_tank": self.clone_tank.to_dict() if (self.clone_tank and self.clone_tank.alive) else None,
+            "bananas": self.bananas,
+            "fireworks": self.fireworks,
+            "airplanes": self.airplanes,
+            "bombs": self.bombs,
+            "magnets": self.magnets,
+            "sahur_runners": self.sahur_runners,
         }
 
     async def _emit(self, state: dict) -> None:
