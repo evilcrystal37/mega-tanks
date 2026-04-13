@@ -5,7 +5,7 @@
 import { Api } from "./api.js";
 import { SpriteAtlas } from "./spriteAtlas.js";
 import { CELL, GRID_H, GRID_W, TILE_GROUPS, TILE_TOGGLES, TIMED_TILE_IDS, NON_MANUAL_TILE_IDS } from "./constants.js";
-import { drawSandTile, drawLavaTile, drawTreeTile, drawAppleTile, drawAntPileTile, drawCustomTile, customTileSpanFromTile, resolveCustomMultiOrigin } from "./tileRenderer.js";
+import { drawSandTile, drawLavaTile, drawCustomTile, customTileSpanFromTile, resolveCustomMultiOrigin } from "./tileRenderer.js";
 import { computeViewport, getCellZoom, resizeCanvas } from "./viewport.js";
 
 const BRUSH_SIZE = 2; // 2x2 tiles (4 tiles at once)
@@ -309,7 +309,7 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
         return;
     }
 
-    if (tid === 6 || tid === 14 || tid === 18 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 36) || tid === 32 || tid === 92 || tid === 93 || tid === 94) {
+    if (tid === 6 || tid === 14 || tid === 18 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 36) || tid === 32) {
         ctx.save();
         const centerX = dx + (gridC % 2 === 0 ? ds : 0);
         const centerY = dy + (gridR % 2 === 0 ? ds : 0);
@@ -558,13 +558,6 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText("🐥", 0, ds * 0.1);
-        } else if (tid === 92) {
-            // Big Apple centered at (0,0)
-            drawAppleTile(ctx, -ds/2, -ds/2, ds);
-        } else if (tid === 93) {
-            drawAntPileTile(ctx, -ds/2, -ds/2, ds, true);
-        } else if (tid === 94) {
-            drawAntPileTile(ctx, -ds/2, -ds/2, ds, false);
         } else if (tid === 6) {
             // Base eagle — big-type (2×2)
             _atlas.draw(ctx, "base.heart.alive", -ds, -ds, ds * 2, ds * 2);
@@ -597,19 +590,6 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText("🔫", dx + ds / 2, dy + ds / 2);
-        return;
-    }
-
-    if (tid === 91) {
-        drawTreeTile(ctx, dx, dy, ds);
-        return;
-    }
-    if (tid === 93) {
-        drawAntPileTile(ctx, dx, dy, ds, true);
-        return;
-    }
-    if (tid === 94) {
-        drawAntPileTile(ctx, dx, dy, ds, false);
         return;
     }
 
@@ -809,7 +789,7 @@ function _generateRandomMap() {
     const disabled = _getDisabledTileIds();
 
     // Tank-solid tile IDs — these block movement and should never fill corridors
-    const TANK_SOLID = new Set([1, 2, 3, 14, 15, 36, 91, 92, 93, 94]);
+    const TANK_SOLID = new Set([1, 2, 3, 14, 15, 36]);
 
     // Populate tile pools (timed tiles have no autoGen and are automatically skipped)
     const blockingTiles = [];   // Impassable to tanks (brick, steel, water, glass…)

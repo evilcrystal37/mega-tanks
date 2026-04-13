@@ -590,33 +590,6 @@ TILE_REGISTRY: Dict[int, TileType] = {
         tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
         non_repeating=True,
     ),
-    # -----------------------------------------------------------------------
-    # Flora and Ant ecosystem (IDs 91-96)
-    # -----------------------------------------------------------------------
-    91: TileType(
-        id=91, name="tree", label="Tree",
-        color="#2e7d32",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=True, slippery=False,
-        non_repeating=True,
-    ),
-    92: TileType(
-        id=92, name="apple", label="Apple",
-        color="#ff0000",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    93: TileType(
-        id=93, name="ant_pile_friendly", label="F-Pile",
-        color="#8B4513",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    94: TileType(
-        id=94, name="ant_pile_evil", label="E-Pile",
-        color="#4A0E4E",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -714,10 +687,6 @@ OCTOPUS_CRACK2 = 88
 OCTOPUS_CRACK1 = 89
 OCTOPUS_BOX = 90
 
-TREE = 91
-APPLE = 92
-ANT_PILE_FRIENDLY = 93
-ANT_PILE_EVIL = 94
 
 # Runtime / special tiles that must not appear in the construction palette (mirrors frontend TIMED + NON_MANUAL sets).
 CONSTRUCTION_EXCLUDED_TILE_IDS: frozenset[int] = frozenset(
@@ -737,8 +706,7 @@ CONSTRUCTION_EXCLUDED_TILE_IDS: frozenset[int] = frozenset(
         CHICK_CRACK2,
         CHICK_CRACK1,
         GOLDEN_FRAME,
-        ANT_PILE_FRIENDLY,
-        ANT_PILE_EVIL,
+        BONE_FRAME,
     }
     | set(range(MONEY_PAD, MONEY_BOX + 1))
     | set(range(SUN_PAD, SUN_BOX + 1))
@@ -802,7 +770,7 @@ LETTER_PAD_IDS = {
 }
 
 # Update BIG_BOX_IDS to include letter boxes
-BIG_BOX_IDS = MUSHROOM_BOX_IDS | RAINBOW_BOX_IDS | CHICK_BOX_IDS | MONEY_BOX_IDS | SUN_BOX_IDS | MEGAGUN_BOX_IDS | LETTER_BOX_IDS | {APPLE, ANT_PILE_FRIENDLY, ANT_PILE_EVIL}
+BIG_BOX_IDS = MUSHROOM_BOX_IDS | RAINBOW_BOX_IDS | CHICK_BOX_IDS | MONEY_BOX_IDS | SUN_BOX_IDS | MEGAGUN_BOX_IDS | LETTER_BOX_IDS
 BIG_BOX_OR_PAD_IDS = BIG_BOX_IDS | {MUSHROOM_PAD, RAINBOW_PAD, CHICK_PAD, MONEY_PAD, SUN_PAD, MEGAGUN_PAD} | LETTER_PAD_IDS
 
 # Map tile ID to letter effect name (for pickup handling)

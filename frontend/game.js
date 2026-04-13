@@ -9,9 +9,9 @@ import { audioManager } from "./audio.js";
 import { CELL, GRID_H, GRID_W } from "./constants.js";
 import { GameInput } from "./gameInput.js";
 import { GameStateStore } from "./gameState.js";
-import { renderBullets, renderExplosions, renderLetterEffects, renderAnts } from "./effectRenderer.js";
+import { renderBullets, renderExplosions, renderLetterEffects } from "./effectRenderer.js";
 import { renderTanks } from "./tankRenderer.js";
-import { drawSandTile, drawLavaTile, drawTreeTile, drawAppleTile, drawAntPileTile, drawCustomTile, customTileSpanFromTile, resolveCustomMultiOrigin } from "./tileRenderer.js";
+import { drawSandTile, drawLavaTile, drawCustomTile, customTileSpanFromTile, resolveCustomMultiOrigin } from "./tileRenderer.js";
 import { computeViewport, getCellZoom, resizeCanvas } from "./viewport.js";
 
 const FALLBACK_TILE_COLORS = {};
@@ -202,7 +202,7 @@ class GameRenderer {
         for (let r = startR; r <= endR; r++) {
             for (let c = startC; c <= endC; c++) {
                 const tid = grid[r]?.[c] ?? 0;
-                if (tid === 0 || tid === 4 || tid === 18 || tid === 91) continue; // Forest, Sunflower, Tree handled separately for top layer
+                if (tid === 0 || tid === 4 || tid === 18) continue; // Forest, Sunflower handled separately for top layer
                 this._drawTileDetail(ctx, tid, c * cell, r * cell, cell);
             }
         }
@@ -316,10 +316,10 @@ class GameRenderer {
         for (let r = startR; r <= endR; r++) {
             for (let c = startC; c <= endC; c++) {
                 const tid = grid[r]?.[c] ?? 0;
-                if (tid === 4 || tid === 18 || tid === 91) {
+                if (tid === 4 || tid === 18) {
                     ctx.save();
                     if (tid === 4) ctx.globalAlpha = 0.65;
-                    if (tid === 18 || tid === 91) ctx.globalAlpha = 1.0;
+                    if (tid === 18) ctx.globalAlpha = 1.0;
                     this._drawTileDetail(ctx, tid, c * cell, r * cell, cell);
                     ctx.restore();
                 }
@@ -330,7 +330,6 @@ class GameRenderer {
 
         // Letter powerup effects
         renderLetterEffects(ctx, this.state, cell);
-        renderAnts(ctx, this.state, cell);
 
         // Sandworm
         if (this.state.sandworm && this.state.sandworm.active) {
@@ -1224,31 +1223,7 @@ class GameRenderer {
             return;
         }
 
-        if (tid === 91) {
-            drawTreeTile(ctx, dx, dy, ds);
-            return;
-        }
-
-        // Apple + ant piles — 2×2 “big tile” (same quadrant clip as editor; avoids black cells on odd rows/cols)
-        if (tid === 92 || tid === 93 || tid === 94) {
-            ctx.save();
-            const centerX = dx + (gridC % 2 === 0 ? ds : 0);
-            const centerY = dy + (gridR % 2 === 0 ? ds : 0);
-            ctx.beginPath();
-            ctx.rect(dx, dy, ds, ds);
-            ctx.clip();
-            ctx.translate(centerX, centerY);
-            if (tid === 92) {
-                drawAppleTile(ctx, -ds / 2, -ds / 2, ds);
-            } else if (tid === 93) {
-                const count = this.state?.ant_stats?.friendly_apples || 0;
-                drawAntPileTile(ctx, -ds / 2, -ds / 2, ds, true, count);
-            } else {
-                drawAntPileTile(ctx, -ds / 2, -ds / 2, ds, false);
-            }
-            ctx.restore();
-            return;
-        }
+        // Static big tiles (mushroom, rainbow, chick, money, sun, megagun, letter boxes)
 
         if (tid >= 8 && tid <= 11) {
             ctx.fillStyle = "#333333";

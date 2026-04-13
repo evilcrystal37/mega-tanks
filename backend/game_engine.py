@@ -21,7 +21,6 @@ from .powerup_manager import PowerupManager
 from .sandworm_controller import SandwormController
 from .skeleton_controller import SkeletonController
 from .mobile_tile_controller import MobileTileController
-from .ant_controller import AntController  # friendly ants only
 from .explosion_manager import ExplosionManager
 from .collision import can_big_tank_crush
 from .map_model import Map, GRID_WIDTH, GRID_HEIGHT
@@ -81,10 +80,6 @@ from .tile_registry import (
     LETTER_BOX_IDS,
     LETTER_PAD_IDS,
     LETTER_EFFECT_MAP,
-    APPLE,
-    TREE,
-    ANT_PILE_FRIENDLY,
-    ANT_PILE_EVIL,
     get_tile,
 )
 
@@ -226,7 +221,6 @@ class GameEngine:
         self.skeleton_ctrl = SkeletonController(self)
         self.mobile_tile_ctrl = MobileTileController(self)
         self.explosion_manager = ExplosionManager(self)
-        self.ant_ctrl = AntController(self)
 
 
     # ------------------------------------------------------------------
@@ -275,10 +269,6 @@ class GameEngine:
             # Fallback for rectangular
             self.player = make_player_tank(float(GRID_HEIGHT - 1) + 0.5, float(GRID_WIDTH // 2 - 4) + 0.5)
         self._clear_area_for_tank(self.player)
-        
-        # Ant pile positions are NOT pre-assigned here.
-        # The first ant of each team to pick up an apple calls _initiate_pile()
-        # which chooses a random empty spot at that moment.
 
         # Parse Auto-Turrets — treated as 2×2 blocks.
         # Scan only even positions so each block is registered once.
@@ -619,9 +609,6 @@ class GameEngine:
 
         # Update skeleton creatures
         self.skeleton_ctrl.tick()
-
-        # Update ant ecosystem
-        self.ant_ctrl.tick()
 
         # Spawn enemies
         self.enemy_spawner.tick()
@@ -2136,19 +2123,7 @@ class GameEngine:
             return
 
         tid = self.grid[r][c]
-        # Ant Pile destruction logic (friendly pile only)
-        if tid == ANT_PILE_FRIENDLY:
-            self.grid[r][c] = EMPTY
-            self.ant_ctrl.apply_pile_strike(r, c)
-            self.events.append({"type": "sound", "sound": "enemy-explosion"})
-
-        elif tid == BRICK:
-            self.grid[r][c] = EMPTY
-            self.events.append({"type": "sound", "sound": "brick-hit"})
-        elif tid == APPLE:
-            self.grid[r][c] = EMPTY
-            self.events.append({"type": "sound", "sound": "brick-hit"})
-        elif tid == TREE:
+        if tid == BRICK:
             self.grid[r][c] = EMPTY
             self.events.append({"type": "sound", "sound": "brick-hit"})
         elif tid in BIG_BOX_OR_PAD_IDS and tid not in BIG_BOX_IDS:
@@ -2466,11 +2441,6 @@ class GameEngine:
                 if hit_worm:
                     continue
 
-            # Ant collision — any bullet can kill ants
-            self._check_bullet_ant_hit(bullet)
-            if not bullet.alive:
-                continue
-
             # Tank collision
             self._check_bullet_tank_hit(bullet)
 
@@ -2479,19 +2449,6 @@ class GameEngine:
 
         # Clean up dead bullets
         self.bullets = {bid: b for bid, b in self.bullets.items() if b.alive}
-
-    def _check_bullet_ant_hit(self, bullet: Bullet) -> None:
-        """Check if a bullet hits any ant. Any bullet can kill ants."""
-        for ant in self.ant_ctrl.ants:
-            if not ant.alive:
-                continue
-            if abs(ant.row - bullet.row) < 0.6 and abs(ant.col - bullet.col) < 0.6:
-                bullet.alive = False
-                self._on_bullet_gone(bullet)
-                self._add_explosion(ant.row, ant.col)
-                self.ant_ctrl.hit_ant(ant.id)
-                self.events.append({"type": "sound", "sound": "enemy-explosion"})
-                break
 
     def _check_bullet_tank_hit(self, bullet: Bullet) -> None:
         targets = []
@@ -3153,20 +3110,6 @@ class GameEngine:
             "sandworm": {**self.sandworm, "hp": self.sandworm.get("hp", 5)},
             "skeletons": self.skeleton_ctrl.skeletons,
             "mobile_entities": self.mobile_tile_ctrl.get_entity_bounds(),
-            "ants": [
-                {
-                    "id": a.id,
-                    "row": a.row,
-                    "col": a.col,
-                    "is_friendly": a.is_friendly,
-                    "carrying": a.carrying,
-                    "carried_tile": a.carried_tile
-                } for a in self.ant_ctrl.ants
-            ],
-            "ant_stats": {
-                "friendly_apples": self.ant_ctrl.friendly_apples,
-                "friendly_pile_pos": self.ant_ctrl.friendly_pile_pos,
-            },
             "mega_skeleton": self.skeleton_ctrl.mega,
             "skeleton_kills": self.skeleton_ctrl.total_killed,
             "bone_arch_active": self.skeleton_ctrl.bone_arch_built,

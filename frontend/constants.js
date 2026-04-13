@@ -20,8 +20,6 @@ export const TILE_TOGGLES = [
     { key: "tile_tnt",          label: "TNT",      ids: [14],            color: "#d32f2f", autoGen: { weight: 1 } },
     { key: "tile_glass",        label: "GLASS",    ids: [15],            color: "#aaddff", autoGen: { weight: 1 } },
     { key: "tile_sunflower",    label: "SUNFLWR",  ids: [18],            color: "#ffeb3b", autoGen: { weight: 1 } },
-    { key: "tile_tree",         label: "TREE",     ids: [91],            color: "#2e7d32", autoGen: { weight: 2 } },
-    { key: "tile_apple",        label: "APPLE",    ids: [92],            color: "#ff0000", autoGen: { type: "powerup_2x2" } },
     { key: "tile_turret",       label: "TURRET",   ids: [25],            color: "#607d8b", autoGen: { type: "turret_2x2" } },
     { key: "tile_mushroom_box", label: "MUSH BOX", ids: [28],            color: "#8bc34a", autoGen: { type: "powerup_2x2" } },
     { key: "tile_rainbow_box",  label: "RAINBOW",  ids: [31],            color: "#ff69b4", autoGen: { type: "powerup_2x2" } },
@@ -74,7 +72,6 @@ export const NON_MANUAL_TILE_IDS = new Set([
     29, 30, // Rainbow cracks - intermediate states
     32, 33, 34, // Chick cracks and pad - should be inside boxes
     41,   // Golden frame - decorative/special
-    93, 94, // Ant piles - placed automatically
     // Letter powerup cracks - intermediate states
     52, 53, 56, 57, 60, 61, 64, 65, 68, 69, 72, 73, 76, 77, 80, 81, 84, 85, 88, 89,
 ]);

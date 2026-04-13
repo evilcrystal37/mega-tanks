@@ -377,37 +377,3 @@ export function renderLetterEffects(ctx, state, cell) {
     }
 }
 
-export function renderAnts(ctx, state, cell) {
-    (state.ants ?? []).forEach(ant => {
-        const x = ant.col * cell;
-        const y = ant.row * cell;
-
-        ctx.save();
-        // 2x bigger (was 0.7, now 1.4)
-        const size = cell * 1.4;
-        ctx.font = `${size}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        
-        ctx.translate(x, y);
-        
-        // Yellow Neon Glow
-        ctx.shadowColor = "#FFFF00";
-        ctx.shadowBlur = cell * 0.5;
-        
-        const t = Date.now() / 200;
-        const wobble = Math.sin(t) * 0.1;
-        ctx.rotate(wobble);
-
-        ctx.fillText("🐜", 0, 0);
-
-        if (ant.carrying) {
-            // Render specific item: Sunflower (18) or Apple (92)
-            const itemEmoji = ant.carried_tile === 18 ? "🌻" : "🍎";
-            ctx.font = `${cell * 0.8}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-            ctx.shadowBlur = 0; // no glow for the items themselves
-            ctx.fillText(itemEmoji, -cell * 0.2, -cell * 0.4);
-        }
-        ctx.restore();
-    });
-}
