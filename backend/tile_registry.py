@@ -7,7 +7,7 @@ To add a new tile type:
    have its properties respected by the game engine.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict
 
 
@@ -26,7 +26,26 @@ class TileType:
     speed_mult: float = 1.0 # Speed multiplier for tanks (mud)
     is_explosive: bool = False # Detonates on hit (TNT)
     non_repeating: bool = False # Renders as one big block instead of 4 sub-blocks
+    extra_big: bool = False # Custom tiles (id≥100): 4×4 cell sprite; PNG frame height 64 (strip = width multiple of 64)
+    lossless_sprite: bool = False # Prefer PNG upload without rescaling when dimensions match expected frame strip
     explosion_radius: int = 2  # How many tiles out the blast reaches (default: 2 = 5×5 area)
+    is_system: bool = False # Excluded from map editor palette
+    is_box: bool = False # Treated as 2x2 group for damage (powerup boxes)
+    partial_destructible: bool = False # For big tiles: bullets only clear hit quadrant
+    damage_target_id: int | None = None # ID to transform into on hit
+    jaw_proof: bool = False # Indestructible even by Evil Jaw/Mushroom tanks
+    walkable: bool = False # If True, tanks (and other tile-solid units) pass through; bullets still use bullet_solid
+    mobile: bool = False # If True, this tile roams the grid (AI moves its footprint like skeletons); custom tiles only in practice
+    creature_affinity: str | None = None # None = not a creature hazard; "ally" = hurts enemies; "enemy" = hurts player-side
+
+
+# TileType property categories (docs / sprite editor): Identity (id,name,label,color);
+# Collision (tank_solid,bullet_solid,walkable,mobile); Visibility (transparent); Destruction
+# (destructible,partial_destructible,damage_target_id,jaw_proof); Terrain (slippery,speed_mult);
+# Hazards (is_base,is_explosive,explosion_radius); Layout (non_repeating,extra_big,lossless_sprite); Editor (is_system,is_box).
+# Engine parity: game_engine also branches on specific tile IDs (LAVA, RAMP, CONVEYOR_IDS, pads,
+# letter effects). Custom ids >=100 only get TileType-driven behavior unless refactored.
+# Creature tiles: creature_affinity "enemy" damages player/turret/companion on contact; "ally" damages enemies / Evil Jaw.
 
 
 # ---------------------------------------------------------------------------
@@ -700,6 +719,33 @@ APPLE = 92
 ANT_PILE_FRIENDLY = 93
 ANT_PILE_EVIL = 94
 
+# Runtime / special tiles that must not appear in the construction palette (mirrors frontend TIMED + NON_MANUAL sets).
+CONSTRUCTION_EXCLUDED_TILE_IDS: frozenset[int] = frozenset(
+    {
+        BASE,
+        GLASS_CRACK1,
+        GLASS_CRACK2,
+        SANDWORM_HEAD,
+        SANDWORM_BODY,
+        RAINBOW_PAD,
+        MUSHROOM_PAD,
+        MUSHROOM_CRACK2,
+        MUSHROOM_CRACK1,
+        RAINBOW_CRACK2,
+        RAINBOW_CRACK1,
+        CHICK_PAD,
+        CHICK_CRACK2,
+        CHICK_CRACK1,
+        GOLDEN_FRAME,
+        ANT_PILE_FRIENDLY,
+        ANT_PILE_EVIL,
+    }
+    | set(range(MONEY_PAD, MONEY_BOX + 1))
+    | set(range(SUN_PAD, SUN_BOX + 1))
+    | set(range(MEGAGUN_PAD, MEGAGUN_BOX + 1))
+    | set(range(BANANA_PAD, OCTOPUS_BOX + 1))
+)
+
 CONVEYOR_IDS = {CONVEYOR_UP, CONVEYOR_DOWN, CONVEYOR_LEFT, CONVEYOR_RIGHT}
 GLASS_IDS = {GLASS, GLASS_CRACK1, GLASS_CRACK2}
 MUSHROOM_BOX_IDS = {MUSHROOM_CRACK2, MUSHROOM_CRACK1, MUSHROOM_BOX}
@@ -774,6 +820,36 @@ LETTER_EFFECT_MAP: Dict[int, str] = {
 }
 
 
+def tile_type_to_dict(t: TileType) -> dict:
+    """Serialize a TileType for API responses (full field set)."""
+    return {
+        "id": t.id,
+        "name": t.name,
+        "label": t.label,
+        "color": t.color,
+        "tank_solid": t.tank_solid,
+        "bullet_solid": t.bullet_solid,
+        "destructible": t.destructible,
+        "transparent": t.transparent,
+        "slippery": t.slippery,
+        "is_base": t.is_base,
+        "speed_mult": t.speed_mult,
+        "is_explosive": t.is_explosive,
+        "non_repeating": t.non_repeating,
+        "extra_big": t.extra_big,
+        "lossless_sprite": t.lossless_sprite,
+        "explosion_radius": t.explosion_radius,
+        "is_system": t.is_system or t.id in CONSTRUCTION_EXCLUDED_TILE_IDS,
+        "is_box": t.is_box,
+        "partial_destructible": t.partial_destructible,
+        "damage_target_id": t.damage_target_id,
+        "jaw_proof": t.jaw_proof,
+        "walkable": t.walkable,
+        "mobile": t.mobile,
+        "creature_affinity": t.creature_affinity,
+    }
+
+
 def get_tile(tile_id: int) -> TileType:
     """Return a TileType by ID, defaulting to empty if unknown."""
     return TILE_REGISTRY.get(tile_id, TILE_REGISTRY[0])
@@ -782,3 +858,65 @@ def get_tile(tile_id: int) -> TileType:
 def all_tiles() -> list[TileType]:
     """Return all tile types sorted by ID (for palette rendering)."""
     return sorted(TILE_REGISTRY.values(), key=lambda t: t.id)
+
+
+def _normalize_creature_affinity(raw) -> str | None:
+    if raw is None or raw == "":
+        return None
+    s = str(raw).strip().lower()
+    if s in ("ally", "friendly", "player"):
+        return "ally"
+    if s in ("enemy", "hostile", "foe"):
+        return "enemy"
+    return None
+
+
+def load_custom_tiles() -> None:
+    """Load custom tiles from maps/custom_tiles.json and re-register them."""
+    import json
+    from pathlib import Path
+    
+    project_root = Path(__file__).resolve().parent.parent
+    custom_tiles_path = project_root / "maps" / "custom_tiles.json"
+    
+    if custom_tiles_path.exists():
+        try:
+            with open(custom_tiles_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                
+            for tile_data in data:
+                tile_id = tile_data.get("id")
+                if tile_id is not None:
+                    # Provide defaults for older json files
+                    kwargs = {
+                        "id": tile_id,
+                        "name": tile_data.get("name", f"custom_{tile_id}"),
+                        "label": tile_data.get("label", f"Tile {tile_id}"),
+                        "color": tile_data.get("color", "#ff00ff"),
+                        "tank_solid": tile_data.get("tank_solid", True),
+                        "bullet_solid": tile_data.get("bullet_solid", True),
+                        "destructible": tile_data.get("destructible", True),
+                        "transparent": tile_data.get("transparent", False),
+                        "slippery": tile_data.get("slippery", False),
+                        "is_base": tile_data.get("is_base", False),
+                        "speed_mult": tile_data.get("speed_mult", 1.0),
+                        "is_explosive": tile_data.get("is_explosive", False),
+                        "non_repeating": tile_data.get("non_repeating", False),
+                        "extra_big": tile_data.get("extra_big", False),
+                        "lossless_sprite": tile_data.get("lossless_sprite", False),
+                        "explosion_radius": tile_data.get("explosion_radius", 2),
+                        "is_system": tile_data.get("is_system", False),
+                        "is_box": tile_data.get("is_box", False),
+                        "partial_destructible": tile_data.get("partial_destructible", False),
+                        "damage_target_id": tile_data.get("damage_target_id"),
+                        "jaw_proof": tile_data.get("jaw_proof", False),
+                        "walkable": tile_data.get("walkable", False),
+                        "mobile": tile_data.get("mobile", False),
+                        "creature_affinity": _normalize_creature_affinity(tile_data.get("creature_affinity")),
+                    }
+                    TILE_REGISTRY[tile_id] = TileType(**kwargs)
+        except Exception as e:
+            print(f"Failed to load custom tiles: {e}")
+
+load_custom_tiles()
+

@@ -11,7 +11,7 @@ import { GameInput } from "./gameInput.js";
 import { GameStateStore } from "./gameState.js";
 import { renderBullets, renderExplosions, renderLetterEffects, renderAnts } from "./effectRenderer.js";
 import { renderTanks } from "./tankRenderer.js";
-import { drawSandTile, drawLavaTile, drawTreeTile, drawAppleTile, drawAntPileTile } from "./tileRenderer.js";
+import { drawSandTile, drawLavaTile, drawTreeTile, drawAppleTile, drawAntPileTile, drawCustomTile, customTileSpanFromTile, resolveCustomMultiOrigin } from "./tileRenderer.js";
 import { computeViewport, getCellZoom, resizeCanvas } from "./viewport.js";
 
 const FALLBACK_TILE_COLORS = {};
@@ -60,8 +60,10 @@ class GameRenderer {
         try {
             const tiles = await Api.getTiles();
             this._tileColors = Object.fromEntries(tiles.map(t => [t.id, t.color]));
+            this._tilesMap = Object.fromEntries(tiles.map(t => [t.id, t]));
         } catch {
             this._tileColors = { ...FALLBACK_TILE_COLORS };
+            this._tilesMap = {};
         }
 
         await Api.startGame(mapName, "construction_play", sessionId, settings);
@@ -181,6 +183,18 @@ class GameRenderer {
 
         const grid = this.state.grid ?? [];
 
+        // Build a cell→anchor lookup from server-authoritative mobile entity bounds.
+        // This avoids the flood-fill fallback in resolveCustomMultiOrigin, which breaks
+        // when two entities of the same tile_id are adjacent.
+        this._mobileAnchorMap = {};
+        for (const ent of (this.state.mobile_entities || [])) {
+            for (let r = ent.minR; r < ent.minR + ent.h; r++) {
+                for (let c = ent.minC; c < ent.minC + ent.w; c++) {
+                    this._mobileAnchorMap[`${r},${c}`] = { minR: ent.minR, minC: ent.minC };
+                }
+            }
+        }
+
         ctx.save();
         ctx.translate(Math.round(-vpLeft * cell), Math.round(-vpTop * cell));
 
@@ -221,14 +235,14 @@ class GameRenderer {
             const t = Date.now();
             ctx.fillStyle = "#FFF"; // Base sparkle color
             const sparkles = [
-                {x: 0.2, y: 0.2, phase: 0},
-                {x: 0.8, y: 0.3, phase: 1},
-                {x: 0.5, y: 0.1, phase: 2},
-                {x: 0.1, y: 0.7, phase: 3},
-                {x: 0.9, y: 0.8, phase: 4},
-                {x: 0.4, y: 0.9, phase: 5},
+                { x: 0.2, y: 0.2, phase: 0 },
+                { x: 0.8, y: 0.3, phase: 1 },
+                { x: 0.5, y: 0.1, phase: 2 },
+                { x: 0.1, y: 0.7, phase: 3 },
+                { x: 0.9, y: 0.8, phase: 4 },
+                { x: 0.4, y: 0.9, phase: 5 },
             ];
-            
+
             for (let s of sparkles) {
                 const alpha = (Math.sin(t / 200 + s.phase) + 1) / 2;
                 if (alpha > 0.5) {
@@ -243,7 +257,7 @@ class GameRenderer {
 
             ctx.restore();
         }
-        
+
         // Rainbow Trails - continuous gradient
         if (this.state.rainbow_trails) {
             ctx.globalAlpha = 0.6;
@@ -298,19 +312,19 @@ class GameRenderer {
         renderBullets(ctx, this.state, cell);
         renderTanks(this, ctx, this.state, cell);
 
-    // Top layers: Forest and Sunflower
-    for (let r = startR; r <= endR; r++) {
-        for (let c = startC; c <= endC; c++) {
-            const tid = grid[r]?.[c] ?? 0;
-            if (tid === 4 || tid === 18 || tid === 91) {
-                ctx.save();
-                if (tid === 4) ctx.globalAlpha = 0.65;
-                if (tid === 18 || tid === 91) ctx.globalAlpha = 1.0;
-                this._drawTileDetail(ctx, tid, c * cell, r * cell, cell);
-                ctx.restore();
+        // Top layers: Forest and Sunflower
+        for (let r = startR; r <= endR; r++) {
+            for (let c = startC; c <= endC; c++) {
+                const tid = grid[r]?.[c] ?? 0;
+                if (tid === 4 || tid === 18 || tid === 91) {
+                    ctx.save();
+                    if (tid === 4) ctx.globalAlpha = 0.65;
+                    if (tid === 18 || tid === 91) ctx.globalAlpha = 1.0;
+                    this._drawTileDetail(ctx, tid, c * cell, r * cell, cell);
+                    ctx.restore();
+                }
             }
         }
-    }
 
         renderExplosions(this, ctx, this.state, cell);
 
@@ -321,13 +335,13 @@ class GameRenderer {
         // Sandworm
         if (this.state.sandworm && this.state.sandworm.active) {
             const sw = this.state.sandworm;
-            const swHp  = sw.hp ?? 5;
+            const swHp = sw.hp ?? 5;
             const swMaxHp = 5;
             const now = Date.now();
             const pulse = (Math.sin(now / 200) + 1) / 2;
 
             // Opacity fades as HP drops: full HP = fully opaque, 1 HP = very transparent, 0 = gone
-            const hpRatio  = swHp / swMaxHp;           // 1.0 → 0.2
+            const hpRatio = swHp / swMaxHp;           // 1.0 → 0.2
             const wormAlpha = 0.15 + hpRatio * 0.85;   // 1.0 at full HP, 0.15 at last HP
 
             const segSz = cell * 2; // big-tile rendering
@@ -347,19 +361,19 @@ class GameRenderer {
                 // Head faces movement direction; body segments are unrotated
                 let angle = 0;
                 if (part.type === "head") {
-                    if (sw.direction === "up")    angle = -Math.PI / 2;
-                    if (sw.direction === "down")  angle =  Math.PI / 2;
-                    if (sw.direction === "left")  angle =  Math.PI;
-                    if (sw.direction === "right") angle =  0;
+                    if (sw.direction === "up") angle = -Math.PI / 2;
+                    if (sw.direction === "down") angle = Math.PI / 2;
+                    if (sw.direction === "left") angle = Math.PI;
+                    if (sw.direction === "right") angle = 0;
                 }
                 ctx.rotate(angle);
 
                 // Yellow body colour stays constant (damage shown via transparency only)
                 const bodyLight = "rgb(255,220,60)";
-                const bodyMid   = "rgb(220,170,0)";
-                const bodyDark  = "rgb(160,110,0)";
+                const bodyMid = "rgb(220,170,0)";
+                const bodyDark = "rgb(160,110,0)";
 
-                const baseRadius   = part.type === "head" ? segSz * 0.44 : segSz * 0.38;
+                const baseRadius = part.type === "head" ? segSz * 0.44 : segSz * 0.38;
                 const pulsingRadius = baseRadius + pulse * segSz * 0.04;
 
                 if (part.type === "head") {
@@ -367,7 +381,7 @@ class GameRenderer {
                     ctx.fillStyle = "rgba(0,0,0,0.22)";
                     ctx.beginPath();
                     ctx.ellipse(wiggle + segSz * 0.04, segSz * 0.06,
-                                pulsingRadius * 1.1, pulsingRadius * 0.55, 0, 0, Math.PI * 2);
+                        pulsingRadius * 1.1, pulsingRadius * 0.55, 0, 0, Math.PI * 2);
                     ctx.fill();
 
                     // ── Head body (bullet / tapered rear half) ───────────────
@@ -376,7 +390,7 @@ class GameRenderer {
                     // Tapered rear half: semicircle on the left (back), meet at mouth radius on right
                     const mouthR = pulsingRadius * 0.82; // radius of the open mouth circle
                     ctx.arc(wiggle, 0, pulsingRadius * 1.1, Math.PI * 0.5, Math.PI * 1.5); // back arc
-                    ctx.lineTo(wiggle + pulsingRadius * 0.3,  -mouthR); // taper to mouth top
+                    ctx.lineTo(wiggle + pulsingRadius * 0.3, -mouthR); // taper to mouth top
                     ctx.arc(wiggle + pulsingRadius * 0.3, 0, mouthR, -Math.PI * 0.5, Math.PI * 0.5, false); // front edge
                     ctx.lineTo(wiggle, pulsingRadius * 1.1); // close
                     ctx.closePath();
@@ -388,7 +402,7 @@ class GameRenderer {
                     for (let si = 1; si <= 2; si++) {
                         ctx.beginPath();
                         ctx.arc(wiggle - segSz * 0.08 * si, 0,
-                                pulsingRadius * (0.85 - si * 0.2), 0, Math.PI * 2);
+                            pulsingRadius * (0.85 - si * 0.2), 0, Math.PI * 2);
                         ctx.stroke();
                     }
 
@@ -397,7 +411,7 @@ class GameRenderer {
                     const mouthCX = wiggle + pulsingRadius * 0.3;
                     const mouthCY = 0;
                     const mouthOpen = (Math.sin(now / 250) * 0.5 + 0.5); // 0–1 pulsing open/close
-                    const outerR   = mouthR;
+                    const outerR = mouthR;
                     const numRings = 3;
                     const toothRows = 12; // teeth per ring
 
@@ -409,11 +423,11 @@ class GameRenderer {
 
                     // Concentric tooth rings from outside in
                     for (let ring = 0; ring < numRings; ring++) {
-                        const ringFrac   = 1 - ring / numRings;           // 1.0 → 0.33
-                        const ringR      = outerR * ringFrac;
+                        const ringFrac = 1 - ring / numRings;           // 1.0 → 0.33
+                        const ringR = outerR * ringFrac;
                         const innerRingR = outerR * (ringFrac - 1 / numRings) * 0.7;
-                        const toothLen   = (ringR - innerRingR) * (0.65 + mouthOpen * 0.3);
-                        const toothBase  = ringR * 0.88;
+                        const toothLen = (ringR - innerRingR) * (0.65 + mouthOpen * 0.3);
+                        const toothBase = ringR * 0.88;
 
                         // Ring background flesh
                         const fleshR = 100 + ring * 30;
@@ -429,7 +443,7 @@ class GameRenderer {
                         for (let t = 0; t < count; t++) {
                             const a = (t / count) * Math.PI * 2;
                             // Tooth tip moves inward when mouth opens
-                            const tipR  = toothBase - toothLen * (0.5 + mouthOpen * 0.5);
+                            const tipR = toothBase - toothLen * (0.5 + mouthOpen * 0.5);
                             const baseW = (ringR * 0.18) * (1 - ring * 0.15);
 
                             const cos = Math.cos(a), sin = Math.sin(a);
@@ -438,9 +452,9 @@ class GameRenderer {
                             // Tooth as a triangle pointing inward
                             ctx.beginPath();
                             ctx.moveTo(mouthCX + cos * toothBase + cos90 * baseW,
-                                       mouthCY + sin * toothBase + sin90 * baseW);
+                                mouthCY + sin * toothBase + sin90 * baseW);
                             ctx.lineTo(mouthCX + cos * toothBase - cos90 * baseW,
-                                       mouthCY + sin * toothBase - sin90 * baseW);
+                                mouthCY + sin * toothBase - sin90 * baseW);
                             ctx.lineTo(mouthCX + cos * tipR, mouthCY + sin * tipR);
                             ctx.closePath();
                             ctx.fill();
@@ -451,9 +465,9 @@ class GameRenderer {
                     const throatGrad = ctx.createRadialGradient(
                         mouthCX, mouthCY, 0,
                         mouthCX, mouthCY, outerR * 0.28);
-                    throatGrad.addColorStop(0,   "rgba(0,0,0,1)");
+                    throatGrad.addColorStop(0, "rgba(0,0,0,1)");
                     throatGrad.addColorStop(0.6, "rgba(60,0,0,0.9)");
-                    throatGrad.addColorStop(1,   "rgba(120,0,0,0)");
+                    throatGrad.addColorStop(1, "rgba(120,0,0,0)");
                     ctx.fillStyle = throatGrad;
                     ctx.beginPath();
                     ctx.arc(mouthCX, mouthCY, outerR * 0.35, 0, Math.PI * 2);
@@ -471,7 +485,7 @@ class GameRenderer {
                     ctx.fillStyle = "rgba(0,0,0,0.18)";
                     ctx.beginPath();
                     ctx.ellipse(wiggle + segSz * 0.03, segSz * 0.04,
-                                pulsingRadius, pulsingRadius * 0.55, 0, 0, Math.PI * 2);
+                        pulsingRadius, pulsingRadius * 0.55, 0, 0, Math.PI * 2);
                     ctx.fill();
 
                     ctx.fillStyle = bodyMid;
@@ -507,7 +521,7 @@ class GameRenderer {
         if (this.state.paused) {
             ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
             ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-            
+
             ctx.fillStyle = "#ffcc00";
             ctx.font = `bold ${Math.max(24, cell * 1.5)}px "Press Start 2P", monospace`;
             ctx.textAlign = "center";
@@ -887,7 +901,7 @@ class GameRenderer {
             for (let i = 0; i < 4; i++) {
                 const y1 = -ds + i * rowH, y2 = y1 + rowH;
                 if (i % 2 === 0) { ctx.moveTo(0, y1); ctx.lineTo(0, y2); }
-                else { ctx.moveTo(-ds*0.5, y1); ctx.lineTo(-ds*0.5, y2); ctx.moveTo(ds*0.5, y1); ctx.lineTo(ds*0.5, y2); }
+                else { ctx.moveTo(-ds * 0.5, y1); ctx.lineTo(-ds * 0.5, y2); ctx.moveTo(ds * 0.5, y1); ctx.lineTo(ds * 0.5, y2); }
             }
             ctx.stroke();
             ctx.strokeStyle = "rgba(255, 255, 200, 0.8)";
@@ -896,26 +910,26 @@ class GameRenderer {
             for (let i = 0; i < 4; i++) {
                 const y = -ds + i * rowH;
                 if (i % 2 === 0) {
-                    ctx.moveTo(-ds+1, y+1); ctx.lineTo(-1, y+1); ctx.moveTo(-ds+1, y+1); ctx.lineTo(-ds+1, y+rowH-1);
-                    ctx.moveTo(1, y+1); ctx.lineTo(ds-1, y+1); ctx.moveTo(1, y+1); ctx.lineTo(1, y+rowH-1);
+                    ctx.moveTo(-ds + 1, y + 1); ctx.lineTo(-1, y + 1); ctx.moveTo(-ds + 1, y + 1); ctx.lineTo(-ds + 1, y + rowH - 1);
+                    ctx.moveTo(1, y + 1); ctx.lineTo(ds - 1, y + 1); ctx.moveTo(1, y + 1); ctx.lineTo(1, y + rowH - 1);
                 } else {
-                    ctx.moveTo(-ds+1, y+1); ctx.lineTo(-ds*0.5-1, y+1); ctx.moveTo(-ds+1, y+1); ctx.lineTo(-ds+1, y+rowH-1);
-                    ctx.moveTo(-ds*0.5+1, y+1); ctx.lineTo(ds*0.5-1, y+1); ctx.moveTo(-ds*0.5+1, y+1); ctx.lineTo(-ds*0.5+1, y+rowH-1);
-                    ctx.moveTo(ds*0.5+1, y+1); ctx.lineTo(ds-1, y+1); ctx.moveTo(ds*0.5+1, y+1); ctx.lineTo(ds*0.5+1, y+rowH-1);
+                    ctx.moveTo(-ds + 1, y + 1); ctx.lineTo(-ds * 0.5 - 1, y + 1); ctx.moveTo(-ds + 1, y + 1); ctx.lineTo(-ds + 1, y + rowH - 1);
+                    ctx.moveTo(-ds * 0.5 + 1, y + 1); ctx.lineTo(ds * 0.5 - 1, y + 1); ctx.moveTo(-ds * 0.5 + 1, y + 1); ctx.lineTo(-ds * 0.5 + 1, y + rowH - 1);
+                    ctx.moveTo(ds * 0.5 + 1, y + 1); ctx.lineTo(ds - 1, y + 1); ctx.moveTo(ds * 0.5 + 1, y + 1); ctx.lineTo(ds * 0.5 + 1, y + rowH - 1);
                 }
             }
             ctx.stroke();
             ctx.strokeStyle = "rgba(184, 134, 11, 0.6)";
             ctx.beginPath();
             for (let i = 0; i < 4; i++) {
-                const y2 = -ds + (i+1) * rowH;
+                const y2 = -ds + (i + 1) * rowH;
                 if (i % 2 === 0) {
-                    ctx.moveTo(-ds+1, y2-1); ctx.lineTo(-1, y2-1); ctx.moveTo(-1, -ds+i*rowH+1); ctx.lineTo(-1, y2-1);
-                    ctx.moveTo(1, y2-1); ctx.lineTo(ds-1, y2-1); ctx.moveTo(ds-1, -ds+i*rowH+1); ctx.lineTo(ds-1, y2-1);
+                    ctx.moveTo(-ds + 1, y2 - 1); ctx.lineTo(-1, y2 - 1); ctx.moveTo(-1, -ds + i * rowH + 1); ctx.lineTo(-1, y2 - 1);
+                    ctx.moveTo(1, y2 - 1); ctx.lineTo(ds - 1, y2 - 1); ctx.moveTo(ds - 1, -ds + i * rowH + 1); ctx.lineTo(ds - 1, y2 - 1);
                 } else {
-                    ctx.moveTo(-ds+1, y2-1); ctx.lineTo(-ds*0.5-1, y2-1); ctx.moveTo(-ds*0.5-1, -ds+i*rowH+1); ctx.lineTo(-ds*0.5-1, y2-1);
-                    ctx.moveTo(-ds*0.5+1, y2-1); ctx.lineTo(ds*0.5-1, y2-1); ctx.moveTo(ds*0.5-1, -ds+i*rowH+1); ctx.lineTo(ds*0.5-1, y2-1);
-                    ctx.moveTo(ds*0.5+1, y2-1); ctx.lineTo(ds-1, y2-1); ctx.moveTo(ds-1, -ds+i*rowH+1); ctx.lineTo(ds-1, y2-1);
+                    ctx.moveTo(-ds + 1, y2 - 1); ctx.lineTo(-ds * 0.5 - 1, y2 - 1); ctx.moveTo(-ds * 0.5 - 1, -ds + i * rowH + 1); ctx.lineTo(-ds * 0.5 - 1, y2 - 1);
+                    ctx.moveTo(-ds * 0.5 + 1, y2 - 1); ctx.lineTo(ds * 0.5 - 1, y2 - 1); ctx.moveTo(ds * 0.5 - 1, -ds + i * rowH + 1); ctx.lineTo(ds * 0.5 - 1, y2 - 1);
+                    ctx.moveTo(ds * 0.5 + 1, y2 - 1); ctx.lineTo(ds - 1, y2 - 1); ctx.moveTo(ds - 1, -ds + i * rowH + 1); ctx.lineTo(ds - 1, y2 - 1);
                 }
             }
             ctx.stroke();
@@ -923,7 +937,7 @@ class GameRenderer {
             ctx.fillStyle = "#2a1f0f";
             ctx.font = `${ds * 0.85}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
             ctx.textAlign = "center"; ctx.textBaseline = "middle";
-            for (const [qx, qy] of [[-ds,-ds],[0,-ds],[-ds,0],[0,0]]) {
+            for (const [qx, qy] of [[-ds, -ds], [0, -ds], [-ds, 0], [0, 0]]) {
                 ctx.fillRect(qx, qy, ds, ds);
                 ctx.fillText("🦴", qx + ds * 0.5, qy + ds * 0.5);
             }
@@ -945,15 +959,15 @@ class GameRenderer {
             ctx.lineWidth = Math.max(1, ds * 0.04);
             ctx.beginPath();
             if (tid >= 16) {
-                ctx.moveTo(ds*0.5, ds*0.5); ctx.lineTo(ds*0.2, ds*0.2);
-                ctx.moveTo(ds*0.5, ds*0.5); ctx.lineTo(ds*0.8, ds*0.3);
-                ctx.moveTo(ds*0.5, ds*0.5); ctx.lineTo(ds*0.4, ds*0.8);
+                ctx.moveTo(ds * 0.5, ds * 0.5); ctx.lineTo(ds * 0.2, ds * 0.2);
+                ctx.moveTo(ds * 0.5, ds * 0.5); ctx.lineTo(ds * 0.8, ds * 0.3);
+                ctx.moveTo(ds * 0.5, ds * 0.5); ctx.lineTo(ds * 0.4, ds * 0.8);
             }
             if (tid >= 17) {
-                ctx.moveTo(ds*0.5, ds*0.5); ctx.lineTo(ds*0.9, ds*0.8);
-                ctx.moveTo(ds*0.5, ds*0.5); ctx.lineTo(ds*0.1, ds*0.7);
-                ctx.moveTo(ds*0.2, ds*0.2); ctx.lineTo(ds*0.4, ds*0.1);
-                ctx.moveTo(ds*0.4, ds*0.8); ctx.lineTo(ds*0.6, ds*0.9);
+                ctx.moveTo(ds * 0.5, ds * 0.5); ctx.lineTo(ds * 0.9, ds * 0.8);
+                ctx.moveTo(ds * 0.5, ds * 0.5); ctx.lineTo(ds * 0.1, ds * 0.7);
+                ctx.moveTo(ds * 0.2, ds * 0.2); ctx.lineTo(ds * 0.4, ds * 0.1);
+                ctx.moveTo(ds * 0.4, ds * 0.8); ctx.lineTo(ds * 0.6, ds * 0.9);
             }
             ctx.stroke();
         }
@@ -991,6 +1005,33 @@ class GameRenderer {
         const ds = Math.round(sz);
         const gridC = Math.round(x / sz);
         const gridR = Math.round(y / sz);
+
+        if (tid >= 100) {
+            const tObj = this._tilesMap && this._tilesMap[tid];
+            const span = customTileSpanFromTile(tObj);
+
+            ctx.save();
+            if (span > 1) {
+                const mobileAnchor = this._mobileAnchorMap?.[`${gridR},${gridC}`];
+                const { minR, minC } = mobileAnchor ?? (this.state?.grid
+                    ? resolveCustomMultiOrigin(this.state.grid, gridR, gridC, tid, span, GRID_H, GRID_W)
+                    : {
+                        minR: gridR - (gridR % span),
+                        minC: gridC - (gridC % span),
+                    });
+                const centerX = (minC + span / 2) * ds;
+                const centerY = (minR + span / 2) * ds;
+                ctx.beginPath();
+                ctx.rect(dx, dy, ds, ds);
+                ctx.clip();
+                ctx.translate(centerX, centerY);
+                drawCustomTile(ctx, -(span / 2) * ds, -(span / 2) * ds, ds, tid, span);
+            } else {
+                drawCustomTile(ctx, dx, dy, ds, tid, 1);
+            }
+            ctx.restore();
+            return;
+        }
 
         // Fully static big tiles — blit quadrant directly from cache
         if (tid === 14 || tid === 18 || tid === 23 || tid === 24 || tid === 25 ||
@@ -1052,10 +1093,10 @@ class GameRenderer {
             ctx.beginPath(); ctx.rect(dx, dy, ds, ds); ctx.clip();
             ctx.translate(dx + (gridC % 2 === 0 ? ds : 0), dy + (gridR % 2 === 0 ? ds : 0));
             const glowAlpha36 = 0.7 + Math.sin(Date.now() / 200) * 0.3;
-            for (const [lw, a] of [[ds*0.30, 0.18], [ds*0.22, 0.35], [ds*0.14, 0.65], [ds*0.08, glowAlpha36]]) {
+            for (const [lw, a] of [[ds * 0.30, 0.18], [ds * 0.22, 0.35], [ds * 0.14, 0.65], [ds * 0.08, glowAlpha36]]) {
                 ctx.strokeStyle = `rgba(255, 224, 0, ${a})`;
                 ctx.lineWidth = lw;
-                ctx.strokeRect(-ds + lw/2, -ds + lw/2, ds*2 - lw, ds*2 - lw);
+                ctx.strokeRect(-ds + lw / 2, -ds + lw / 2, ds * 2 - lw, ds * 2 - lw);
             }
             ctx.restore();
             return;
@@ -1085,7 +1126,7 @@ class GameRenderer {
         // Letter powerup boxes — glass box + cracks + rotating letter
         if (tid >= 51 && tid <= 90) {
             const state = (tid - 51) % 4;  // 0=pad, 1=crack2, 2=crack1, 3=box
-            
+
             // Letter mapping
             const letterMap = {
                 51: "B", 52: "B", 53: "B", 54: "B",
@@ -1120,7 +1161,7 @@ class GameRenderer {
                 ctx.restore();
                 return;
             }
-            
+
             // CRACK2, CRACK1, BOX states (1, 2, 3) - cached glass box + cracks + rotating letter
             const cached = this._getCachedBigTile(tid, ds);
             const sx = gridC % 2 === 0 ? 0 : ds;
@@ -1188,26 +1229,22 @@ class GameRenderer {
             return;
         }
 
-        // Apple (big tile) and Ant Pile (friendly only)
-        if (tid === 92 || tid === 93) {
+        // Apple + ant piles — 2×2 “big tile” (same quadrant clip as editor; avoids black cells on odd rows/cols)
+        if (tid === 92 || tid === 93 || tid === 94) {
             ctx.save();
-            let cX = dx + ds / 2;
-            let cY = dy + ds / 2;
-            
-            // Adjust to center of 2x2 block
-            cX = dx + (gridC % 2 === 0 ? ds : 0);
-            cY = dy + (gridR % 2 === 0 ? ds : 0);
-            // Draw once from the top-left (even r/c)
-            if (gridR % 2 !== 0 || gridC % 2 !== 0) {
-                ctx.restore();
-                return;
-            }
-
+            const centerX = dx + (gridC % 2 === 0 ? ds : 0);
+            const centerY = dy + (gridR % 2 === 0 ? ds : 0);
+            ctx.beginPath();
+            ctx.rect(dx, dy, ds, ds);
+            ctx.clip();
+            ctx.translate(centerX, centerY);
             if (tid === 92) {
-                drawAppleTile(ctx, cX - ds/2, cY - ds/2, ds);
-            } else {
+                drawAppleTile(ctx, -ds / 2, -ds / 2, ds);
+            } else if (tid === 93) {
                 const count = this.state?.ant_stats?.friendly_apples || 0;
-                drawAntPileTile(ctx, cX - ds/2, cY - ds/2, ds, true, count);
+                drawAntPileTile(ctx, -ds / 2, -ds / 2, ds, true, count);
+            } else {
+                drawAntPileTile(ctx, -ds / 2, -ds / 2, ds, false);
             }
             ctx.restore();
             return;
@@ -1225,7 +1262,7 @@ class GameRenderer {
             else if (tid === 9) arrow = "↓";
             else if (tid === 10) arrow = "←";
             else if (tid === 11) arrow = "→";
-            
+
             const offset = (Date.now() / 30) % ds;
             ctx.save();
             ctx.beginPath();
@@ -1263,72 +1300,72 @@ class GameRenderer {
             return;
         }
 
-    if (tid === 13) {
-        // Jumping tile / Spring
-        ctx.fillStyle = "#222222";
-        ctx.fillRect(dx, dy, ds, ds);
+        if (tid === 13) {
+            // Jumping tile / Spring
+            ctx.fillStyle = "#222222";
+            ctx.fillRect(dx, dy, ds, ds);
 
-        const bob = Math.sin(Date.now() / 150) * ds * 0.15;
-        
-        // Base plate
-        ctx.fillStyle = "#555555";
-        ctx.fillRect(dx + ds * 0.1, dy + ds * 0.8, ds * 0.8, ds * 0.15);
-        
-        // Spring coils
-        ctx.strokeStyle = "#aaaaaa";
-        ctx.lineWidth = ds * 0.12;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        
-        const startY = dy + ds * 0.8;
-        const endY = dy + ds * 0.3 + bob;
-        const coils = 3;
-        const step = (startY - endY) / coils;
-        
-        ctx.beginPath();
-        ctx.moveTo(dx + ds * 0.5, startY);
-        for (let i = 0; i < coils; i++) {
-            const y = startY - i * step;
-            const nextY = y - step;
-            if (i % 2 === 0) {
-                ctx.lineTo(dx + ds * 0.8, y - step * 0.5);
-                ctx.lineTo(dx + ds * 0.2, nextY);
-            } else {
-                ctx.lineTo(dx + ds * 0.2, y - step * 0.5);
-                ctx.lineTo(dx + ds * 0.8, nextY);
+            const bob = Math.sin(Date.now() / 150) * ds * 0.15;
+
+            // Base plate
+            ctx.fillStyle = "#555555";
+            ctx.fillRect(dx + ds * 0.1, dy + ds * 0.8, ds * 0.8, ds * 0.15);
+
+            // Spring coils
+            ctx.strokeStyle = "#aaaaaa";
+            ctx.lineWidth = ds * 0.12;
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+
+            const startY = dy + ds * 0.8;
+            const endY = dy + ds * 0.3 + bob;
+            const coils = 3;
+            const step = (startY - endY) / coils;
+
+            ctx.beginPath();
+            ctx.moveTo(dx + ds * 0.5, startY);
+            for (let i = 0; i < coils; i++) {
+                const y = startY - i * step;
+                const nextY = y - step;
+                if (i % 2 === 0) {
+                    ctx.lineTo(dx + ds * 0.8, y - step * 0.5);
+                    ctx.lineTo(dx + ds * 0.2, nextY);
+                } else {
+                    ctx.lineTo(dx + ds * 0.2, y - step * 0.5);
+                    ctx.lineTo(dx + ds * 0.8, nextY);
+                }
             }
+            ctx.lineTo(dx + ds * 0.5, endY);
+            ctx.stroke();
+
+            // Top platform
+            ctx.fillStyle = "#ff3333";
+            ctx.fillRect(dx + ds * 0.15, endY - ds * 0.15, ds * 0.7, ds * 0.15);
+            ctx.strokeStyle = "#cc0000";
+            ctx.lineWidth = ds * 0.05;
+            ctx.strokeRect(dx + ds * 0.15, endY - ds * 0.15, ds * 0.7, ds * 0.15);
+            return;
         }
-        ctx.lineTo(dx + ds * 0.5, endY);
-        ctx.stroke();
-        
-        // Top platform
-        ctx.fillStyle = "#ff3333";
-        ctx.fillRect(dx + ds * 0.15, endY - ds * 0.15, ds * 0.7, ds * 0.15);
-        ctx.strokeStyle = "#cc0000";
-        ctx.lineWidth = ds * 0.05;
-        ctx.strokeRect(dx + ds * 0.15, endY - ds * 0.15, ds * 0.7, ds * 0.15);
-        return;
+
+
+        let spriteId = null;
+        if (tid === 2) {
+            spriteId = "terrain.steel";
+        } else if (tid === 3) {
+            spriteId = (Math.floor(Date.now() / 400) % 2 === 0) ? "terrain.water.1" : "terrain.water.2";
+        } else if (tid === 4) {
+            spriteId = "terrain.jungle";
+        } else if (tid === 5) {
+            spriteId = "terrain.ice";
+        }
+
+        if (spriteId && this._atlas.draw(ctx, spriteId, dx, dy, ds, ds)) {
+            return;
+        }
+
+        ctx.fillStyle = this._tileColors[tid] || "#000";
+        ctx.fillRect(dx, dy, ds, ds);
     }
-
-
-    let spriteId = null;
-    if (tid === 2) {
-        spriteId = "terrain.steel";
-    } else if (tid === 3) {
-        spriteId = (Math.floor(Date.now() / 400) % 2 === 0) ? "terrain.water.1" : "terrain.water.2";
-    } else if (tid === 4) {
-        spriteId = "terrain.jungle";
-    } else if (tid === 5) {
-        spriteId = "terrain.ice";
-    }
-
-    if (spriteId && this._atlas.draw(ctx, spriteId, dx, dy, ds, ds)) {
-        return;
-    }
-
-    ctx.fillStyle = this._tileColors[tid] || "#000";
-    ctx.fillRect(dx, dy, ds, ds);
-}
 
     _drawTank(ctx, tank, CELL, isPlayer) {
         if (!tank.alive) return;
@@ -1343,7 +1380,7 @@ class GameRenderer {
             const progress = tank.airborne_ticks / 45;
             drawY -= Math.sin(progress * Math.PI) * CELL * 1.5;
             scaleExtra = 1 + Math.sin(progress * Math.PI) * 0.3;
-            
+
             // Draw shadow
             ctx.fillStyle = "rgba(0,0,0,0.5)";
             ctx.beginPath();
@@ -1353,6 +1390,16 @@ class GameRenderer {
 
         const frame = (Math.floor(Date.now() / 150) % 2) + 1;
         const dir = tank.direction || "up";
+
+        if (tank.tank_type === "evil_jaw") {
+            const sz = Math.round(CELL * scaleExtra); // scaleExtra is already 2.0 for is_big tanks
+            ctx.save();
+            ctx.translate(x, drawY);
+            // Evil Jaw uses tile 999 image
+            drawCustomTile(ctx, -sz / 2, -sz / 2, sz, 999, 1);
+            ctx.restore();
+            return;
+        }
 
         if (tank.tank_type === "companion") {
             const sz = Math.round(CELL * scaleExtra); // normal tank size
@@ -1374,10 +1421,10 @@ class GameRenderer {
             ctx.fillStyle = "#555";
             const gunLen = sz * 0.42;
             const gunW = sz * 0.12;
-            if (dir === "up")    ctx.fillRect(-gunW/2, -gunLen, gunW, gunLen);
-            else if (dir === "down")  ctx.fillRect(-gunW/2, 0, gunW, gunLen);
-            else if (dir === "left")  ctx.fillRect(-gunLen, -gunW/2, gunLen, gunW);
-            else if (dir === "right") ctx.fillRect(0, -gunW/2, gunLen, gunW);
+            if (dir === "up") ctx.fillRect(-gunW / 2, -gunLen, gunW, gunLen);
+            else if (dir === "down") ctx.fillRect(-gunW / 2, 0, gunW, gunLen);
+            else if (dir === "left") ctx.fillRect(-gunLen, -gunW / 2, gunLen, gunW);
+            else if (dir === "right") ctx.fillRect(0, -gunW / 2, gunLen, gunW);
 
             // Chick emoji, same size as a regular tank sprite
             const pulse = Math.sin(ms / 280) * sz * 0.04;
@@ -1392,13 +1439,13 @@ class GameRenderer {
         let spriteId = null;
         if (tank.tank_type === "turret") {
             const sz = Math.round(CELL * 2 * scaleExtra * 0.85);
-            const hp  = tank.hp ?? 3;
-            const ms  = Date.now();
+            const hp = tank.hp ?? 3;
+            const ms = Date.now();
 
             // Direction angle for rotating parts
             const dirAngle = dir === "right" ? Math.PI / 2
-                           : dir === "down"  ? Math.PI
-                           : dir === "left"  ? -Math.PI / 2 : 0;
+                : dir === "down" ? Math.PI
+                    : dir === "left" ? -Math.PI / 2 : 0;
 
             ctx.save();
             ctx.translate(x, drawY);
@@ -1415,7 +1462,7 @@ class GameRenderer {
                 const a = (i / 8) * Math.PI * 2;
                 const bx = Math.cos(a) * bagR;
                 const by = Math.sin(a) * bagR;
-                const bagGrad = ctx.createRadialGradient(bx - sz*0.03, by - sz*0.03, sz*0.01, bx, by, sz*0.1);
+                const bagGrad = ctx.createRadialGradient(bx - sz * 0.03, by - sz * 0.03, sz * 0.01, bx, by, sz * 0.1);
                 bagGrad.addColorStop(0, "#a89060");
                 bagGrad.addColorStop(1, "#6b5030");
                 ctx.fillStyle = bagGrad;
@@ -1428,7 +1475,7 @@ class GameRenderer {
             }
 
             // ── Concrete base plate ───────────────────────────────────────────
-            const plateGrad = ctx.createRadialGradient(-sz*0.08, -sz*0.08, sz*0.05, 0, 0, sz*0.38);
+            const plateGrad = ctx.createRadialGradient(-sz * 0.08, -sz * 0.08, sz * 0.05, 0, 0, sz * 0.38);
             plateGrad.addColorStop(0, "#95918e");
             plateGrad.addColorStop(0.6, "#706c69");
             plateGrad.addColorStop(1, "#524f4c");
@@ -1455,7 +1502,7 @@ class GameRenderer {
             ctx.stroke();
 
             // ── Pivot ring (steel ring the gun rotates on) ────────────────────
-            const ringGrad = ctx.createLinearGradient(-sz*0.18, -sz*0.18, sz*0.18, sz*0.18);
+            const ringGrad = ctx.createLinearGradient(-sz * 0.18, -sz * 0.18, sz * 0.18, sz * 0.18);
             ringGrad.addColorStop(0, "#9eaab0");
             ringGrad.addColorStop(0.5, "#607d8b");
             ringGrad.addColorStop(1, "#37474f");
@@ -1480,13 +1527,13 @@ class GameRenderer {
                 ctx.strokeStyle = "rgba(20,10,0,0.6)";
                 ctx.lineWidth = 1.5;
                 ctx.beginPath();
-                ctx.moveTo(-sz*0.28, -sz*0.05); ctx.lineTo(-sz*0.12, sz*0.08); ctx.lineTo(-sz*0.18, sz*0.2);
-                ctx.moveTo(sz*0.15, -sz*0.22); ctx.lineTo(sz*0.05, -sz*0.08); ctx.lineTo(sz*0.2, sz*0.06);
+                ctx.moveTo(-sz * 0.28, -sz * 0.05); ctx.lineTo(-sz * 0.12, sz * 0.08); ctx.lineTo(-sz * 0.18, sz * 0.2);
+                ctx.moveTo(sz * 0.15, -sz * 0.22); ctx.lineTo(sz * 0.05, -sz * 0.08); ctx.lineTo(sz * 0.2, sz * 0.06);
                 ctx.stroke();
                 // Scorch marks
                 ctx.fillStyle = "rgba(0,0,0,0.18)";
-                ctx.beginPath(); ctx.arc(-sz*0.18, sz*0.1, sz*0.06, 0, Math.PI*2); ctx.fill();
-                ctx.beginPath(); ctx.arc(sz*0.1, -sz*0.18, sz*0.05, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(-sz * 0.18, sz * 0.1, sz * 0.06, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(sz * 0.1, -sz * 0.18, sz * 0.05, 0, Math.PI * 2); ctx.fill();
             }
 
             // ── Rotating gun assembly ─────────────────────────────────────────
@@ -1494,47 +1541,47 @@ class GameRenderer {
             ctx.rotate(dirAngle);
 
             // Gun body / turret head — larger, more prominent dome
-            const headGrad = ctx.createRadialGradient(-sz*0.07, -sz*0.07, sz*0.02, 0, 0, sz*0.26);
+            const headGrad = ctx.createRadialGradient(-sz * 0.07, -sz * 0.07, sz * 0.02, 0, 0, sz * 0.26);
             headGrad.addColorStop(0, "#90a4ae");
             headGrad.addColorStop(0.5, "#546e7a");
             headGrad.addColorStop(1, "#2e4050");
             ctx.fillStyle = headGrad;
             ctx.beginPath();
-            ctx.arc(0, sz*0.04, sz*0.24, 0, Math.PI * 2);
+            ctx.arc(0, sz * 0.04, sz * 0.24, 0, Math.PI * 2);
             ctx.fill();
 
             // Outer armor ring on dome
             ctx.strokeStyle = "rgba(144,164,174,0.5)";
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.arc(0, sz*0.04, sz*0.24, -Math.PI * 0.9, Math.PI * 0.1);
+            ctx.arc(0, sz * 0.04, sz * 0.24, -Math.PI * 0.9, Math.PI * 0.1);
             ctx.stroke();
 
             // Vision slit / sensor strip — glowing cyan
             ctx.fillStyle = "rgba(0,0,0,0.75)";
-            ctx.fillRect(-sz*0.13, -sz*0.02, sz*0.26, sz*0.05);
+            ctx.fillRect(-sz * 0.13, -sz * 0.02, sz * 0.26, sz * 0.05);
             const scanPulse = (Math.sin(ms / 120) + 1) * 0.5;
             ctx.fillStyle = `rgba(0,220,255,${0.4 + scanPulse * 0.4})`;
-            ctx.fillRect(-sz*0.13, -sz*0.02, sz*0.26, sz*0.05);
+            ctx.fillRect(-sz * 0.13, -sz * 0.02, sz * 0.26, sz * 0.05);
             // Tiny scope lens dots
             ctx.fillStyle = `rgba(0,255,255,${0.6 + scanPulse * 0.4})`;
-            [-sz*0.08, 0, sz*0.08].forEach(ox => {
+            [-sz * 0.08, 0, sz * 0.08].forEach(ox => {
                 ctx.beginPath();
-                ctx.arc(ox, sz*0.005, sz*0.015, 0, Math.PI * 2);
+                ctx.arc(ox, sz * 0.005, sz * 0.015, 0, Math.PI * 2);
                 ctx.fill();
             });
 
             // Barrel root / mantlet — wider, more solid
-            const mantletGrad = ctx.createLinearGradient(-sz*0.12, 0, sz*0.12, 0);
+            const mantletGrad = ctx.createLinearGradient(-sz * 0.12, 0, sz * 0.12, 0);
             mantletGrad.addColorStop(0, "#37474f");
             mantletGrad.addColorStop(0.5, "#607d8b");
             mantletGrad.addColorStop(1, "#37474f");
             ctx.fillStyle = mantletGrad;
-            ctx.fillRect(-sz*0.12, -sz*0.20, sz*0.24, sz*0.18);
+            ctx.fillRect(-sz * 0.12, -sz * 0.20, sz * 0.24, sz * 0.18);
             // Mantlet bolts
             ctx.fillStyle = "#263238";
-            [[-sz*0.09, -sz*0.19], [sz*0.09, -sz*0.19]].forEach(([bx, by]) => {
-                ctx.beginPath(); ctx.arc(bx, by, sz*0.025, 0, Math.PI * 2); ctx.fill();
+            [[-sz * 0.09, -sz * 0.19], [sz * 0.09, -sz * 0.19]].forEach(([bx, by]) => {
+                ctx.beginPath(); ctx.arc(bx, by, sz * 0.025, 0, Math.PI * 2); ctx.fill();
             });
 
             // Barrel — distinctly longer and wider with recoil animation
@@ -1545,54 +1592,54 @@ class GameRenderer {
 
             // Barrel shadow (depth)
             ctx.fillStyle = "rgba(0,0,0,0.4)";
-            ctx.fillRect(-sz*0.075 + sz*0.01, barrelTop + sz*0.01, sz*0.15, barrelLen);
+            ctx.fillRect(-sz * 0.075 + sz * 0.01, barrelTop + sz * 0.01, sz * 0.15, barrelLen);
 
-            const barrelGrad = ctx.createLinearGradient(-sz*0.075, 0, sz*0.075, 0);
+            const barrelGrad = ctx.createLinearGradient(-sz * 0.075, 0, sz * 0.075, 0);
             barrelGrad.addColorStop(0, "#1c2b33");
             barrelGrad.addColorStop(0.3, "#607d8b");
             barrelGrad.addColorStop(0.65, "#455a64");
             barrelGrad.addColorStop(1, "#1c2b33");
             ctx.fillStyle = barrelGrad;
-            ctx.fillRect(-sz*0.075, barrelTop, sz*0.15, barrelLen);
+            ctx.fillRect(-sz * 0.075, barrelTop, sz * 0.15, barrelLen);
 
             // Bright highlight stripe on barrel (makes gun clearly visible)
             ctx.fillStyle = "rgba(160,200,220,0.5)";
-            ctx.fillRect(-sz*0.055, barrelTop, sz*0.03, barrelLen);
+            ctx.fillRect(-sz * 0.055, barrelTop, sz * 0.03, barrelLen);
 
             // Barrel ring bands (3 rings for more detail)
             ctx.strokeStyle = "rgba(0,0,0,0.5)";
             ctx.lineWidth = 2;
             [0.18, 0.32, 0.46].forEach(t => {
-                ctx.strokeRect(-sz*0.075, barrelTop + barrelLen * t, sz*0.15, sz*0.03);
+                ctx.strokeRect(-sz * 0.075, barrelTop + barrelLen * t, sz * 0.15, sz * 0.03);
             });
 
             // Muzzle brake — wider, pronounced
-            const muzzleGrad = ctx.createLinearGradient(-sz*0.11, 0, sz*0.11, 0);
+            const muzzleGrad = ctx.createLinearGradient(-sz * 0.11, 0, sz * 0.11, 0);
             muzzleGrad.addColorStop(0, "#0d1a20");
             muzzleGrad.addColorStop(0.5, "#455a64");
             muzzleGrad.addColorStop(1, "#0d1a20");
             ctx.fillStyle = muzzleGrad;
-            ctx.fillRect(-sz*0.11, barrelTop - sz*0.055, sz*0.22, sz*0.075);
+            ctx.fillRect(-sz * 0.11, barrelTop - sz * 0.055, sz * 0.22, sz * 0.075);
             // Muzzle vent holes
             ctx.fillStyle = "#060f14";
-            ctx.fillRect(-sz*0.09, barrelTop - sz*0.048, sz*0.05, sz*0.055);
-            ctx.fillRect( sz*0.04, barrelTop - sz*0.048, sz*0.05, sz*0.055);
+            ctx.fillRect(-sz * 0.09, barrelTop - sz * 0.048, sz * 0.05, sz * 0.055);
+            ctx.fillRect(sz * 0.04, barrelTop - sz * 0.048, sz * 0.05, sz * 0.055);
             // Center bore
             ctx.fillStyle = "#000";
             ctx.beginPath();
-            ctx.ellipse(0, barrelTop - sz*0.02, sz*0.025, sz*0.025, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, barrelTop - sz * 0.02, sz * 0.025, sz * 0.025, 0, 0, Math.PI * 2);
             ctx.fill();
 
             // Muzzle flash glow
             const flashAlpha = Math.max(0, Math.sin(recoilPhase * Math.PI) * 0.7);
             if (flashAlpha > 0.05) {
-                const flashGrad = ctx.createRadialGradient(0, barrelTop - sz*0.04, 0, 0, barrelTop - sz*0.04, sz*0.18);
+                const flashGrad = ctx.createRadialGradient(0, barrelTop - sz * 0.04, 0, 0, barrelTop - sz * 0.04, sz * 0.18);
                 flashGrad.addColorStop(0, `rgba(255,220,80,${flashAlpha})`);
                 flashGrad.addColorStop(0.4, `rgba(255,120,20,${flashAlpha * 0.5})`);
                 flashGrad.addColorStop(1, "rgba(255,60,0,0)");
                 ctx.fillStyle = flashGrad;
                 ctx.beginPath();
-                ctx.arc(0, barrelTop - sz*0.04, sz*0.18, 0, Math.PI * 2);
+                ctx.arc(0, barrelTop - sz * 0.04, sz * 0.18, 0, Math.PI * 2);
                 ctx.fill();
             }
 
@@ -1603,7 +1650,7 @@ class GameRenderer {
             heatGrad.addColorStop(0.5, `rgba(255,80,10,${heatPulse * 0.15})`);
             heatGrad.addColorStop(1, `rgba(255,40,0,0)`);
             ctx.fillStyle = heatGrad;
-            ctx.fillRect(-sz*0.075, barrelTop, sz*0.15, barrelLen);
+            ctx.fillRect(-sz * 0.075, barrelTop, sz * 0.15, barrelLen);
 
             ctx.restore(); // end rotating assembly
 
@@ -1613,7 +1660,7 @@ class GameRenderer {
                     const progress = ((ms / 25 + i * 18) % 60) / 60;
                     const sy = -progress * sz * 0.9 - sz * 0.1;
                     const sx = Math.sin(ms / 250 + i * 1.3) * sz * 0.15 * progress;
-                    const r  = sz * (0.07 + progress * 0.13);
+                    const r = sz * (0.07 + progress * 0.13);
                     const alpha = (1 - progress) * 0.55;
                     const smoke = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
                     smoke.addColorStop(0, `rgba(60,55,50,${alpha})`);
@@ -1664,13 +1711,13 @@ class GameRenderer {
                     ctx.globalCompositeOperation = "source-atop";
                     ctx.fillRect(dx, dy, dw, dh);
                     ctx.restore();
-                    
+
                     // Draw smoke
                     ctx.fillStyle = "rgba(100, 100, 100, 0.6)";
                     const t = Date.now();
                     for (let i = 0; i < 3; i++) {
                         const sy = dy - ((t / 20 + i * 15) % 30);
-                        const sx = dx + dw/2 + Math.sin(t / 200 + i) * 10;
+                        const sx = dx + dw / 2 + Math.sin(t / 200 + i) * 10;
                         ctx.beginPath();
                         ctx.arc(sx, sy, dw * 0.15, 0, Math.PI * 2);
                         ctx.fill();

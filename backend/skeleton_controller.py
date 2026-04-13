@@ -236,7 +236,7 @@ class SkeletonController:
                 if ignore_lava and tid == LAVA:
                     continue
                 tile = get_tile(tid)
-                if tile.tank_solid:
+                if tile.tank_solid and not tile.walkable:
                     return False
         return True
 

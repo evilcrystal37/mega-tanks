@@ -292,7 +292,7 @@ class AntController:
         if tile_id in (TREE, APPLE, SUNFLOWER, EMPTY, ANT_PILE_FRIENDLY):
             return True
         tile = get_tile(tile_id)
-        return not tile.tank_solid
+        return not tile.tank_solid or tile.walkable
 
     def _find_nearest_resource(self, r: float, c: float) -> Optional[Tuple[int, int]]:
         best_dist = float('inf')
@@ -341,7 +341,7 @@ class AntController:
         if tile_id in (TREE, APPLE, SUNFLOWER, EMPTY, ANT_PILE_FRIENDLY):
             return True
         tile = get_tile(tile_id)
-        return not tile.tank_solid
+        return not tile.tank_solid or tile.walkable
 
     # ------------------------------------------------------------------
     # Interaction (pick up / drop off)

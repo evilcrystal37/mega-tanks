@@ -241,3 +241,139 @@ export function drawAntPileTile(ctx, dx, dy, ds, isFriendly, appleCount = 0) {
 
     ctx.restore();
 }
+
+const customTileCache = new Map();
+
+export function clearCustomTileCache(tid) {
+    customTileCache.delete(tid);
+}
+
+const _ORTH4 = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+/**
+ * 4-connected cells with the same tile id (for anchoring multi-cell custom sprites).
+ */
+export function findSameTileComponent(grid, r, c, tid, gridH, gridW) {
+    if (r < 0 || r >= gridH || c < 0 || c >= gridW) return [];
+    if ((grid[r]?.[c]) !== tid) return [];
+    const out = [];
+    const q = [[r, c]];
+    const seen = new Set([`${r},${c}`]);
+    while (q.length) {
+        const [cr, cc] = q.shift();
+        out.push([cr, cc]);
+        for (const [dr, dc] of _ORTH4) {
+            const nr = cr + dr;
+            const nc = cc + dc;
+            if (nr < 0 || nr >= gridH || nc < 0 || nc >= gridW) continue;
+            const k = `${nr},${nc}`;
+            if (seen.has(k)) continue;
+            if ((grid[nr]?.[nc]) !== tid) continue;
+            seen.add(k);
+            q.push([nr, nc]);
+        }
+    }
+    return out;
+}
+
+/**
+ * Top-left (min row/col) of a solid span×span block of `tid` containing (r,c), or null.
+ * When null, callers should use the legacy global span-aligned snap (editor-aligned blocks).
+ */
+export function customMultiTileAnchor(grid, r, c, tid, span, gridH, gridW) {
+    if (span <= 1) return { minR: r, minC: c };
+    if (!grid || !grid.length) return null;
+    const comp = findSameTileComponent(grid, r, c, tid, gridH, gridW);
+    if (comp.length !== span * span) return null;
+    let minR = gridH;
+    let minC = gridW;
+    let maxR = -1;
+    let maxC = -1;
+    for (const [cr, cc] of comp) {
+        if (cr < minR) minR = cr;
+        if (cc < minC) minC = cc;
+        if (cr > maxR) maxR = cr;
+        if (cc > maxC) maxC = cc;
+    }
+    if (maxR - minR + 1 !== span || maxC - minC + 1 !== span) return null;
+    return { minR, minC };
+}
+
+/**
+ * Shared top-left for a multi-cell custom sprite at (r,c): prefer solid span×span block,
+ * else fall back to grid-aligned snap.
+ *
+ * The connected-component bbox approach was dropped because adjacent same-tid blocks merge
+ * into one large component, causing every cell to reference the first block's center — making
+ * subsequent blocks invisible inside their clip rects.  Editor placement always snaps to
+ * span-aligned grid positions (via _snapCursorToBrush), so grid-aligned snapping is always
+ * the correct fallback.
+ */
+export function resolveCustomMultiOrigin(grid, r, c, tid, span, gridH, gridW) {
+    if (span <= 1) return { minR: r, minC: c };
+    const solid = customMultiTileAnchor(grid, r, c, tid, span, gridH, gridW);
+    if (solid) return solid;
+    return {
+        minR: r - (r % span),
+        minC: c - (c % span),
+    };
+}
+
+/** Grid footprint for custom tiles: 1×1, 2×2 (`non_repeating`), or 4×4 (`extra_big`). */
+export function customTileSpanFromTile(tObj) {
+    if (!tObj) return 1;
+    if (tObj.extra_big) return 4;
+    if (tObj.non_repeating) return 2;
+    return 1;
+}
+
+/**
+ * Draw a custom tile sprite. `ds` is one grid cell size in pixels; `span` is 1, 2, or 4
+ * (sprite covers span×span cells). Nearest-neighbor only — no interpolation (lossless mapping).
+ */
+export function drawCustomTile(ctx, dx, dy, ds, tid, span = 1) {
+    let img = customTileCache.get(tid);
+    
+    if (img === undefined) {
+        // First request for this tile
+        img = new Image();
+        img.src = `assets/custom_tiles/tile_${tid}.png?t=${Date.now()}`;
+        img.onload = () => {
+            img._loaded = true;
+        };
+        img.onerror = () => {
+             img._failed = true;
+        };
+        customTileCache.set(tid, img);
+    }
+
+    if (img._loaded) {
+        ctx.imageSmoothingEnabled = false;
+        if (ctx.imageSmoothingQuality !== undefined) {
+            ctx.imageSmoothingQuality = "low";
+        }
+        const frameSize = img.height;
+        let sourceX = 0;
+        
+        // If width > height, it's an animation strip (horizontal)
+        if (img.width > frameSize) {
+            const frameCount = Math.floor(img.width / frameSize);
+            const frameDuration = 200; // ms per frame
+            const currentFrame = Math.floor(Date.now() / frameDuration) % frameCount;
+            sourceX = currentFrame * frameSize;
+        }
+        
+        const dest = ds * span;
+        ctx.drawImage(img, sourceX, 0, frameSize, frameSize, dx, dy, dest, dest);
+    } else if (!img._failed) {
+        // Fallback loading state
+        ctx.fillStyle = "rgba(255, 0, 255, 0.5)"; // Magenta placeholder for loading custom tiles
+        const dest = ds * span;
+        ctx.fillRect(dx, dy, dest, dest);
+    } else {
+         // Fallback failed state
+        ctx.fillStyle = "#ff00ff";
+        const dest = ds * span;
+        ctx.fillRect(dx, dy, dest, dest);
+    }
+}

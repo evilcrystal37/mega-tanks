@@ -62,6 +62,94 @@
     </div>
   </div>
 
+  <!-- ═══════════════════════ CUSTOM TILE EDITOR SCREEN ══════════════════ -->
+  <div id="custom-tile-editor-screen" class="screen">
+    <div class="tile-settings-inner" style="max-width: 600px;">
+      <div class="settings-header">CUSTOM SPRITE EDITOR</div>
+      <p class="tile-settings-desc">CUSTOM TILES USE ID ≥ 100 · SHIFT+CLICK A TILE IN TILE EDITOR TO COPY A STOCK TEMPLATE</p>
+      
+      <form id="custom-tile-form" class="custom-tile-form">
+        <div class="rp-row">
+            <label class="rp-label">TEMPLATE</label>
+            <select id="ct-template" class="nes-input" style="flex:1">
+              <option value="">— COPY FROM STOCK TILE —</option>
+            </select>
+        </div>
+        <div class="rp-row">
+            <label class="rp-label">SPRITE</label>
+            <input type="file" id="ct-file" class="nes-input" accept="image/*" />
+        </div>
+        <p id="ct-file-hint" style="font-size:9px;color:#888;margin:0">LEAVE EMPTY TO KEEP EXISTING IMAGE (METADATA-ONLY SAVE)</p>
+        <div class="rp-row">
+            <label class="rp-label">ID</label>
+            <input type="number" id="ct-id" class="nes-input" placeholder="e.g. 100" min="100" max="999" style="width:100px" />
+        </div>
+        <div class="rp-row">
+            <label class="rp-label">NAME</label>
+            <input type="text" id="ct-name" class="nes-input" placeholder="my_tile" />
+        </div>
+        <div class="rp-row">
+            <label class="rp-label">LABEL</label>
+            <input type="text" id="ct-label" class="nes-input" placeholder="My Tile" />
+        </div>
+        <div class="rp-row">
+            <label class="rp-label">COLOR</label>
+            <input type="color" id="ct-color" value="#ff00ff" style="width:48px;height:28px;padding:0;border:none;vertical-align:middle" />
+            <input type="text" id="ct-color-hex" class="nes-input" placeholder="#RRGGBB" style="flex:1;max-width:120px" />
+        </div>
+        
+        <div class="rp-row">
+            <label class="rp-label">SPEED MULT</label>
+            <input type="number" id="ct-speed-mult" class="nes-input" value="1" min="0.05" max="2" step="0.05" style="width:100px" />
+        </div>
+        <div class="rp-row">
+            <label class="rp-label">DAMAGE TARGET ID</label>
+            <input type="number" id="ct-damage-target" class="nes-input" placeholder="e.g. 101" min="0" max="999" style="width:100px" />
+        </div>
+        <div class="rp-row">
+            <label class="rp-label">CREATURE</label>
+            <select id="ct-creature" class="nes-input" style="flex:1" title="Contact hazard: ally hurts enemies; enemy hurts player & turrets">
+              <option value="">— NONE —</option>
+              <option value="ally">ALLY (on your side · hurts enemies)</option>
+              <option value="enemy">ENEMY (hostile · hurts you)</option>
+            </select>
+        </div>
+        <div class="rp-row">
+            <label class="rp-label">BLAST RADIUS</label>
+            <input type="number" id="ct-explosion-radius" class="nes-input" value="2" min="0" max="20" step="1" style="width:100px" title="Tiles from center (TNT-style)" />
+        </div>
+        
+        <div class="rp-row" style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <label><input type="checkbox" id="ct-tanksolid" class="nes-checkbox" /> TANK SOLID</label>
+            <label><input type="checkbox" id="ct-bulletsolid" class="nes-checkbox" /> BULLET SOLID</label>
+            <label><input type="checkbox" id="ct-destructible" class="nes-checkbox" /> DESTRUCTIBLE</label>
+            <label><input type="checkbox" id="ct-transparent" class="nes-checkbox" /> TRANSPARENT</label>
+            <label><input type="checkbox" id="ct-slippery" class="nes-checkbox" /> SLIPPERY</label>
+            <label><input type="checkbox" id="ct-big" class="nes-checkbox" /> BIG TILE (2×2)</label>
+            <label><input type="checkbox" id="ct-extra-big" class="nes-checkbox" /> EXTRA BIG (4×4 · 64px frames)</label>
+            <label><input type="checkbox" id="ct-lossless" class="nes-checkbox" /> LOSSLESS PNG (no rescale if size matches)</label>
+            <label><input type="checkbox" id="ct-walkable" class="nes-checkbox" /> WALKABLE (tanks pass through)</label>
+            <label><input type="checkbox" id="ct-mobile" class="nes-checkbox" /> MOBILE (AI roams like skeletons)</label>
+            <label><input type="checkbox" id="ct-system" class="nes-checkbox" /> SYSTEM ONLY</label>
+            <label><input type="checkbox" id="ct-box" class="nes-checkbox" /> POWERUP BOX</label>
+            <label><input type="checkbox" id="ct-partial" class="nes-checkbox" /> PARTIAL DESTRUCTION</label>
+            <label><input type="checkbox" id="ct-jawproof" class="nes-checkbox" /> JAW PROOF</label>
+            <label><input type="checkbox" id="ct-is-base" class="nes-checkbox" /> IS BASE (DEFEAT IF DESTROYED)</label>
+            <label><input type="checkbox" id="ct-explosive" class="nes-checkbox" /> EXPLOSIVE (TNT)</label>
+        </div>
+        
+        <div style="margin-top:16px; text-align: center;">
+            <canvas id="ct-preview" width="64" height="64" style="border: 2px solid white; background:#1a1a2e; image-rendering: pixelated;"></canvas>
+            <div id="ct-status" style="color: #4CAF50; font-size: 12px; margin-top: 8px; min-height: 16px;"></div>
+        </div>
+
+        <div class="settings-btn-row" style="margin-top:auto;padding-top:16px;">
+            <button type="submit" id="btn-custom-tile-save" class="nes-btn nes-btn-purple">SAVE TILE</button>
+            <button type="button" id="btn-custom-tile-back" class="nes-btn nes-btn-gold">← BACK</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <!-- ═══════════════════════ CONSTRUCTION SCREEN ══════════════════ -->
   <div id="editor-screen" class="screen">
 

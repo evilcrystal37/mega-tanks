@@ -35,8 +35,17 @@ app.add_middleware(
 app.include_router(api_router)
 app.include_router(ws_router)
 
+_project_root = Path(__file__).resolve().parent.parent
+_ext_sprites_dir = _project_root / "ext_sprites"
+_ext_sprites_dir.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/assets/custom_tiles",
+    StaticFiles(directory=str(_ext_sprites_dir)),
+    name="custom_tiles",
+)
+
 # Serve frontend static files — must be last so API routes take priority
-_frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+_frontend_dir = _project_root / "frontend"
 if _frontend_dir.exists():
     app.mount("/", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")
 

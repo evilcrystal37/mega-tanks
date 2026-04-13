@@ -5,7 +5,7 @@
 import { Api } from "./api.js";
 import { SpriteAtlas } from "./spriteAtlas.js";
 import { CELL, GRID_H, GRID_W, TILE_GROUPS, TILE_TOGGLES, TIMED_TILE_IDS, NON_MANUAL_TILE_IDS } from "./constants.js";
-import { drawSandTile, drawLavaTile, drawTreeTile, drawAppleTile, drawAntPileTile } from "./tileRenderer.js";
+import { drawSandTile, drawLavaTile, drawTreeTile, drawAppleTile, drawAntPileTile, drawCustomTile, customTileSpanFromTile, resolveCustomMultiOrigin } from "./tileRenderer.js";
 import { computeViewport, getCellZoom, resizeCanvas } from "./viewport.js";
 
 const BRUSH_SIZE = 2; // 2x2 tiles (4 tiles at once)
@@ -84,9 +84,21 @@ function _getDisabledTileIds() {
     try {
         const stored = JSON.parse(localStorage.getItem("battle_tanks_tile_settings") ?? "{}");
         const disabled = new Set();
+        
+        // 1. Process standard TILE_GROUPS
         for (const [key, ids] of Object.entries(TILE_GROUPS)) {
             if (stored[key] === false) ids.forEach(id => disabled.add(id));
         }
+        
+        // 2. Process individual custom tiles (IDs >= 100)
+        // Key format in localStorage: custom_{id}
+        for (const [key, value] of Object.entries(stored)) {
+            if (key.startsWith("custom_") && value === false) {
+                const id = parseInt(key.replace("custom_", ""));
+                if (!isNaN(id)) disabled.add(id);
+            }
+        }
+        
         return disabled;
     } catch {
         return new Set();
@@ -112,14 +124,28 @@ async function _loadTiles() {
     // Block timed tiles (spawn dynamically) and other non-manual tiles
     const blockedTiles = new Set([...TIMED_TILE_IDS, ...NON_MANUAL_TILE_IDS]);
     const disabled = _getDisabledTileIds();
-    tileIds = tiles.filter(t => !blockedTiles.has(t.id) && !disabled.has(t.id)).map(t => t.id);
+    tileIds = tiles.filter(t => !blockedTiles.has(t.id) && !disabled.has(t.id) && !t.is_system).map(t => t.id);
     // Put empty last so Brick remains the default when opening the editor
     tileIds.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
     tileIndex = 0;
+    _snapCursorToBrush();
 }
 
 function _currentTileId() {
     return tileIds[tileIndex] ?? 1;
+}
+
+function _brushSpan() {
+    const tid = _currentTileId();
+    if (tid < 100) return BRUSH_SIZE;
+    const tObj = tiles.find(t => t.id === tid);
+    return tObj && tObj.extra_big ? 4 : BRUSH_SIZE;
+}
+
+function _snapCursorToBrush() {
+    const s = _brushSpan();
+    cursorRow = Math.max(0, Math.min(GRID_H - s, cursorRow - (cursorRow % s)));
+    cursorCol = Math.max(0, Math.min(GRID_W - s, cursorCol - (cursorCol % s)));
 }
 
 
@@ -166,9 +192,10 @@ function _render(ts = 0) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const cell = _cell || CELL;
+    const span = _brushSpan();
     const { vpLeft, vpTop, startC, endC, startR, endR } = computeViewport(
-        cursorRow + BRUSH_SIZE / 2,
-        cursorCol + BRUSH_SIZE / 2,
+        cursorRow + span / 2,
+        cursorCol + span / 2,
         canvas.width,
         canvas.height,
         cell,
@@ -181,13 +208,6 @@ function _render(ts = 0) {
 
     for (let r = startR; r <= endR; r++) {
         for (let c = startC; c <= endC; c++) {
-            // Skip drawing the base map if the cursor is exactly covering this tile and the cursor is visible
-            if (editorFocused && _cursorVisible) {
-                if (r >= cursorRow && r < cursorRow + BRUSH_SIZE && c >= cursorCol && c < cursorCol + BRUSH_SIZE) {
-                    continue;
-                }
-            }
-
             const tid = grid[r][c];
             if (tid !== 0) {
                 if (tid === 4) {
@@ -213,9 +233,30 @@ function _render(ts = 0) {
         ctx.save();
         if (_cursorVisible) {
             ctx.globalAlpha = 0.6;
-            for (let dr = 0; dr < BRUSH_SIZE; dr++) {
-                for (let dc = 0; dc < BRUSH_SIZE; dc++) {
-                    _drawTileDetail(ctx, tid, cx + dc * cell, cy + dr * cell, cell);
+            if (tid >= 100) {
+                const tGhost = tiles.find(t => t.id === tid);
+                const csp = customTileSpanFromTile(tGhost);
+                if (csp > 1 && csp === span) {
+                    const w = span * cell;
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(cx, cy, w, w);
+                    ctx.clip();
+                    ctx.translate(cx + w / 2, cy + w / 2);
+                    drawCustomTile(ctx, -w / 2, -w / 2, cell, tid, span);
+                    ctx.restore();
+                } else {
+                    for (let dr = 0; dr < span; dr++) {
+                        for (let dc = 0; dc < span; dc++) {
+                            _drawTileDetail(ctx, tid, cx + dc * cell, cy + dr * cell, cell);
+                        }
+                    }
+                }
+            } else {
+                for (let dr = 0; dr < span; dr++) {
+                    for (let dc = 0; dc < span; dc++) {
+                        _drawTileDetail(ctx, tid, cx + dc * cell, cy + dr * cell, cell);
+                    }
                 }
             }
         }
@@ -223,7 +264,7 @@ function _render(ts = 0) {
         // Always draw subtle outline
         ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
         ctx.lineWidth = 2;
-        ctx.strokeRect(cx, cy, BRUSH_SIZE * cell, BRUSH_SIZE * cell);
+        ctx.strokeRect(cx, cy, span * cell, span * cell);
         ctx.restore();
     }
 
@@ -246,6 +287,27 @@ function _drawTileDetail(ctx, tid, x, y, sz) {
 
     const gridC = Math.round(x / sz);
     const gridR = Math.round(y / sz);
+
+    if (tid >= 100) {
+        const tObj = tiles.find(t => t.id === tid);
+        const span = customTileSpanFromTile(tObj);
+
+        ctx.save();
+        if (span > 1) {
+            const { minR, minC } = resolveCustomMultiOrigin(grid, gridR, gridC, tid, span, GRID_H, GRID_W);
+            const centerX = (minC + span / 2) * ds;
+            const centerY = (minR + span / 2) * ds;
+            ctx.beginPath();
+            ctx.rect(dx, dy, ds, ds);
+            ctx.clip();
+            ctx.translate(centerX, centerY);
+            drawCustomTile(ctx, -(span / 2) * ds, -(span / 2) * ds, ds, tid, span);
+        } else {
+            drawCustomTile(ctx, dx, dy, ds, tid, 1);
+        }
+        ctx.restore();
+        return;
+    }
 
     if (tid === 6 || tid === 14 || tid === 18 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 36) || tid === 32 || tid === 92 || tid === 93 || tid === 94) {
         ctx.save();
@@ -923,7 +985,7 @@ function _generateRandomMap() {
 }
 
 function _bindEvents() {
-    canvas.addEventListener("click", () => { canvas.focus?.(); editorFocused = true; });
+    canvas.addEventListener("click", _onCanvasClick);
     canvas.addEventListener("mouseenter", () => { editorFocused = true; });
     window.addEventListener("keydown", _onKeyDown);
     window.addEventListener("keyup", _onKeyUp);
@@ -966,10 +1028,83 @@ function _onKeyUp(ev) {
     heldKeys.delete(ev.code);
 }
 
+function _onCanvasClick(e) {
+    canvas.focus?.();
+    editorFocused = true;
+    
+    if (e.shiftKey) {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
+        const cell = _cell || CELL;
+        const bs = _brushSpan();
+        const { vpLeft, vpTop } = computeViewport(
+            cursorRow + bs / 2,
+            cursorCol + bs / 2,
+            canvas.width,
+            canvas.height,
+            cell,
+            GRID_W,
+            GRID_H
+        );
+        
+        const worldX = (mouseX / cell) + vpLeft;
+        const worldY = (mouseY / cell) + vpTop;
+        
+        const c = Math.floor(worldX);
+        const r = Math.floor(worldY);
+        
+        if (r >= 0 && r < GRID_H && c >= 0 && c < GRID_W) {
+            const tid = grid[r][c];
+            if (tid >= 100) {
+                const tObj = tiles.find(t => t.id === tid);
+                if (tObj) {
+                    window.dispatchEvent(new CustomEvent("edit-custom-tile", { detail: { tile: tObj } }));
+                }
+            }
+        }
+    }
+}
+
+function _clearExtraBigFootprint(r, c) {
+    const tid = grid[r][c];
+    if (tid === 0 || tid < 100) return false;
+    const tObj = tiles.find(t => t.id === tid);
+    if (!tObj || !tObj.extra_big) return false;
+    const span = customTileSpanFromTile(tObj);
+    if (span <= 1) return false;
+    const { minR, minC } = resolveCustomMultiOrigin(grid, r, c, tid, span, GRID_H, GRID_W);
+    for (let dr = 0; dr < span; dr++) {
+        for (let dc = 0; dc < span; dc++) {
+            const rr = minR + dr;
+            const cc = minC + dc;
+            if (rr >= 0 && rr < GRID_H && cc >= 0 && cc < GRID_W && grid[rr][cc] !== 6) {
+                grid[rr][cc] = 0;
+            }
+        }
+    }
+    return true;
+}
+
 function _applyBrush(value) {
     let changed = false;
-    for (let dr = 0; dr < BRUSH_SIZE; dr++) {
-        for (let dc = 0; dc < BRUSH_SIZE; dc++) {
+    const bs = _brushSpan();
+
+    // Clear any extra_big tile whose footprint overlaps the brush area first,
+    // so switching from a 4×4 tile to a smaller brush erases the full block.
+    for (let dr = 0; dr < bs; dr++) {
+        for (let dc = 0; dc < bs; dc++) {
+            const r = cursorRow + dr;
+            const c = cursorCol + dc;
+            if (r >= 0 && r < GRID_H && c >= 0 && c < GRID_W) {
+                if (_clearExtraBigFootprint(r, c)) changed = true;
+            }
+        }
+    }
+
+    for (let dr = 0; dr < bs; dr++) {
+        for (let dc = 0; dc < bs; dc++) {
             const r = cursorRow + dr;
             const c = cursorCol + dc;
             if (r >= 0 && r < GRID_H && c >= 0 && c < GRID_W && grid[r][c] !== 6) {
@@ -997,34 +1132,43 @@ function _handleKey(ev) {
     if (document.activeElement === nameInput) return;
 
     switch (ev.code) {
-        case "ArrowUp": case "KeyW":
-            cursorRow = Math.max(0, cursorRow - BRUSH_SIZE);
+        case "ArrowUp": case "KeyW": {
+            const bs = _brushSpan();
+            cursorRow = Math.max(0, cursorRow - bs);
             _lastBlink = performance.now();
             _cursorVisible = true;
             _handlePaint(ev);
             break;
-        case "ArrowDown": case "KeyS":
-            cursorRow = Math.min(GRID_H - BRUSH_SIZE, cursorRow + BRUSH_SIZE);
+        }
+        case "ArrowDown": case "KeyS": {
+            const bs = _brushSpan();
+            cursorRow = Math.min(GRID_H - bs, cursorRow + bs);
             _lastBlink = performance.now();
             _cursorVisible = true;
             _handlePaint(ev);
             break;
-        case "ArrowLeft": case "KeyA":
-            cursorCol = Math.max(0, cursorCol - BRUSH_SIZE);
+        }
+        case "ArrowLeft": case "KeyA": {
+            const bs = _brushSpan();
+            cursorCol = Math.max(0, cursorCol - bs);
             _lastBlink = performance.now();
             _cursorVisible = true;
             _handlePaint(ev);
             break;
-        case "ArrowRight": case "KeyD":
-            cursorCol = Math.min(GRID_W - BRUSH_SIZE, cursorCol + BRUSH_SIZE);
+        }
+        case "ArrowRight": case "KeyD": {
+            const bs = _brushSpan();
+            cursorCol = Math.min(GRID_W - bs, cursorCol + bs);
             _lastBlink = performance.now();
             _cursorVisible = true;
             _handlePaint(ev);
             break;
+        }
 
         case "KeyC": // Next tile / Place
             if (!ev.repeat && lastPlacedRow === cursorRow && lastPlacedCol === cursorCol) {
                 tileIndex = (tileIndex + 1) % tileIds.length;
+                _snapCursorToBrush();
             }
             _applyBrush(_currentTileId());
             lastPlacedRow = cursorRow;
@@ -1034,6 +1178,7 @@ function _handleKey(ev) {
         case "KeyX": // Prev tile / Place
             if (!ev.repeat && lastPlacedRow === cursorRow && lastPlacedCol === cursorCol) {
                 tileIndex = (tileIndex - 1 + tileIds.length) % tileIds.length;
+                _snapCursorToBrush();
             }
             _applyBrush(_currentTileId());
             lastPlacedRow = cursorRow;
@@ -1186,6 +1331,22 @@ export function renderTilePreview(ctx, tileId, canvasSize) {
         return;
     }
 
+    if (tileId >= 100) {
+        const tObj = tiles.find(t => t.id === tileId);
+        const span = customTileSpanFromTile(tObj);
+        if (span > 1) {
+            const h = canvasSize / span;
+            for (let rr = 0; rr < span; rr++) {
+                for (let cc = 0; cc < span; cc++) {
+                    _drawTileDetail(ctx, tileId, cc * h, rr * h, h);
+                }
+            }
+        } else {
+            _drawTileDetail(ctx, tileId, 0, 0, canvasSize);
+        }
+        return;
+    }
+
     if (tileId === 4) {
         // Forest uses reduced alpha in the editor
         ctx.save();
@@ -1218,6 +1379,7 @@ export function refreshTileFilter() {
     tileIds.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
     // Keep tileIndex in bounds after the list shrinks/grows
     tileIndex = Math.min(tileIndex, Math.max(0, tileIds.length - 1));
+    _snapCursorToBrush();
 }
 
 /** Replace any currently-disabled tiles on the live grid with empty. */

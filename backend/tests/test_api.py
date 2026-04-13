@@ -33,6 +33,66 @@ def test_get_tiles_returns_registry_fields(client):
     assert isinstance(tiles, list)
     assert any(t["name"] == "brick" for t in tiles)
     assert all("tank_solid" in t and "bullet_solid" in t for t in tiles)
+    brick = next(t for t in tiles if t["id"] == 1)
+    assert brick["speed_mult"] == 1.0
+    assert "jaw_proof" in brick
+    assert "is_explosive" in brick
+    assert "explosion_radius" in brick
+
+
+def test_get_tile_definitions_matches_get_tiles(client):
+    r1 = client.get("/api/tiles")
+    r2 = client.get("/api/tiles/definitions")
+    assert r1.status_code == 200 and r2.status_code == 200
+    assert r1.json() == r2.json()
+
+
+def test_upload_custom_tile_metadata_only(tmp_path, monkeypatch, client):
+    import json
+
+    import backend.api as api
+
+    monkeypatch.setattr(api, "_project_root", lambda: tmp_path)
+    monkeypatch.setattr("backend.tile_registry.load_custom_tiles", lambda: None)
+
+    (tmp_path / "maps").mkdir()
+    ext = tmp_path / "ext_sprites"
+    ext.mkdir()
+    png = bytes(
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06"
+        b"\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4"
+        b"\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    (ext / "tile_150.png").write_bytes(png)
+    meta = {
+        "id": 150,
+        "name": "meta_only",
+        "label": "Meta",
+        "color": "#aabbcc",
+        "tank_solid": True,
+        "bullet_solid": True,
+        "destructible": True,
+        "transparent": False,
+        "slippery": False,
+        "non_repeating": False,
+        "extra_big": False,
+        "lossless_sprite": False,
+        "walkable": False,
+        "creature_affinity": None,
+        "is_system": False,
+        "is_box": False,
+        "partial_destructible": False,
+        "damage_target_id": None,
+        "jaw_proof": False,
+        "is_base": False,
+        "is_explosive": False,
+        "explosion_radius": 2,
+        "speed_mult": 1.0,
+    }
+    response = client.post("/api/tiles/custom", data={"metadata": json.dumps(meta)})
+    assert response.status_code == 200, response.text
+    data = json.loads((tmp_path / "maps" / "custom_tiles.json").read_text())
+    assert any(t["id"] == 150 and t["name"] == "meta_only" for t in data)
 
 
 def test_map_crud_flow(client):

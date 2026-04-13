@@ -5,6 +5,7 @@ api.py — REST API endpoints for map management and game control.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any, Dict, Optional
 from io import BytesIO
 
@@ -14,11 +15,16 @@ from pydantic import BaseModel, Field
 from .map_model import Map
 from .map_store import save_map, load_map, list_maps, delete_map
 from .session_store import session_store
-from .tile_registry import all_tiles, TILE_REGISTRY, BONE_FRAME
+from .tile_registry import all_tiles, TILE_REGISTRY, BONE_FRAME, tile_type_to_dict, _normalize_creature_affinity
 from .map_generator import generate_map, generate_symmetric_arena, generate_cave_map, MapGenerationParams, AdvancedMapGenerator
 from .image_to_map import convert_image_to_map, ImageConversionParams, ImageToMapConverter
 
 router = APIRouter()
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
 
 # ---------------------------------------------------------------------------
 # Schemas
@@ -78,27 +84,170 @@ class ImageToMapPayload(BaseModel):
 # Tile metadata (for frontend palette)
 # ---------------------------------------------------------------------------
 
+def _ext_sprites_dir() -> Path:
+    return _project_root() / "ext_sprites"
+
+
 @router.get("/api/tiles")
 def get_tiles():
-    """Return all tile type definitions for the frontend palette."""
+    """Return all tile type definitions for the frontend palette (full TileType fields)."""
     return [
-        {
-            "id": t.id,
-            "name": t.name,
-            "label": t.label,
-            "color": t.color,
-            "tank_solid": t.tank_solid,
-            "bullet_solid": t.bullet_solid,
-            "destructible": t.destructible,
-            "transparent": t.transparent,
-            "slippery": t.slippery,
-            "is_base": t.is_base,
-            "non_repeating": t.non_repeating,
-        }
+        tile_type_to_dict(t)
         for t in all_tiles()
         if t.id != BONE_FRAME
     ]
 
+
+@router.get("/api/tiles/definitions")
+def get_tile_definitions():
+    """Full TileType-shaped JSON for every registry tile (sprite editor templates)."""
+    return [
+        tile_type_to_dict(t)
+        for t in all_tiles()
+        if t.id != BONE_FRAME
+    ]
+
+
+@router.post("/api/tiles/custom")
+def upload_custom_tile(
+    metadata: str = Form(...),  # JSON string
+    file: Optional[UploadFile] = File(default=None),
+):
+    import json
+    from PIL import Image
+
+    try:
+        # Parse metadata
+        tile_data = json.loads(metadata)
+        tile_id = int(tile_data["id"])
+        is_big = tile_data.get("non_repeating", False)
+        is_extra_big = tile_data.get("extra_big", False)
+        lossless = tile_data.get("lossless_sprite", False)
+        
+        project_root = _project_root()
+        ext_dir = _ext_sprites_dir()
+        ext_dir.mkdir(parents=True, exist_ok=True)
+        image_path = ext_dir / f"tile_{tile_id}.png"
+        
+        if file is not None and file.filename:
+            # Read the image and resize logic
+            image_bytes = file.file.read()
+            image = Image.open(BytesIO(image_bytes)).convert("RGBA")
+            
+            # Frame height: 32 (1×1 brush cell) or 64 (2×2 big and 4×4 extra-big sprite strip)
+            target_h = 64 if (is_big or is_extra_big) else 32
+            original_width, original_height = image.size
+            
+            if (
+                lossless
+                and original_height == target_h
+                and original_width > 0
+                and original_width % target_h == 0
+            ):
+                image.save(image_path, format="PNG", compress_level=0)
+            else:
+                # Ratio based on target height
+                ratio = float(target_h) / original_height
+                new_width = original_width * ratio
+                
+                # Snap width to nearest multiple of target_h (assume square frames)
+                num_frames = max(1, round(new_width / float(target_h)))
+                new_width_final = int(num_frames * target_h)
+                
+                image = image.resize((new_width_final, target_h), Image.Resampling.NEAREST)
+                image.save(
+                    image_path,
+                    format="PNG",
+                    compress_level=0 if lossless else 6,
+                )
+        elif not image_path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail="Image file required for new tiles (no existing sprite on disk).",
+            )
+        
+        # Sanitize metadata for persistence
+        if "damage_target_id" in tile_data:
+            val = tile_data["damage_target_id"]
+            tile_data["damage_target_id"] = int(val) if val is not None and str(val).strip() != "" else None
+        tile_data["creature_affinity"] = _normalize_creature_affinity(tile_data.get("creature_affinity"))
+
+        # Load existing json, update and save
+        custom_tiles_path = project_root / "maps" / "custom_tiles.json"
+        
+        # We need to make sure custom_tiles.json uses the proper fields matching TileType init.
+        # E.g. replace string 'true'/'false' with actual boolean if needed.
+        
+        existing_tiles = []
+        if custom_tiles_path.exists():
+            with open(custom_tiles_path, "r", encoding="utf-8") as f:
+                try:
+                    existing_tiles = json.load(f)
+                except json.JSONDecodeError:
+                    pass
+                    
+        # Remove old definition if it exists
+        existing_tiles = [t for t in existing_tiles if t.get("id") != tile_id]
+        existing_tiles.append(tile_data)
+        
+        with open(custom_tiles_path, "w", encoding="utf-8") as f:
+            json.dump(existing_tiles, f, indent=2)
+            
+        # Re-register tiles
+        from .tile_registry import load_custom_tiles
+        load_custom_tiles()
+        
+        return {"success": True, "id": tile_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/api/tiles/custom/{tile_id}")
+def delete_custom_tile(tile_id: int):
+    import json
+    
+    try:
+        project_root = _project_root()
+        custom_tiles_path = project_root / "maps" / "custom_tiles.json"
+        
+        if not custom_tiles_path.exists():
+            raise HTTPException(status_code=404, detail="No custom tiles found")
+            
+        with open(custom_tiles_path, "r", encoding="utf-8") as f:
+            existing_tiles = json.load(f)
+            
+        new_tiles = [t for t in existing_tiles if t.get("id") != tile_id]
+        
+        if len(new_tiles) == len(existing_tiles):
+            raise HTTPException(status_code=404, detail=f"Tile {tile_id} not found")
+            
+        with open(custom_tiles_path, "w", encoding="utf-8") as f:
+            json.dump(new_tiles, f, indent=2)
+            
+        # Delete asset if exists (ext_sprites; legacy path under frontend)
+        for image_path in (
+            _ext_sprites_dir() / f"tile_{tile_id}.png",
+            project_root / "frontend" / "assets" / "custom_tiles" / f"tile_{tile_id}.png",
+        ):
+            if image_path.exists():
+                image_path.unlink()
+            
+        # Re-register tiles
+        from .tile_registry import load_custom_tiles, TILE_REGISTRY
+        # We need to remove it from the runtime registry too
+        if tile_id in TILE_REGISTRY:
+            del TILE_REGISTRY[tile_id]
+        load_custom_tiles()
+        
+        return {"success": True}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # ---------------------------------------------------------------------------
 # Map management

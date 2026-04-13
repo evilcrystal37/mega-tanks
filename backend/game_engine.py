@@ -20,11 +20,12 @@ from .ai_controller import AIController
 from .powerup_manager import PowerupManager
 from .sandworm_controller import SandwormController
 from .skeleton_controller import SkeletonController
+from .mobile_tile_controller import MobileTileController
 from .ant_controller import AntController  # friendly ants only
 from .explosion_manager import ExplosionManager
 from .collision import can_big_tank_crush
 from .map_model import Map, GRID_WIDTH, GRID_HEIGHT
-from .tank import Tank, make_player_tank, make_enemy_tank, ENEMY_TYPES
+from .tank import Tank, make_player_tank, make_enemy_tank, ENEMY_TYPES, TANK_SPEED
 from .input_recorder import InputRecorder
 from .tile_registry import (
     AUTO_TURRET,
@@ -93,6 +94,9 @@ TICK_INTERVAL = 1 / 60
 # Tank collision half-extent (≈1×1 box) — tile-sized, fits exactly in 1-tile gaps
 TANK_HALF = 0.499
 
+# Custom creature tiles — contact damage cooldown (similar to skeletons)
+CREATURE_TILE_CONTACT_INTERVAL = 60
+
 # Enemy spawn columns (top row spawn points)
 SPAWN_COLS = [0.5, GRID_WIDTH // 2 + 0.5, GRID_WIDTH - 0.5]
 
@@ -122,6 +126,7 @@ class GameEngine:
         self.player: Optional[Tank] = None
         self.enemies: Dict[str, Tank] = {}
         self.turrets: Dict[str, Tank] = {}
+        self.evil_jaws: Dict[str, Tank] = {}
         self.rainbow_trails: dict = {}
         self.bullets: Dict[str, Bullet] = {}
         self.explosions: List[dict] = []  # {"row": r, "col": c, "ticks": t}
@@ -194,6 +199,7 @@ class GameEngine:
         self._player_direction: Optional[str] = None
         self._player_fire: bool = False
         self._last_grid_snapshot: Optional[List[List[int]]] = None
+        self._creature_tile_contact_cd: Dict[str, int] = {}
 
         # Input recorder for Clone effect
         self._input_recorder = InputRecorder(max_frames=1200)
@@ -209,6 +215,7 @@ class GameEngine:
         self.bombs: List[dict] = []             # A — Airplane bombs: [{row, col, target_row, ttl}]
         self.magnets: List[dict] = []           # M — Magnet pull zones
         self.sahur_runners: List[dict] = []     # S — Sahur runners
+        self.evil_jaws: Dict[str, Tank] = {}    # Custom: Evil Jaws from teeth
 
         # Subsystems
         self.bullet_manager = BulletManager(self)
@@ -217,6 +224,7 @@ class GameEngine:
         self.powerup_manager = PowerupManager(self)
         self.sandworm_controller = SandwormController(self)
         self.skeleton_ctrl = SkeletonController(self)
+        self.mobile_tile_ctrl = MobileTileController(self)
         self.explosion_manager = ExplosionManager(self)
         self.ant_ctrl = AntController(self)
 
@@ -292,6 +300,8 @@ class GameEngine:
                         color="#607d8b"
                     )
                     self.turrets[turret.id] = turret
+
+        self.mobile_tile_ctrl.init_from_grid()
 
     def _apply_settings(self) -> None:
         """Apply user-provided settings after mode defaults are set."""
@@ -593,6 +603,11 @@ class GameEngine:
             if tank.mega_gun_ticks > 0:
                 tank.mega_gun_ticks -= 1
 
+        # Roaming mobile tiles before creature contact uses grid positions
+        self.mobile_tile_ctrl.tick()
+
+        self._tick_creature_tiles()
+
         # Move bullets
         self.bullet_manager.tick()
 
@@ -629,6 +644,7 @@ class GameEngine:
         self._tick_bombs()
         self._tick_magnets()
         self._tick_sahur_runners()
+        self._tick_evil_jaws()
 
         # Record player input for clone effect
         if self.player and self.player.alive:
@@ -1326,6 +1342,8 @@ class GameEngine:
                     # Don't move base, tanks, or already empty
                     if tid == BASE or tid == EMPTY:
                         continue
+                    if tile.mobile:
+                        continue
                     if tile.tank_solid and not tile.destructible:
                         continue  # Don't move steel, etc.
                     tiles_to_move.append((dist, gr, gc, dr, dc, tid))
@@ -1426,6 +1444,102 @@ class GameEngine:
             self.jump_active = self.player.jump_ticks > 0
         else:
             self.jump_active = False
+
+    def _tick_evil_jaws(self) -> None:
+        """Evil Jaws roam and chase any tank (player or enemy)."""
+        for jaw in list(self.evil_jaws.values()):
+            if not jaw.alive:
+                self.evil_jaws.pop(jaw.id, None)
+                continue
+            
+            jaw.tick_cooldown()
+            
+            # Increase base speed for more aggressive chasing
+            jaw.speed = TANK_SPEED * 1.5
+            
+            # Find nearest tank (excluding other jaws)
+            # Prioritize ENEMIES over the player
+            enemies = [e for e in self.enemies.values() if e.alive]
+            player_tank = self.player if (self.player and self.player.alive) else None
+            
+            best_target = None
+            best_dist = 60.0 # Global chase range
+            
+            # Try to find nearest enemy first
+            for e in enemies:
+                d = math.hypot(e.row - jaw.row, e.col - jaw.col)
+                if d < best_dist:
+                    best_dist = d
+                    best_target = e
+            
+            # Only target player if no enemies are in range
+            if not best_target and player_tank:
+                d = math.hypot(player_tank.row - jaw.row, player_tank.col - jaw.col)
+                if d < best_dist:
+                    best_target = player_tank
+
+            if best_target:
+                # Chase logic: simple axis alignment
+                dr_t = best_target.row - jaw.row
+                dc_t = best_target.col - jaw.col
+                if abs(dr_t) > abs(dc_t):
+                    jaw.ai_dir = "down" if dr_t > 0 else "up"
+                else:
+                    jaw.ai_dir = "right" if dc_t > 0 else "left"
+            else:
+                # Roam randomly
+                jaw.ai_timer -= 1
+                if jaw.ai_timer <= 0:
+                    jaw.ai_timer = random.randint(30, 90) # Faster direction changes
+                    jaw.ai_dir = random.choice(["up", "down", "left", "right"])
+            
+            # Execute movement
+            moved = self._move_tank(jaw, jaw.ai_dir)
+            if not moved:
+                # If blocked, pick a new direction soon
+                jaw.ai_timer = 0
+            
+            # Attack: Contact damage (BITE - instant kill for enemies)
+            # Increased hit distance (2.0) to ensure it triggers before/during collision
+            all_targets = enemies + ([player_tank] if player_tank else [])
+            for t in all_targets:
+                # Collision radius for 2x2 vs 1x1 is 1.5, so 2.0 reach ensures a bite
+                hit_dist = 2.0 
+                if abs(t.row - jaw.row) < hit_dist and abs(t.col - jaw.col) < hit_dist:
+                    # 'Bite' check every 5 ticks for maximum aggression
+                    if self.tick_count % 5 == 0:
+                        if t.is_player:
+                            t.hp -= 1
+                            self.events.append({"type": "sound", "sound": "hit-brick"})
+                        else:
+                            # Instant kill bite for enemies!
+                            t.hp = 0
+                        
+                        if t.hp <= 0:
+                            t.alive = False
+                            self._add_explosion(t.row, t.col)
+                            if t.is_player:
+                                self.player_lives -= 1
+                                self.events.append({"type": "sound", "sound": "player-explosion"})
+                                self._player_respawn_timer = 180
+                            else:
+                                self.score += 200
+                                self.enemies_remaining -= 1
+                                self.events.append({"type": "sound", "sound": "enemy-explosion"})
+
+    def _spawn_evil_jaw(self, row: float, col: float) -> None:
+        """Create a new Evil Jaw entity."""
+        jaw = Tank(
+            row=row,
+            col=col,
+            tank_type="evil_jaw",
+            speed=TANK_SPEED * 1.5, # Aggressive speed
+            hp=3, # Requires 3 hits to destroy
+            color="#ff00ff",
+            is_player=False, # It's a monster
+            is_big=True      # Renders as 2x2
+        )
+        self.evil_jaws[jaw.id] = jaw
 
     # ------------------------------------------------------------------
     # Skeleton / Sandworm helpers
@@ -1739,8 +1853,8 @@ class GameEngine:
             for c in range(int(c1), int(c2) + 1):
                 if 0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH:
                     tile = get_tile(self.grid[r][c])
-                    if tile.tank_solid:
-                        if can_big_tank_crush(self.grid[r][c], BASE, mover, BIG_BOX_IDS):
+                    if tile.tank_solid and not tile.walkable:
+                        if can_big_tank_crush(tile, BASE, mover, BIG_BOX_IDS):
                             pass
                         else:
                             return False
@@ -1840,19 +1954,19 @@ class GameEngine:
         if mover.airborne_ticks > 0:
             return True
 
-        # 2. Tile collision
+        # 2. Tile collision (walkable tiles never block movement)
         for r in range(int(r1), int(r2) + 1):
             for c in range(int(c1), int(c2) + 1):
                 if 0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH:
                     tile = get_tile(self.grid[r][c])
-                    if tile.tank_solid:
-                        if can_big_tank_crush(self.grid[r][c], BASE, mover, BIG_BOX_IDS):
+                    if tile.tank_solid and not tile.walkable:
+                        if can_big_tank_crush(tile, BASE, mover, BIG_BOX_IDS):
                             pass # Big tank can move through and destroy solid tiles (but not glass/chick boxes or player's base)
                         else:
                             return False
 
         # 3. Tank-tank collision (same box as tile check)
-        all_tanks = list(self.enemies.values()) + ([self.player] if self.player else []) + list(self.turrets.values())
+        all_tanks = list(self.enemies.values()) + ([self.player] if self.player else []) + list(self.turrets.values()) + list(self.evil_jaws.values())
         all_tanks += [t.companion for t in all_tanks if getattr(t, 'companion', None) and t.companion.alive]
         
         for other in all_tanks:
@@ -1862,6 +1976,82 @@ class GameEngine:
             if abs(other.row - row) < (size + other_size) and abs(other.col - col) < (size + other_size):
                 return False
         return True
+
+    def _tick_creature_tiles(self) -> None:
+        """Hazard contact for tiles with creature_affinity (ally / enemy)."""
+        tanks: List[Tank] = []
+        tanks.extend(e for e in self.enemies.values() if e.alive)
+        if self.player and self.player.alive:
+            tanks.append(self.player)
+        tanks.extend(t for t in self.turrets.values() if t.alive)
+        tanks.extend(t for t in self.evil_jaws.values() if t.alive)
+        for t in list(tanks):
+            if t.companion and t.companion.alive:
+                tanks.append(t.companion)
+
+        seen: set[str] = set()
+        for tank in tanks:
+            if tank.id in seen or not tank.alive:
+                continue
+            seen.add(tank.id)
+
+            cd = self._creature_tile_contact_cd.get(tank.id, 0)
+            if cd > 0:
+                self._creature_tile_contact_cd[tank.id] = cd - 1
+                continue
+
+            size = TANK_HALF * 2.0 if (tank.mushroom_ticks > 0 or tank.is_big) else TANK_HALF
+            r1, r2 = int(tank.row - size), int(tank.row + size)
+            c1, c2 = int(tank.col - size), int(tank.col + size)
+
+            hit = False
+            for gr in range(r1, r2 + 1):
+                for gc in range(c1, c2 + 1):
+                    if not (0 <= gr < GRID_HEIGHT and 0 <= gc < GRID_WIDTH):
+                        continue
+                    tile = get_tile(self.grid[gr][gc])
+                    aff = tile.creature_affinity
+                    if aff == "enemy" and tank.is_player:
+                        hit = True
+                        break
+                    if (
+                        aff == "ally"
+                        and not tank.is_player
+                        and (tank.tank_type in ENEMY_TYPES or tank.tank_type == "evil_jaw")
+                    ):
+                        hit = True
+                        break
+                if hit:
+                    break
+
+            if not hit:
+                continue
+
+            tank.hp -= 1
+            self._creature_tile_contact_cd[tank.id] = CREATURE_TILE_CONTACT_INTERVAL
+            self.events.append({"type": "sound", "sound": "brick-hit"})
+            if tank.hp <= 0:
+                tank.alive = False
+                self._add_explosion(tank.row, tank.col)
+                if tank.tank_type == "companion":
+                    self.events.append({"type": "sound", "sound": "enemy-explosion"})
+                    for owner in list(self.enemies.values()) + ([self.player] if self.player else []):
+                        if owner and owner.companion is tank:
+                            owner.companion = None
+                            break
+                elif tank.tank_type == "turret":
+                    self.events.append({"type": "sound", "sound": "enemy-explosion"})
+                elif not tank.is_player:
+                    self.events.append({"type": "sound", "sound": "enemy-explosion"})
+                    if tank.tank_type == "evil_jaw":
+                        pass
+                    elif tank.tank_type in ENEMY_TYPES:
+                        self.score += 100 * (list(ENEMY_TYPES).index(tank.tank_type) + 1)
+                        self.enemies_remaining -= 1
+                else:
+                    self.events.append({"type": "sound", "sound": "player-explosion"})
+                    self.player_lives -= 1
+                    self._player_respawn_timer = 180
 
     # ------------------------------------------------------------------
     # Bullets
@@ -2125,6 +2315,42 @@ class GameEngine:
                         bonus = 600 if turret.rainbow_ticks > 0 else 1800
                         turret.rainbow_ticks = max(turret.rainbow_ticks, 0) + bonus
                         break
+        elif tid == 998:  # TOOTH
+            group = self._find_box_group(r, c, 998, 998)
+            for gr, gc in group:
+                self.grid[gr][gc] = EMPTY
+            
+            # Spawn at the group's geometric center
+            # For 1x1: center is r+0.5, c+0.5
+            # For 2x2 starting at ar, ac: center is ar+1.0, ac+1.0
+            avg_r = sum(pos[0] for pos in group) / len(group) + 0.5
+            avg_c = sum(pos[1] for pos in group) / len(group) + 0.5
+            
+            self._spawn_evil_jaw(avg_r, avg_c)
+            self.events.append({"type": "sound", "sound": "powerup-appear"})
+        elif tid >= 100:
+            # Custom Tiles Advanced Logic
+            custom_tile = get_tile(tid)
+            target = custom_tile.damage_target_id if custom_tile.damage_target_id is not None else EMPTY
+
+            if custom_tile.is_box:
+                block = self._find_box_group(r, c, tid, tid)
+                if custom_tile.mobile:
+                    self.mobile_tile_ctrl.unregister_entities_in_block(block)
+                for gr, gc in block:
+                    self.grid[gr][gc] = target
+            elif custom_tile.partial_destructible:
+                if self.mobile_tile_ctrl.on_partial_custom_damage(r, c, tid, target):
+                    self.events.append({"type": "sound", "sound": "hit-brick"})
+                    return
+                self.grid[r][c] = target
+            else:
+                block = self._find_custom_tile_block(r, c, tid)
+                if custom_tile.mobile:
+                    self.mobile_tile_ctrl.unregister_entities_in_block(block)
+                for gr, gc in block:
+                    self.grid[gr][gc] = target
+            self.events.append({"type": "sound", "sound": "hit-brick"})
         else:
             self.grid[r][c] = EMPTY
             self.events.append({"type": "sound", "sound": "hit-brick"})
@@ -2283,6 +2509,9 @@ class GameEngine:
             # Player bullets can hit other turrets (not themselves); turrets destroyable in friendly mode too
             targets.extend(t for t in self.turrets.values() if t.alive and t.id != bullet.owner_id)
 
+        # Evil Jaws are targets for everyone (player and enemies)
+        targets.extend(j for j in self.evil_jaws.values() if j.alive)
+
         for tank in targets:
             # Big tank: use tank's half-extent + bullet speed margin to prevent tunneling
             if tank.mushroom_ticks > 0 or tank.is_big:
@@ -2304,9 +2533,17 @@ class GameEngine:
                     if tank.tank_type == "turret":
                         self.events.append({"type": "sound", "sound": "enemy-explosion"})
                     elif not tank.is_player:
+                        if tank.tank_type == "evil_jaw":
+                            # Special explosion like TNT
+                            self._detonate_tile(int(tank.row), int(tank.col), radius=2)
+                        
                         self.events.append({"type": "sound", "sound": "enemy-explosion"})
-                        self.score += 100 * (list(ENEMY_TYPES).index(tank.tank_type) + 1)
-                        self.enemies_remaining -= 1
+                        if tank.tank_type in ENEMY_TYPES:
+                            self.score += 100 * (list(ENEMY_TYPES).index(tank.tank_type) + 1)
+                            self.enemies_remaining -= 1
+                        else:
+                            # Special creature (Evil Jaw, etc.)
+                            self.score += 500
                     else:
                         self.events.append({"type": "sound", "sound": "player-explosion"})
                         self.player_lives -= 1
@@ -2546,7 +2783,7 @@ class GameEngine:
                 tile = get_tile(tid)
                 if tid == MUD:
                     hit_mud = True
-                elif tile.tank_solid or tile.is_base:
+                elif (tile.tank_solid and not tile.walkable) or tile.is_base:
                     hit_solid = True
 
             if any(p["row"] == next_r and p["col"] == next_c for p in parts):
@@ -2718,6 +2955,30 @@ class GameEngine:
                     return group
         return [(r, c)]
 
+    def _find_custom_tile_block(self, r: int, c: int, tid: int) -> list:
+        """Return all grid cells for a custom tile's footprint (1×1, 2×2, or 4×4)."""
+        custom_tile = get_tile(tid)
+        if custom_tile.extra_big:
+            span = 4
+        elif custom_tile.non_repeating:
+            span = 2
+        else:
+            return [(r, c)]
+        for dr in range(span):
+            for dc in range(span):
+                ar, ac = r - dr, c - dc
+                if ar % span != 0 or ac % span != 0:
+                    continue
+                group = [
+                    (ar + nr, ac + nc)
+                    for nr in range(span) for nc in range(span)
+                    if 0 <= ar + nr < GRID_HEIGHT and 0 <= ac + nc < GRID_WIDTH
+                    and self.grid[ar + nr][ac + nc] == tid
+                ]
+                if len(group) == span * span:
+                    return group
+        return [(r, c)]
+
 
     def _tick_tnt(self) -> None:
         new_pending = []
@@ -2754,13 +3015,12 @@ class GameEngine:
             for nc in range(int(c1), int(c2) + 1):
                 if 0 <= nr < GRID_HEIGHT and 0 <= nc < GRID_WIDTH:
                     ntile = get_tile(self.grid[nr][nc])
+                    if ntile.walkable:
+                        continue
                     can_destroy = ntile.tank_solid and (ntile.destructible or force)
-                    if (tank.mushroom_ticks > 0 or tank.is_big) and ntile.tank_solid:
-                        # Glass boxes can only be broken by shooting, not by running over
-                        if self.grid[nr][nc] in BIG_BOX_IDS:
-                            can_destroy = False
-                        else:
-                            can_destroy = True
+                    if (tank.mushroom_ticks > 0 or tank.is_big) and ntile.tank_solid and not ntile.walkable:
+                        # Same rules as movement: big tanks cannot chew jaw_proof tiles, boxes, or (player) base
+                        can_destroy = can_big_tank_crush(ntile, BASE, tank, BIG_BOX_IDS)
                         
                     if can_destroy:
                         if ntile.is_base:
@@ -2882,6 +3142,7 @@ class GameEngine:
             "companion": self.player.companion.to_dict() if (self.player and self.player.companion and self.player.companion.alive) else None,
             "companion_ticks": self.player.companion_ticks if self.player else 0,
             "enemies": enemies_state,
+            "evil_jaws": [j.to_dict() for j in self.evil_jaws.values()],
             "turrets": [t.to_dict() for t in self.turrets.values()],
             "bullets": [b.to_dict() for b in self.bullets.values()],
             "explosions": self.explosions,
@@ -2891,6 +3152,7 @@ class GameEngine:
             "events": list(self.events),
             "sandworm": {**self.sandworm, "hp": self.sandworm.get("hp", 5)},
             "skeletons": self.skeleton_ctrl.skeletons,
+            "mobile_entities": self.mobile_tile_ctrl.get_entity_bounds(),
             "ants": [
                 {
                     "id": a.id,

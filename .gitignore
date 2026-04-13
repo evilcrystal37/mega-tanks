@@ -28,3 +28,6 @@ server.log
 # OS
 .DS_Store
 Thumbs.db
+
+# Uploaded custom tile PNGs (kept under ext_sprites/; see ext_sprites/.gitkeep)
+ext_sprites/*.png

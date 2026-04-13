@@ -21,6 +21,15 @@ async function apiFetch(path, options = {}) {
 export const Api = {
     // Tiles
     getTiles: () => apiFetch("/api/tiles"),
+    getTileDefinitions: () => apiFetch("/api/tiles/definitions"),
+    uploadCustomTile: (formData) => fetch(BASE + "/api/tiles/custom", { method: "POST", body: formData }).then(async r => {
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({ detail: r.statusText }));
+            throw new Error(Array.isArray(err.detail) ? err.detail.join(" | ") : (err.detail || r.statusText));
+        }
+        return r.json();
+    }),
+    deleteCustomTile: (id) => apiFetch(`/api/tiles/custom/${id}`, { method: "DELETE" }),
 
     // Maps
     listMaps: () => apiFetch("/api/maps"),

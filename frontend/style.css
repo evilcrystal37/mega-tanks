@@ -343,6 +343,39 @@ body {
   color: var(--nes-black);
 }
 
+.nes-btn-cyan {
+  border-color: var(--nes-cyan);
+  color: var(--nes-cyan);
+}
+
+.nes-btn-cyan:hover:not(:disabled) {
+  background: var(--nes-cyan);
+  color: var(--nes-black);
+}
+
+.tile-toggle-header {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 2px;
+}
+
+.tile-toggle-delete {
+  background: none;
+  border: none;
+  color: var(--nes-red);
+  font-family: var(--font);
+  font-size: 8px;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.6;
+}
+
+.tile-toggle-delete:hover {
+  opacity: 1;
+  text-shadow: 0 0 4px var(--nes-red);
+}
+
 /* ── NES Map list ────────────────────────────────────────────────────── */
 .nes-map-list {
   display: flex;
