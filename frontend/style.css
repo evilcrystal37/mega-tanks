@@ -594,6 +594,8 @@ body {
   min-width: 56px;
   text-align: right;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nes-slider {
@@ -638,6 +640,76 @@ body {
 
 .settings-btn-row .nes-btn {
   flex: 1;
+}
+
+/* ═══════════════════ GAMEPAD SETTINGS MODAL ═════════════════════════════ */
+.gamepad-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.82);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.gamepad-modal-overlay.active {
+  display: flex;
+}
+
+.gamepad-modal-inner {
+  width: min(720px, 92vw);
+}
+
+.gamepad-modal-controller-name {
+  width: 100%;
+  text-align: center;
+  font-size: 9px;
+  color: var(--nes-yellow);
+  letter-spacing: 1px;
+  margin-top: -6px;
+  margin-bottom: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#confirm-modal-message {
+  /* Reuse the same text styling as the gamepad controller row,
+     but allow wrapping so longer delete/map names still fit. */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  margin-bottom: 0px;
+}
+
+.gamepad-remap-container {
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* ═══════════════════ GAMEPAD FOCUS (Keyboard-less navigation) ═════════════ */
+.gamepad-focused {
+  outline: 2px solid var(--nes-yellow);
+  outline-offset: 2px;
+}
+
+.nes-btn.gamepad-focused {
+  box-shadow: 0 0 0 2px rgba(255, 255, 0, 0.12), 0 0 14px rgba(255, 255, 0, 0.18);
+}
+
+.tile-toggle-item.gamepad-focused {
+  border-color: var(--nes-yellow);
+}
+
+/* Highlight range thumb when focus is driven by the gamepad (not :focus). */
+.nes-slider.gamepad-focused::-webkit-slider-thumb {
+  background: var(--nes-yellow);
+}
+
+.nes-slider.gamepad-focused::-moz-range-thumb {
+  background: var(--nes-yellow);
 }
 
 /* ═══════════════════ TILE SETTINGS SCREEN ══════════════════════════ */

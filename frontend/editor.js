@@ -7,6 +7,7 @@ import { SpriteAtlas } from "./spriteAtlas.js";
 import { CELL, GRID_H, GRID_W, TILE_GROUPS, TILE_TOGGLES, TIMED_TILE_IDS, NON_MANUAL_TILE_IDS } from "./constants.js";
 import { drawSandTile, drawLavaTile, drawCustomTile, customTileSpanFromTile, resolveCustomMultiOrigin } from "./tileRenderer.js";
 import { computeViewport, getCellZoom, resizeCanvas } from "./viewport.js";
+import { showConfirm } from "./confirmModal.js";
 
 const BRUSH_SIZE = 2; // 2x2 tiles (4 tiles at once)
 
@@ -18,6 +19,7 @@ let grid = [];      // Array of tile IDs
 let cursorRow = 20;
 let cursorCol = 32; // Midpoint of 64
 let editorFocused = false;
+let editorUIModeActive = false; // When true, arrow keys drive side-panel focus (not canvas painting)
 let lastPlacedCol = -1;
 let lastPlacedRow = -1;
 let heldKeys = new Set();
@@ -57,6 +59,11 @@ export function focusEditor() {
 }
 export function blurEditor() {
     editorFocused = false;
+}
+export function setEditorUIModeActive(active) {
+    editorUIModeActive = !!active;
+    // Prevent any in-progress painting while in UI mode.
+    if (editorUIModeActive) heldKeys.clear();
 }
 
 function _initGrid() {
@@ -977,8 +984,8 @@ function _bindEvents() {
         document.getElementById("import-img-input").click();
     });
     document.getElementById("import-img-input").addEventListener("change", _handleImageUpload);
-    document.getElementById("btn-clear-map").addEventListener("click", () => {
-        if (!confirm("CLEAR MAP?")) return;
+    document.getElementById("btn-clear-map").addEventListener("click", async () => {
+        if (!await showConfirm("CLEAR MAP?")) return;
         _initGrid();
     });
 
@@ -991,6 +998,7 @@ function _bindEvents() {
     // Continuous painting loop
     setInterval(() => {
         if (!editorFocused) return;
+        if (editorUIModeActive) return;
         if (heldKeys.has("KeyX") || heldKeys.has("KeyC") || heldKeys.has("Space")) {
             _handlePaint();
         }
@@ -1000,6 +1008,7 @@ function _bindEvents() {
 function _onKeyDown(ev) {
     if (!editorFocused) return;
     if (document.activeElement === nameInput) return;
+    if (editorUIModeActive) return;
     heldKeys.add(ev.code);
     _handleKey(ev);
 }
@@ -1236,7 +1245,7 @@ export async function refreshMapList() {
             item.querySelector(".nes-map-item-name").addEventListener("click", () => _loadMap(name));
             item.querySelector(".nes-map-del").addEventListener("click", async e => {
                 e.stopPropagation();
-                if (!confirm(`DELETE "${name}"?`)) return;
+                if (!await showConfirm(`DELETE "${name}"?`)) return;
                 await Api.deleteMap(name);
                 await refreshMapList();
             });

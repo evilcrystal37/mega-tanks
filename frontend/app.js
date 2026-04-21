@@ -4,11 +4,13 @@
  * Screens: TITLE -> CONSTRUCTION -> PLAY -> SETTINGS -> TILE-SETTINGS
  */
 
-import { initEditor, focusEditor, blurEditor, refreshMapList, getCurrentMapName, resizeEditor, saveMapAs, launchWithFilteredGrid, refreshTileFilter, applyDisabledTilesToCurrentGrid, renderTilePreview } from "./editor.js";
+import { initEditor, focusEditor, blurEditor, setEditorUIModeActive, refreshMapList, getCurrentMapName, resizeEditor, saveMapAs, launchWithFilteredGrid, refreshTileFilter, applyDisabledTilesToCurrentGrid, renderTilePreview } from "./editor.js";
 import { gameRenderer } from "./game.js";
 import { TILE_TOGGLES } from "./constants.js";
 import { Api } from "./api.js";
 import { clearCustomTileCache } from "./tileRenderer.js";
+import { GamepadController, GAMEPAD_ACTIONS, formatGamepadMapping } from "./gamepadController.js";
+import { showConfirm, isConfirmModalOpen } from "./confirmModal.js";
 
 const titleScreen       = document.getElementById("title-screen");
 const editorScreen      = document.getElementById("editor-screen");
@@ -30,6 +32,17 @@ const btnSettingsReset     = document.getElementById("btn-settings-reset");
 const btnTileEditor        = document.getElementById("btn-tile-editor");
 const btnTileSettingsBack  = document.getElementById("btn-tile-settings-back");
 const btnTileSettingsReset = document.getElementById("btn-tile-settings-reset");
+const btnGamepadSettings   = document.getElementById("btn-gamepad-settings");
+const confirmModalYesBtn  = document.getElementById("confirm-modal-yes");
+const confirmModalNoBtn   = document.getElementById("confirm-modal-no");
+
+const gamepadSettingsModalOverlay      = document.getElementById("gamepad-settings-modal-overlay");
+const btnGamepadSettingsBack           = document.getElementById("btn-gamepad-settings-back");
+const gpModalControllerNameEl          = document.getElementById("gamepad-settings-controller-name");
+const gpModalGamepadEnabledCheckbox    = document.getElementById("gp-modal-gamepad-enabled");
+const gpModalGamepadValueEl            = document.getElementById("gp-modal-gamepad-value");
+const gpModalDeadzoneSlider            = document.getElementById("gp-modal-deadzone");
+const gpModalDeadzoneValueEl          = document.getElementById("gp-modal-deadzone-value");
 
 let currentScreen = "title";
 let selectedMenuIndex = 0; // 0: construction, 1: settings
@@ -37,6 +50,8 @@ let settingsOrigin = "title";
 let editorReady = false;
 let _lastLaunchedMap = null;
 let _shiftDown = false; // Track Shift key state reliably across click events
+const _gamepadController = new GamepadController();
+let _gamepadSettingsModalOpen = false;
 /** @type {any[]|null} */
 let _spriteDefinitionsCache = null;
 
@@ -89,6 +104,11 @@ const SETTINGS_DEF = [
         ]
     },
     {
+        section: "CONTROLS",
+        // Controller name/status is injected dynamically below.
+        items: []
+    },
+    {
         section: "PLAYER",
         items: [
             { key: "tank_speed",      label: "SPEED",       min: 0.01, max: 0.15, step: 0.005, def: 0.025, fmt: v => (v / 0.025).toFixed(1) + "×" },
@@ -139,6 +159,7 @@ function loadSettings() {
 
 function saveSettings(s) {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    gameRenderer.gameInput?.reloadSettings?.();
 }
 
 function getDefaultSettings() {
@@ -154,6 +175,196 @@ function getSettings() {
 }
 
 // ── Settings UI ───────────────────────────────────────────────────────
+
+let _gamepadStatusValueEl = null;
+let _gamepadStatusListenersBound = false;
+
+function _formatGamepadName(rawId) {
+    const id = String(rawId ?? "").trim();
+    if (!id) return "CONTROLLER";
+
+    // Typical format: "8BitDo Zero 2 gamepad (STANDARD GAMEPAD Vendor: ... Product: ...)"
+    // We only care about the friendly base name.
+    let base = id;
+    const parenIdx = base.indexOf(" (");
+    if (parenIdx !== -1) base = base.slice(0, parenIdx);
+    else {
+        const anyParenIdx = base.indexOf("(");
+        if (anyParenIdx !== -1) base = base.slice(0, anyParenIdx);
+    }
+
+    base = base.trim();
+
+    // Strip generic suffixes that some controllers include in their ID.
+    base = base.replace(/\s+gamepad$/i, "").trim();
+
+    return base || "CONTROLLER";
+}
+
+function _detectFirstConnectedGamepadName() {
+    try {
+        const pads = navigator?.getGamepads?.();
+        if (!pads) return null;
+        for (const gp of pads) {
+            if (gp && gp.connected) return _formatGamepadName(gp.id);
+        }
+    } catch {
+        // Ignore. Gamepad API may not exist in some browsers.
+    }
+    return null;
+}
+
+function _updateGamepadStatusRow() {
+    const name = _detectFirstConnectedGamepadName();
+    const text = name || "NONE DETECTED";
+    if (_gamepadStatusValueEl) _gamepadStatusValueEl.textContent = text;
+    if (_gamepadSettingsModalOpen && gpModalControllerNameEl) gpModalControllerNameEl.textContent = text;
+}
+
+function _ensureGamepadStatusListeners() {
+    if (_gamepadStatusListenersBound) return;
+    const onChange = () => _updateGamepadStatusRow();
+    window.addEventListener("gamepadconnected", onChange);
+    window.addEventListener("gamepaddisconnected", onChange);
+    _gamepadStatusListenersBound = true;
+}
+
+function _refreshGamepadSettingsModalControls() {
+    if (!gpModalGamepadEnabledCheckbox || !gpModalDeadzoneSlider || !gpModalDeadzoneValueEl) return;
+
+    const raw = loadSettings();
+    const enabled = raw.gamepad_enabled === undefined ? true : !!raw.gamepad_enabled;
+    const deadzoneRaw = typeof raw.gamepad_deadzone === "number" ? raw.gamepad_deadzone : 0.25;
+    const deadzone = Math.max(0, Math.min(1, deadzoneRaw));
+
+    gpModalGamepadEnabledCheckbox.checked = enabled;
+    if (gpModalGamepadValueEl) gpModalGamepadValueEl.textContent = enabled ? "ON" : "OFF";
+
+    gpModalDeadzoneSlider.disabled = !enabled;
+    gpModalDeadzoneSlider.value = String(deadzone);
+    gpModalDeadzoneValueEl.textContent = (+deadzone).toFixed(2);
+
+    const name = _detectFirstConnectedGamepadName();
+    if (gpModalControllerNameEl) gpModalControllerNameEl.textContent = name || "NONE DETECTED";
+}
+
+function _openGamepadSettingsModal() {
+    if (_gamepadSettingsModalOpen) return;
+    _gamepadSettingsModalOpen = true;
+    if (gamepadSettingsModalOverlay) gamepadSettingsModalOverlay.classList.add("active");
+    _refreshGamepadSettingsModalControls();
+    _buildGamepadRemapUI();
+}
+
+function _closeGamepadSettingsModal() {
+    if (!_gamepadSettingsModalOpen) return;
+    _gamepadSettingsModalOpen = false;
+    if (gamepadSettingsModalOverlay) gamepadSettingsModalOverlay.classList.remove("active");
+    _gamepadController?.cancelCapture?.();
+}
+
+function _buildGamepadRemapUI() {
+    const container = document.getElementById("gamepad-remap-container");
+    if (!container) return;
+
+    // Rebuild each open so it always matches the latest persisted mapping.
+    container.innerHTML = "";
+
+    const status = document.createElement("div");
+    status.id = "gamepad-remap-status";
+    status.style.fontSize = "7px";
+    status.style.color = "var(--nes-gray)";
+    status.style.letterSpacing = "1px";
+    status.style.lineHeight = "1.8";
+    status.textContent = "READY — press REMAP to bind an input";
+    container.appendChild(status);
+
+    const actionsGrid = document.createElement("div");
+    actionsGrid.style.display = "flex";
+    actionsGrid.style.flexDirection = "column";
+    actionsGrid.style.gap = "10px";
+    actionsGrid.style.marginTop = "10px";
+    container.appendChild(actionsGrid);
+
+    const renderActionRow = (action) => {
+        const row = document.createElement("div");
+        row.className = "settings-row";
+
+        const header = document.createElement("div");
+        header.className = "settings-row-header";
+
+        const label = document.createElement("span");
+        label.className = "settings-label";
+        label.textContent = action.label;
+
+        const valueEl = document.createElement("span");
+        valueEl.className = "settings-value";
+        valueEl.id = `gp-remap-value-${action.id}`;
+        valueEl.textContent = formatGamepadMapping(_gamepadController.getMapping(action.id));
+
+        header.appendChild(label);
+        header.appendChild(valueEl);
+        row.appendChild(header);
+
+        const btn = document.createElement("button");
+        btn.className = "nes-btn nes-btn-purple";
+        btn.style.width = "100%";
+        btn.type = "button";
+        btn.textContent = "REMAP";
+        btn.dataset.gamepadRemapActionId = action.id;
+
+        btn.addEventListener("click", () => {
+            if (!_gamepadController) return;
+            const capturing = _gamepadController.isCapturing();
+            if (capturing) return;
+
+            status.textContent = `CAPTURING: ${action.label} — press a button or move a stick`;
+
+            // Disable all REMAP buttons while capturing.
+            const allBtns = container.querySelectorAll("button[data-gamepad-remap-action-id]");
+            allBtns.forEach(b => { b.disabled = true; });
+
+            _gamepadController.startCapture(action.id, (mapping) => {
+                // Modal may have been closed while capture was in flight.
+                if (!_gamepadSettingsModalOpen) return;
+
+                const nextValue = formatGamepadMapping(mapping);
+                const vEl = document.getElementById(`gp-remap-value-${action.id}`);
+                if (vEl) vEl.textContent = nextValue;
+
+                status.textContent = "READY — press REMAP to bind an input";
+                allBtns.forEach(b => { b.disabled = false; });
+            });
+        });
+
+        row.appendChild(btn);
+        actionsGrid.appendChild(row);
+    };
+
+    for (const action of GAMEPAD_ACTIONS) {
+        renderActionRow(action);
+    }
+
+    const resetRow = document.createElement("div");
+    resetRow.style.marginTop = "10px";
+
+    const resetBtn = document.createElement("button");
+    resetBtn.className = "nes-btn nes-btn-red";
+    resetBtn.type = "button";
+    resetBtn.textContent = "RESET REMAPS";
+    resetBtn.style.width = "100%";
+    resetBtn.addEventListener("click", () => {
+        _gamepadController.resetMappings();
+        for (const action of GAMEPAD_ACTIONS) {
+            const vEl = document.getElementById(`gp-remap-value-${action.id}`);
+            if (vEl) vEl.textContent = formatGamepadMapping(_gamepadController.getMapping(action.id));
+        }
+        status.textContent = "READY — remaps restored to defaults";
+    });
+
+    resetRow.appendChild(resetBtn);
+    container.appendChild(resetRow);
+}
 
 function buildSettingsUI() {
     const grid = document.getElementById("settings-grid");
@@ -234,6 +445,32 @@ function buildSettingsUI() {
 
             grid.appendChild(row);
         });
+
+        // Live controller status row under the CONTROLS section.
+        if (section.section === "CONTROLS") {
+            const row = document.createElement("div");
+            row.className = "settings-row";
+
+            const header = document.createElement("div");
+            header.className = "settings-row-header";
+
+            const label = document.createElement("span");
+            label.className = "settings-label";
+            label.textContent = "CONTROLLER";
+
+            const valueEl = document.createElement("span");
+            valueEl.className = "settings-value";
+            valueEl.textContent = "NONE DETECTED";
+
+            header.appendChild(label);
+            header.appendChild(valueEl);
+            row.appendChild(header);
+            grid.appendChild(row);
+
+            _gamepadStatusValueEl = valueEl;
+            _updateGamepadStatusRow();
+            _ensureGamepadStatusListeners();
+        }
     });
 }
 
@@ -359,7 +596,7 @@ function _createTileToggleCard(toggle, isCustom = false, fullTile = null) {
         delBtn.onclick = async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (!confirm(`DELETE TILE ${toggle.label} PERMANENTLY?`)) return;
+                    if (!await showConfirm(`DELETE TILE ${toggle.label} PERMANENTLY?`)) return;
             try {
                 const id = parseInt(toggle.key.replace("custom_", ""));
                 await Api.deleteCustomTile(id);
@@ -534,6 +771,442 @@ function _startEditorPreviewLoop() {
     _editorPreviewRaf = requestAnimationFrame(loop);
 }
 
+// ── Gamepad Focus Navigation ─────────────────────────────────────────
+// This implements directional navigation (via UI focus) across non-text/non-file
+// controls in title/settings/tile/custom screens, editor UI mode right panel + map
+// list, and the play overlay buttons.
+
+let _editorUIModeActive = false;
+
+let _focusContext = null; // "title" | "settings" | "tile-settings" | "custom-tile-editor" | "gamepad-modal" | "confirm-modal" | "editor-ui" | "play-overlay" | null
+/** @type {{ el: HTMLElement, activate: (ctx: { shiftHeld: boolean })=>void }[]} */
+let _focusables = [];
+let _focusIndex = 0;
+let _focusedEl = null;
+
+function _isPlayOverlayVisible() {
+    const ov = document.getElementById("game-overlay");
+    if (!ov) return false;
+    return ov.style.display !== "none";
+}
+
+function _dispatchClick(el, { shiftKey = false } = {}) {
+    if (!el) return;
+    // Ensure `e.shiftKey` is available to handlers like title/settings clicks and tile card shift-click.
+    const ev = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        shiftKey: !!shiftKey,
+    });
+    el.dispatchEvent(ev);
+}
+
+function _clearFocusHighlight() {
+    if (_focusedEl) _focusedEl.classList.remove("gamepad-focused");
+    _focusedEl = null;
+}
+
+function _setFocusIndex(idx) {
+    if (!_focusables.length) return;
+    _focusIndex = Math.max(0, Math.min(_focusables.length - 1, idx));
+    const f = _focusables[_focusIndex];
+    if (f?.el) {
+        _clearFocusHighlight();
+        f.el.classList.add("gamepad-focused");
+        _focusedEl = f.el;
+        // Ensure the newly-focused control is visible inside scroll containers.
+        f.el.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    }
+}
+
+function _getCurrentFocusContext() {
+    if (isConfirmModalOpen()) return "confirm-modal";
+    if (currentScreen === "editor" && _editorUIModeActive) return "editor-ui";
+    if (currentScreen === "play" && _isPlayOverlayVisible()) return "play-overlay";
+    if (_gamepadSettingsModalOpen) return "gamepad-modal";
+    if (currentScreen === "title") return "title";
+    if (currentScreen === "settings") return "settings";
+    if (currentScreen === "tile-settings") return "tile-settings";
+    if (currentScreen === "custom-tile-editor") return "custom-tile-editor";
+    return null;
+}
+
+function _adjustRangeInput(el, dir) {
+    // dir: -1 (left/up) or +1 (right/down)
+    const step = parseFloat(el.step || "0") || 0.05;
+    const min = parseFloat(el.min || "0");
+    const max = parseFloat(el.max || "1");
+    const cur = parseFloat(el.value || "0");
+    let next = cur + dir * step;
+    if (Number.isFinite(min)) next = Math.max(min, next);
+    if (Number.isFinite(max)) next = Math.min(max, next);
+    el.value = String(next);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function _adjustSelect(el, dir) {
+    if (!el?.options?.length) return;
+    const nextIdx = Math.max(0, Math.min(el.options.length - 1, el.selectedIndex + dir));
+    if (nextIdx === el.selectedIndex) return;
+    el.selectedIndex = nextIdx;
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function _buildFocusablesForContext(ctx) {
+    if (!ctx) return { focusables: [], initialIndex: 0 };
+
+    if (ctx === "title") {
+        const focusables = [
+            {
+                el: btnTitleConstruct,
+                activate: () => btnTitleConstruct.click(),
+            },
+            {
+                el: btnTitleSettings,
+                activate: ({ shiftHeld }) => _dispatchClick(btnTitleSettings, { shiftKey: !!shiftHeld }),
+            },
+        ];
+
+        // Keep the UI selection in sync with focus.
+        _updateMenuSelection(selectedMenuIndex);
+        return { focusables, initialIndex: selectedMenuIndex };
+    }
+
+    if (ctx === "settings") {
+        const grid = document.getElementById("settings-grid");
+        const inputs = grid ? Array.from(grid.querySelectorAll("input[type='checkbox'], input[type='range']")) : [];
+        const buttons = [
+            btnTileEditor,
+            btnGamepadSettings,
+            btnSettingsReset,
+            btnSettingsBack,
+        ].filter(Boolean);
+
+        const focusables = [];
+
+        for (const el of inputs) {
+            const isCheckbox = el instanceof HTMLInputElement && el.type === "checkbox";
+            const isRange = el instanceof HTMLInputElement && el.type === "range";
+            focusables.push({
+                el,
+                activate: () => {
+                    if (isCheckbox) el.click();
+                    // Range sliders are adjusted with left/right (not confirmed).
+                    if (isRange) return;
+                },
+            });
+        }
+
+        for (const el of buttons) {
+            focusables.push({
+                el,
+                activate: ({ shiftHeld }) => {
+                    if (el === btnTileEditor) _dispatchClick(el, { shiftKey: !!shiftHeld });
+                    else el.click();
+                },
+            });
+        }
+
+        return { focusables, initialIndex: 0 };
+    }
+
+    if (ctx === "tile-settings") {
+        const grid = document.getElementById("tile-toggle-grid");
+        const cards = grid ? Array.from(grid.querySelectorAll(".tile-toggle-item")) : [];
+        const focusables = [];
+
+        for (const card of cards) {
+            focusables.push({
+                el: /** @type {HTMLElement} */ (card),
+                activate: ({ shiftHeld }) => _dispatchClick(/** @type {HTMLElement} */ (card), { shiftKey: !!shiftHeld }),
+            });
+            const delBtn = card.querySelector("button.tile-toggle-delete");
+            if (delBtn) {
+                focusables.push({
+                    el: /** @type {HTMLElement} */ (delBtn),
+                    activate: () => delBtn.click(),
+                });
+            }
+        }
+
+        if (btnTileSettingsBack) {
+            focusables.push({
+                el: btnTileSettingsBack,
+                activate: () => btnTileSettingsBack.click(),
+            });
+        }
+
+        return { focusables, initialIndex: 0 };
+    }
+
+    if (ctx === "custom-tile-editor") {
+        const focusEls = Array.from(customTileEditorScreen.querySelectorAll("input[type='checkbox'], select, button"))
+            .filter(el => {
+                // Exclude text/number/file inputs and the preview canvas.
+                if (el instanceof HTMLInputElement) return el.type === "checkbox";
+                if (el instanceof HTMLButtonElement) return true;
+                return el instanceof HTMLSelectElement;
+            });
+
+        const focusables = focusEls.map(el => {
+            const tag = el.tagName.toLowerCase();
+            const activate = ({ shiftHeld }) => {
+                if (tag === "input" || tag === "select") {
+                    // Checkboxes toggle via click; selects are changed via left/right.
+                    if (el instanceof HTMLInputElement && el.type === "checkbox") el.click();
+                    return;
+                }
+                el.click();
+            };
+            return { el, activate };
+        });
+
+        // Ensure save/back exist and are included (better ordering for predictable navigation).
+        const saveBtn = document.getElementById("btn-custom-tile-save");
+        const backBtn = document.getElementById("btn-custom-tile-back");
+        const base = [];
+        if (saveBtn) base.push({ el: saveBtn, activate: () => saveBtn.click() });
+        if (backBtn) base.push({ el: backBtn, activate: () => backBtn.click() });
+
+        // Keep natural DOM order, but append save/back if missing.
+        const hasId = new Set(focusables.map(f => f.el.id).filter(Boolean));
+        const appended = [
+            ...focusables,
+            ...base.filter(f => !hasId.has(f.el.id)),
+        ];
+
+        return { focusables: appended, initialIndex: 0 };
+    }
+
+    if (ctx === "gamepad-modal") {
+        const focusables = [];
+
+        if (gpModalGamepadEnabledCheckbox) {
+            focusables.push({
+                el: gpModalGamepadEnabledCheckbox,
+                activate: () => gpModalGamepadEnabledCheckbox.click(),
+            });
+        }
+
+        if (gpModalDeadzoneSlider) {
+            focusables.push({
+                el: gpModalDeadzoneSlider,
+                activate: () => { /* slider adjusted with left/right */ },
+            });
+        }
+
+        const remapButtons = Array.from(document.querySelectorAll("#gamepad-remap-container button[data-gamepad-remap-action-id]"));
+        remapButtons.forEach(btn => {
+            focusables.push({
+                el: /** @type {HTMLElement} */ (btn),
+                activate: () => btn.click(),
+            });
+        });
+
+        const resetBtn = Array.from(document.querySelectorAll("#gamepad-remap-container button.nes-btn-red"))
+            .find(b => (b.textContent || "").includes("RESET REMAPS"));
+        if (resetBtn) {
+            focusables.push({
+                el: /** @type {HTMLElement} */ (resetBtn),
+                activate: () => resetBtn.click(),
+            });
+        }
+
+        if (btnGamepadSettingsBack) {
+            focusables.push({
+                el: btnGamepadSettingsBack,
+                activate: () => _closeGamepadSettingsModal(),
+            });
+        }
+
+        return { focusables, initialIndex: 0 };
+    }
+
+    if (ctx === "confirm-modal") {
+        const focusables = [];
+
+        if (confirmModalYesBtn && !confirmModalYesBtn.disabled) {
+            focusables.push({
+                el: confirmModalYesBtn,
+                activate: () => confirmModalYesBtn.click(),
+            });
+        }
+        if (confirmModalNoBtn && !confirmModalNoBtn.disabled) {
+            focusables.push({
+                el: confirmModalNoBtn,
+                activate: () => confirmModalNoBtn.click(),
+            });
+        }
+
+        // Default selection: YES (the modal was opened by a user intent).
+        return { focusables, initialIndex: 0 };
+    }
+
+    if (ctx === "editor-ui") {
+        const focusables = [];
+        const rightPanel = editorScreen?.querySelector(".right-panel");
+        if (rightPanel) {
+            // Exclude file inputs (IMPORT IMG) per user constraint.
+            const btnIds = [
+                "btn-generate-map",
+                "btn-clear-map",
+                "btn-save-map",
+                "btn-launch-play",
+                "btn-editor-settings",
+                "btn-back-title",
+            ];
+            for (const id of btnIds) {
+                const el = document.getElementById(id);
+                if (!el || el.disabled) continue;
+                focusables.push({
+                    el,
+                    activate: ({ shiftHeld }) => {
+                        if (id === "btn-editor-settings") _dispatchClick(el, { shiftKey: !!shiftHeld });
+                        else el.click();
+                    },
+                });
+            }
+        }
+
+        const mapList = document.getElementById("map-list");
+        if (mapList) {
+            const mapItems = Array.from(mapList.querySelectorAll(".nes-map-item"));
+            for (const item of mapItems) {
+                const nameEl = item.querySelector(".nes-map-item-name");
+                const delEl = item.querySelector(".nes-map-del");
+                if (nameEl) {
+                    focusables.push({
+                        el: /** @type {HTMLElement} */ (nameEl),
+                        activate: () => nameEl.click(),
+                    });
+                }
+                if (delEl) {
+                    focusables.push({
+                        el: /** @type {HTMLElement} */ (delEl),
+                        activate: () => delEl.click(),
+                    });
+                }
+            }
+        }
+
+        return { focusables, initialIndex: 0 };
+    }
+
+    if (ctx === "play-overlay") {
+        const focusables = [];
+        if (btnRestart) {
+            focusables.push({
+                el: btnRestart,
+                activate: () => btnRestart.click(),
+            });
+        }
+        if (btnBackEditor) {
+            focusables.push({
+                el: btnBackEditor,
+                activate: () => btnBackEditor.click(),
+            });
+        }
+        return { focusables, initialIndex: 0 };
+    }
+
+    return { focusables: [], initialIndex: 0 };
+}
+
+function _ensureFocusContext() {
+    const ctx = _getCurrentFocusContext();
+    if (ctx === _focusContext && _focusables.length) return;
+
+    _focusContext = ctx;
+    _focusables = [];
+    _focusIndex = 0;
+    _clearFocusHighlight();
+
+    if (!ctx) return;
+
+    const { focusables, initialIndex } = _buildFocusablesForContext(ctx);
+    _focusables = focusables;
+    _setFocusIndex(initialIndex);
+
+    // Keep title UI highlighting consistent with focus.
+    if (ctx === "title") _updateMenuSelection(_focusIndex);
+}
+
+function _onGamepadNavigate(dir) {
+    // Avoid doing anything during remap capture.
+    if (_gamepadController?.isCapturing?.()) return;
+
+    _ensureFocusContext();
+    if (!_focusables.length) return;
+
+    const focused = _focusables[_focusIndex];
+    const el = focused?.el;
+
+    if (el instanceof HTMLInputElement && el.type === "range" && (dir === "left" || dir === "right")) {
+        _adjustRangeInput(el, dir === "left" ? -1 : 1);
+        return;
+    }
+
+    if (el instanceof HTMLSelectElement && (dir === "left" || dir === "right")) {
+        _adjustSelect(el, dir === "left" ? -1 : 1);
+        return;
+    }
+
+    const delta = dir === "up" || dir === "left" ? -1 : dir === "down" || dir === "right" ? 1 : 0;
+    if (delta === 0) return;
+
+    const nextIdx = _focusIndex + delta;
+    _setFocusIndex(nextIdx);
+    if (_focusContext === "title") _updateMenuSelection(_focusIndex);
+}
+
+function _onGamepadConfirm({ shiftHeld } = { shiftHeld: false }) {
+    if (_gamepadController?.isCapturing?.()) return;
+
+    _ensureFocusContext();
+    if (!_focusables.length) return;
+
+    const focused = _focusables[_focusIndex];
+    focused?.activate?.({ shiftHeld: !!shiftHeld });
+
+    // Activation might change screens/modals; force rebuild next navigation.
+    _focusContext = null;
+    _focusables = [];
+    _focusIndex = 0;
+    _clearFocusHighlight();
+}
+
+function _onGamepadBack({ shiftHeld } = { shiftHeld: false }) {
+    if (_gamepadController?.isCapturing?.()) return;
+
+    const ctx = _getCurrentFocusContext();
+    if (!ctx) return;
+
+    if (ctx === "settings") btnSettingsBack?.click();
+    else if (ctx === "tile-settings") btnTileSettingsBack?.click();
+    else if (ctx === "custom-tile-editor") document.getElementById("btn-custom-tile-back")?.click();
+    else if (ctx === "confirm-modal") confirmModalNoBtn?.click();
+    else if (ctx === "gamepad-modal") _closeGamepadSettingsModal();
+    else if (ctx === "editor-ui") btnBackTitle?.click();
+    else if (ctx === "play-overlay") btnBackEditor?.click();
+    // "title" does not have a back action.
+
+    _focusContext = null;
+    _focusables = [];
+    _focusIndex = 0;
+    _clearFocusHighlight();
+}
+
+function _onEditorUIModeChanged(active) {
+    _editorUIModeActive = !!active;
+    setEditorUIModeActive?.(_editorUIModeActive);
+    _focusContext = null;
+    _focusables = [];
+    _focusIndex = 0;
+    _clearFocusHighlight();
+    if (_editorUIModeActive) _ensureFocusContext();
+}
+
 // ── Init ──────────────────────────────────────────────────────────────
 
 async function init() {
@@ -563,6 +1236,29 @@ async function init() {
     btnSettingsReset.addEventListener("click", () => {
         saveSettings({});
         buildSettingsUI();
+        if (_gamepadSettingsModalOpen) _refreshGamepadSettingsModalControls();
+    });
+
+    if (btnGamepadSettings) btnGamepadSettings.addEventListener("click", () => _openGamepadSettingsModal());
+    if (btnGamepadSettingsBack) btnGamepadSettingsBack.addEventListener("click", () => _closeGamepadSettingsModal());
+
+    gpModalGamepadEnabledCheckbox?.addEventListener("change", () => {
+        const checked = !!gpModalGamepadEnabledCheckbox.checked;
+        if (gpModalGamepadValueEl) gpModalGamepadValueEl.textContent = checked ? "ON" : "OFF";
+        if (gpModalDeadzoneSlider) gpModalDeadzoneSlider.disabled = !checked;
+
+        const stored = loadSettings();
+        stored.gamepad_enabled = checked;
+        saveSettings(stored);
+    });
+
+    gpModalDeadzoneSlider?.addEventListener("input", () => {
+        const v = parseFloat(gpModalDeadzoneSlider.value);
+        if (gpModalDeadzoneValueEl) gpModalDeadzoneValueEl.textContent = (Number.isFinite(v) ? v : 0.25).toFixed(2);
+
+        const stored = loadSettings();
+        stored.gamepad_deadzone = Number.isFinite(v) ? v : 0.25;
+        saveSettings(stored);
     });
 
     btnTileEditor.addEventListener("click", (e) => {
@@ -752,6 +1448,51 @@ async function init() {
 
     // Global menu keyboard for title screen
     window.addEventListener("keydown", (ev) => {
+        if (isConfirmModalOpen() && ev.code === "Escape") {
+            confirmModalNoBtn?.click();
+            return;
+        }
+        if (_gamepadSettingsModalOpen && ev.code === "Escape") {
+            _closeGamepadSettingsModal();
+            return;
+        }
+
+        // Construction/editor: allow keyboard "Select" to enter side-panel navigation,
+        // and arrow keys to move focus between buttons/map items.
+        if (currentScreen === "editor") {
+            if (ev.code === "Tab") {
+                ev.preventDefault();
+                _onEditorUIModeChanged(!_editorUIModeActive);
+                return;
+            }
+
+            if (_editorUIModeActive) {
+                const dir = ev.code === "ArrowUp" ? "up"
+                    : ev.code === "ArrowDown" ? "down"
+                        : ev.code === "ArrowLeft" ? "left"
+                            : ev.code === "ArrowRight" ? "right"
+                                : null;
+
+                if (dir) {
+                    ev.preventDefault();
+                    _onGamepadNavigate(dir);
+                    return;
+                }
+
+                if (ev.code === "Enter" || ev.code === "Space") {
+                    ev.preventDefault();
+                    _onGamepadConfirm({ shiftHeld: false });
+                    return;
+                }
+
+                if (ev.code === "Escape") {
+                    ev.preventDefault();
+                    _onEditorUIModeChanged(false);
+                    return;
+                }
+            }
+        }
+
         if (currentScreen === "title") {
             if (ev.code === "ArrowUp") _updateMenuSelection(Math.max(0, selectedMenuIndex - 1));
             if (ev.code === "ArrowDown") _updateMenuSelection(Math.min(1, selectedMenuIndex + 1));
@@ -774,6 +1515,29 @@ async function init() {
 
     _updateMenuSelection(0);
 
+    // Start global gamepad driving (poll -> interpret -> inject UI/gameplay actions).
+    _gamepadController.startControl({
+        getScreen: () => currentScreen,
+        isConfirmModalOpen: () => isConfirmModalOpen(),
+        onNavigate: (dir) => _onGamepadNavigate(dir),
+        onConfirm: (ctx) => _onGamepadConfirm(ctx),
+        onBack: (ctx) => _onGamepadBack(ctx),
+        onEditorUIModeChanged: (active) => _onEditorUIModeChanged(active),
+        onStopGame: () => {
+            if (currentScreen !== "play") return;
+            gameRenderer.stopGame();
+            switchScreen("editor");
+        },
+        onToggleMute: () => {
+            import("./audio.js").then(({ audioManager }) => {
+                const muted = audioManager.toggleMuted();
+                const stored = loadSettings();
+                stored.mute_audio = muted;
+                saveSettings(stored);
+            });
+        },
+    });
+
     // Let editor finish loading without blocking title interactions.
     await editorInitPromise;
 }
@@ -794,6 +1558,15 @@ function switchScreen(screen) {
     const wasInSettings = currentScreen === "settings" || currentScreen === "tile-settings";
     const wasOnTileSettings = currentScreen === "tile-settings";
     if (wasOnTileSettings && screen !== "tile-settings") _stopTilePreviewLoop();
+
+    // If a modal is open, it only applies to the settings screen.
+    if (_gamepadSettingsModalOpen && screen !== "settings") _closeGamepadSettingsModal();
+
+    // If we're leaving the construction/editor screen, always exit editor UI mode.
+    if (currentScreen === "editor" && _editorUIModeActive && screen !== "editor") {
+        _onEditorUIModeChanged(false);
+    }
+
     currentScreen = screen;
 
     titleScreen.classList.toggle("active", screen === "title");

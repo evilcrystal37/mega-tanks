@@ -40,6 +40,7 @@
         <!-- Dynamically populated by app.js -->
       </div>
       <button id="btn-tile-editor" class="nes-btn nes-btn-purple" style="width:100%;margin-top:4px;">▦ TILE EDITOR</button>
+      <button id="btn-gamepad-settings" class="nes-btn nes-btn-cyan" style="width:100%;margin-top:4px;">GAMEPAD SETTINGS</button>
       <div class="settings-btn-row">
         <button id="btn-settings-reset" class="nes-btn nes-btn-red">RESET</button>
         <button id="btn-settings-back" class="nes-btn nes-btn-gold">← BACK</button>
@@ -284,6 +285,64 @@
       <span>[X/C] FIRE</span>
       <span>[M] MUTE</span>
       <span>[ESC] STOP</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ GAMEPAD SETTINGS MODAL ══════════════════════ -->
+  <div id="gamepad-settings-modal-overlay" class="gamepad-modal-overlay">
+    <div class="settings-inner gamepad-modal-inner">
+      <div class="settings-header">GAMEPAD SETTINGS</div>
+      <div id="gamepad-settings-controller-name" class="gamepad-modal-controller-name">NONE DETECTED</div>
+
+      <div class="settings-grid" id="gamepad-settings-modal-grid">
+        <div class="settings-section-title">GAMEPAD</div>
+
+        <div class="settings-row">
+          <div class="settings-row-header">
+            <span class="settings-label">GAMEPAD</span>
+            <span class="settings-value" id="gp-modal-gamepad-value">OFF</span>
+          </div>
+          <input type="checkbox" id="gp-modal-gamepad-enabled" class="nes-checkbox" />
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-row-header">
+            <span class="settings-label">DEADZONE</span>
+            <span class="settings-value" id="gp-modal-deadzone-value">0.25</span>
+          </div>
+          <input
+            type="range"
+            id="gp-modal-deadzone"
+            class="nes-slider"
+            min="0.05"
+            max="0.75"
+            step="0.05"
+          />
+        </div>
+
+        <div class="settings-section-title" style="margin-top:10px;">REMAP</div>
+        <div id="gamepad-remap-container" class="gamepad-remap-container">
+          <div style="font-size:7px;color:var(--nes-gray);letter-spacing:1px;line-height:1.8;">
+            REMAPPING UI WILL APPEAR HERE
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-btn-row" style="margin-top:6px;">
+        <button id="btn-gamepad-settings-back" class="nes-btn nes-btn-gold">← BACK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ CONFIRM MODAL ═════════════════════════════════ -->
+  <div id="confirm-modal-overlay" class="gamepad-modal-overlay">
+    <div class="settings-inner gamepad-modal-inner" style="gap:12px;">
+      <div class="settings-header">CONFIRM</div>
+      <div id="confirm-modal-message" class="gamepad-modal-controller-name">ARE YOU SURE?</div>
+      <div class="settings-btn-row" style="margin-top:2px;">
+        <button id="confirm-modal-yes" class="nes-btn nes-btn-gold" style="width:auto; padding:12px 24px;">YES</button>
+        <button id="confirm-modal-no" class="nes-btn nes-btn-red" style="width:auto; padding:12px 24px;">NO</button>
+      </div>
     </div>
   </div>
 
