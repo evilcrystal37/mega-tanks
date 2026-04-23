@@ -9,3 +9,4 @@ Pillow>=10.0.0
 numpy>=1.26.0
 opencv-python>=4.9.0
 scikit-image>=0.22.0
+python-multipart
