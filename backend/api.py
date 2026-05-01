@@ -194,8 +194,8 @@ def upload_custom_tile(
             json.dump(existing_tiles, f, indent=2)
             
         # Re-register tiles
-        from .tile_registry import load_custom_tiles
-        load_custom_tiles()
+        from .tile_registry import reload_custom_tiles_from_disk
+        reload_custom_tiles_from_disk()
         
         return {"success": True, "id": tile_id}
         
@@ -236,11 +236,11 @@ def delete_custom_tile(tile_id: int):
                 image_path.unlink()
             
         # Re-register tiles
-        from .tile_registry import load_custom_tiles, TILE_REGISTRY
+        from .tile_registry import reload_custom_tiles_from_disk, TILE_REGISTRY
         # We need to remove it from the runtime registry too
         if tile_id in TILE_REGISTRY:
             del TILE_REGISTRY[tile_id]
-        load_custom_tiles()
+        reload_custom_tiles_from_disk()
         
         return {"success": True}
         

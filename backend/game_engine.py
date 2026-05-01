@@ -35,18 +35,12 @@ from .tile_registry import (
     CHICK_BOX,
     CHICK_BOX_IDS,
     CHICK_PAD,
-    CONVEYOR_DOWN,
-    CONVEYOR_IDS,
-    CONVEYOR_LEFT,
-    CONVEYOR_RIGHT,
-    CONVEYOR_UP,
+    CONVEYOR_FLOAT_DELTA,
     EMPTY,
     GOLDEN_FRAME,
     GLASS,
     GLASS_CRACK1,
     GLASS_CRACK2,
-    ICE,
-    LAVA,
     MEGAGUN_BOX,
     MEGAGUN_BOX_IDS,
     MEGAGUN_PAD,
@@ -60,7 +54,6 @@ from .tile_registry import (
     RAINBOW_BOX,
     RAINBOW_BOX_IDS,
     RAINBOW_PAD,
-    RAMP,
     STEEL,
     SUN_BOX,
     SUN_BOX_IDS,
@@ -78,10 +71,9 @@ from .tile_registry import (
     ZZZ_PAD, ZZZ_BOX_IDS,
     OCTOPUS_PAD, OCTOPUS_BOX_IDS,
     LETTER_BOX_IDS,
-    LETTER_PAD_IDS,
-    LETTER_EFFECT_MAP,
     get_tile,
 )
+from .tile_floor_effects import apply_contact_hazard_conveyor, apply_pad_pickups
 
 # Tick interval — ~60 FPS
 TICK_INTERVAL = 1 / 60
@@ -428,138 +420,8 @@ class GameEngine:
             r, c = int(tank.row), int(tank.col)
             if 0 <= r < GRID_HEIGHT and 0 <= c < GRID_WIDTH:
                 tid = self.grid[r][c]
-                # Lava check
-                if tid == LAVA:
-                    tank.lava_ticks += 1
-                    if tank.lava_ticks == 1:
-                        self.events.append({"type": "sound", "sound": "fire"})
-                        
-                    if tank.lava_ticks > 120:
-                        tank.hp = 0
-                        tank.alive = False
-                        self._add_explosion(tank.row, tank.col)
-                        if not tank.is_player:
-                            self.events.append({"type": "sound", "sound": "enemy-explosion"})
-                            self.score += 100 * (list(ENEMY_TYPES).index(tank.tank_type) + 1)
-                            self.enemies_remaining -= 1
-                        else:
-                            self.events.append({"type": "sound", "sound": "player-explosion"})
-                            self.player_lives -= 1
-                            self._player_respawn_timer = 180
-                else:
-                    tank.lava_ticks = 0
-                    
-                # Ice check (skating sound when moving)
-                if tid == ICE and tank.speed > 0 and self.tick_count % 30 == 0 and tank.is_player:
-                    self.events.append({"type": "sound", "sound": "ice"})
-                    
-                # Ramp check
-                if tid == RAMP and tank.airborne_ticks <= 0:
-                    tank.airborne_ticks = 45
-                    self.events.append({"type": "sound", "sound": "unknown-3"}) # Jump sound
-                    
-                # Conveyor check
-                if tid in CONVEYOR_IDS:
-                    conv_speed = 0.02
-                    cdr, cdc = 0.0, 0.0
-                    if tid == CONVEYOR_UP:
-                        cdr = -conv_speed
-                    elif tid == CONVEYOR_DOWN:
-                        cdr = conv_speed
-                    elif tid == CONVEYOR_LEFT:
-                        cdc = -conv_speed
-                    elif tid == CONVEYOR_RIGHT:
-                        cdc = conv_speed
-                    
-                    new_row = tank.row + cdr
-                    new_col = tank.col + cdc
-                    if self._can_move_to(new_row, new_col, tank):
-                        tank.row = max(TANK_HALF, min(float(GRID_HEIGHT) - TANK_HALF, new_row))
-                        tank.col = max(TANK_HALF, min(float(GRID_WIDTH) - TANK_HALF, new_col))
-
-                # Buffs
-                if tid == RAINBOW_PAD:
-                    # Rainbow: 30s base (first pickup) + 10s per additional pickup
-                    bonus = 600 if tank.rainbow_ticks > 0 else 1800
-                    tank.rainbow_ticks = max(tank.rainbow_ticks, 0) + bonus
-                    for gr, gc in self._find_box_group(r, c, RAINBOW_PAD, RAINBOW_PAD):
-                        self.grid[gr][gc] = EMPTY
-                    self.events.append({"type": "sound", "sound": "powerup-pickup"})
-                elif tid == CHICK_PAD:
-                    # Chick collected by driving over it
-                    for gr, gc in self._find_box_group(r, c, CHICK_PAD, CHICK_PAD):
-                        self.grid[gr][gc] = EMPTY
-                    self.events.append({"type": "sound", "sound": "powerup-pickup"})
-                    self._spawn_companion_for(tank)
-                elif tid == MUSHROOM_PAD:
-                    # Mushroom collected
-                    tank.mushroom_ticks = max(tank.mushroom_ticks, 0) + 600
-                    for gr, gc in self._find_box_group(r, c, MUSHROOM_PAD, MUSHROOM_PAD):
-                        self.grid[gr][gc] = EMPTY
-                    self.events.append({"type": "sound", "sound": "powerup-pickup"})
-                    self._clear_area_for_tank(tank, force=True)
-                    # Position correction: if tank can't fit in 2x size, nudge it to a clear spot
-                    if not self._can_move_to(tank.row, tank.col, tank):
-                        freed = False
-                        for dr, dc in [(-0.5, 0), (0.5, 0), (0, -0.5), (0, 0.5),
-                                       (-1.0, 0), (1.0, 0), (0, -1.0), (0, 1.0)]:
-                            nr2, nc2 = tank.row + dr, tank.col + dc
-                            if self._can_move_to(nr2, nc2, tank):
-                                tank.row = nr2
-                                tank.col = nc2
-                                freed = True
-                                break
-                        if not freed:
-                            tank.mushroom_ticks = max(0, tank.mushroom_ticks - 600)
-                elif tid == MONEY_PAD:
-                    # Money collected
-                    if tank.is_player:
-                        if self.golden_eagle_ticks == 0:
-                            self._build_golden_arch()
-                        self.golden_eagle_ticks = max(self.golden_eagle_ticks, 0) + 1800  # 30s, stackable
-                        for gr, gc in self._find_box_group(r, c, MONEY_PAD, MONEY_PAD):
-                            self.grid[gr][gc] = EMPTY
-                        self._money_tile_pos = None
-                        self._money_spawn_timer = random.randint(1200, 2400)
-                        self.events.append({"type": "sound", "sound": "powerup-pickup"})
-                elif tid == SUN_PAD:
-                    if tank.is_player:
-                        for gr, gc in self._find_box_group(r, c, SUN_PAD, SUN_PAD):
-                            self.grid[gr][gc] = EMPTY
-                        self._sun_tile_pos = None
-                        self._sun_spawn_timer = random.randint(1800, 3000)
-                        target = self._find_nearest_skeleton_or_worm(tank.row, tank.col)
-                        if target:
-                            tr, tc = target
-                            missile = Bullet(
-                                owner_id=tank.id,
-                                is_player=True,
-                                row=tank.row,
-                                col=tank.col,
-                                direction=tank.direction,
-                                speed=MISSILE_SPEED,
-                                power=99,
-                                ttl=600,
-                                is_missile=True,
-                                target_row=tr,
-                                target_col=tc,
-                            )
-                            self.bullets[missile.id] = missile
-                        self.events.append({"type": "sound", "sound": "powerup-pickup"})
-                elif tid == MEGAGUN_PAD:
-                    if tank.is_player:
-                        tank.mega_gun_ticks = 1800  # 30 seconds
-                        for gr, gc in self._find_box_group(r, c, MEGAGUN_PAD, MEGAGUN_PAD):
-                            self.grid[gr][gc] = EMPTY
-                        self._megagun_tile_pos = None
-                        self._megagun_spawn_timer = random.randint(1800, 3000)
-                        self.events.append({"type": "sound", "sound": "powerup-pickup"})
-
-                # Letter powerup pad pickup
-                elif tid in LETTER_PAD_IDS:
-                    effect = LETTER_EFFECT_MAP.get(tid)
-                    if effect and tank.is_player:
-                        self._trigger_letter_effect(effect, r, c)
+                apply_contact_hazard_conveyor(self, tank, r, c, tid)
+                apply_pad_pickups(self, tank, r, c, tid)
 
             # Apply ticking buffs
             if tank.rainbow_ticks > 0:
@@ -2341,16 +2203,11 @@ class GameEngine:
             r_int, c_int = int(bullet.row), int(bullet.col)
             if 0 <= r_int < GRID_HEIGHT and 0 <= c_int < GRID_WIDTH:
                 tid = self.grid[r_int][c_int]
-                if tid in CONVEYOR_IDS:
-                    conv_speed = 0.02
-                    if tid == CONVEYOR_UP:
-                        bullet.row -= conv_speed
-                    elif tid == CONVEYOR_DOWN:
-                        bullet.row += conv_speed
-                    elif tid == CONVEYOR_LEFT:
-                        bullet.col -= conv_speed
-                    elif tid == CONVEYOR_RIGHT:
-                        bullet.col += conv_speed
+                conv = CONVEYOR_FLOAT_DELTA.get(tid)
+                if conv:
+                    cdr, cdc = conv
+                    bullet.row += cdr
+                    bullet.col += cdc
 
             if not bullet.alive:
                 self._on_bullet_gone(bullet)
@@ -2695,9 +2552,9 @@ class GameEngine:
             hr, hc = head["row"], head["col"]
             if 0 <= hr < GRID_HEIGHT and 0 <= hc < GRID_WIDTH:
                 ctid = self.grid[hr][hc]
-                conveyor_map = {CONVEYOR_UP: "up", CONVEYOR_DOWN: "down", CONVEYOR_LEFT: "left", CONVEYOR_RIGHT: "right"}
-                if ctid in conveyor_map:
-                    self.sandworm["direction"] = conveyor_map[ctid]
+                cdir = get_tile(ctid).conveyor
+                if cdir:
+                    self.sandworm["direction"] = cdir
 
             # ── AI: steer toward nearest tank ~70% of the time ───────────────
             if self.sandworm["dir_timer"] <= 0:
@@ -2775,7 +2632,7 @@ class GameEngine:
                 parts[i]["type"] = "body"
 
             # Lava damages sandworm (1 hp per step onto lava)
-            if 0 <= next_r < GRID_HEIGHT and 0 <= next_c < GRID_WIDTH and self.grid[next_r][next_c] == LAVA:
+            if 0 <= next_r < GRID_HEIGHT and 0 <= next_c < GRID_WIDTH and get_tile(self.grid[next_r][next_c]).contact_damage:
                 self.sandworm["hp"] = max(0, self.sandworm.get("hp", 5) - 1)
                 self._add_explosion(next_r + 0.5, next_c + 0.5)
                 self.events.append({"type": "sound", "sound": "fire"})

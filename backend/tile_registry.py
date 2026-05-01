@@ -1,14 +1,14 @@
 """
 tile_registry.py — Extensible tile type definitions for Battle Tanks.
 
-To add a new tile type:
-1. Add an entry to TILE_REGISTRY with a unique integer ID.
+To add a new built-in tile type:
+1. Add an entry in backend/tile_definitions/builtin.py (stable integer ID).
 2. The tile will automatically appear in the map editor palette and
-   have its properties respected by the game engine.
+   have its properties respected by the game engine (after metadata in _enrich_builtin_tiles if needed).
 """
 
-from dataclasses import dataclass
-from typing import Dict
+from dataclasses import dataclass, replace
+from typing import Any, Dict
 
 
 @dataclass(frozen=True)
@@ -37,560 +37,36 @@ class TileType:
     walkable: bool = False # If True, tanks (and other tile-solid units) pass through; bullets still use bullet_solid
     mobile: bool = False # If True, this tile roams the grid (AI moves its footprint like skeletons); custom tiles only in practice
     creature_affinity: str | None = None # None = not a creature hazard; "ally" = hurts enemies; "enemy" = hurts player-side
+    # --- Engine / editor metadata (data-driven dispatch; see tile_catalog.refresh_derived_tile_catalog)
+    contact_damage: bool = False
+    contact_damage_ticks_to_kill: int | None = None
+    contact_damage_sound: str | None = None
+    conveyor: str | None = None  # "up" | "down" | "left" | "right"
+    ramp_airborne_ticks: int | None = None
+    ramp_sound: str | None = None
+    ice_skate_sound: bool = False
+    pickup_effect: str | None = None  # letter powerups and scripted pickups sharing an effect id
+    editor_placeable: bool = True
+    spawn_timing: str = "manual"  # "manual" | "timed" | "never"
+    random_gen: dict[str, Any] | None = None  # e.g. {"weight": 8} or {"type": "turret_2x2"}
+    settings_toggle_key: str | None = None
+    display_glyph: str | None = None  # optional UI glyph for editor / client
 
 
 # TileType property categories (docs / sprite editor): Identity (id,name,label,color);
 # Collision (tank_solid,bullet_solid,walkable,mobile); Visibility (transparent); Destruction
 # (destructible,partial_destructible,damage_target_id,jaw_proof); Terrain (slippery,speed_mult);
 # Hazards (is_base,is_explosive,explosion_radius); Layout (non_repeating,extra_big,lossless_sprite); Editor (is_system,is_box).
-# Engine parity: game_engine also branches on specific tile IDs (LAVA, RAMP, CONVEYOR_IDS, pads,
-# letter effects). Custom ids >=100 only get TileType-driven behavior unless refactored.
+# Engine: prefer TileType metadata + tile_catalog derived sets (contact_damage, conveyor, etc.).
 # Creature tiles: creature_affinity "enemy" damages player/turret/companion on contact; "ally" damages enemies / Evil Jaw.
 
 
 # ---------------------------------------------------------------------------
-# Registry — single source of truth for all tile types
+# Registry — built-ins live in tile_definitions.builtin (stable IDs); custom entries merge at runtime.
 # ---------------------------------------------------------------------------
-TILE_REGISTRY: Dict[int, TileType] = {
-    0: TileType(
-        id=0, name="empty", label="Empty",
-        color="#1a1a2e",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-    ),
-    1: TileType(
-        id=1, name="brick", label="Brick",
-        color="#c0522a",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-    ),
-    2: TileType(
-        id=2, name="steel", label="Steel",
-        color="#7a8fa6",
-        tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
-    ),
-    3: TileType(
-        id=3, name="water", label="Water",
-        color="#1565c0",
-        tank_solid=True, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-    ),
-    4: TileType(
-        id=4, name="forest", label="Forest",
-        color="#2e7d32",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=True, slippery=False,
-    ),
-    5: TileType(
-        id=5, name="ice", label="Ice",
-        color="#80deea",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=True,
-    ),
-    6: TileType(
-        id=6, name="base", label="Base",
-        color="#f5c518",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        is_base=True,
-    ),
-    7: TileType(
-        id=7, name="lava", label="Lava",
-        color="#ff3300",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-    ),
-    8: TileType(
-        id=8, name="conveyor_up", label="Conv Up",
-        color="#333333",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-    ),
-    9: TileType(
-        id=9, name="conveyor_down", label="Conv Down",
-        color="#333333",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-    ),
-    10: TileType(
-        id=10, name="conveyor_left", label="Conv Left",
-        color="#333333",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-    ),
-    11: TileType(
-        id=11, name="conveyor_right", label="Conv Right",
-        color="#333333",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-    ),
-    12: TileType(
-        id=12, name="mud", label="Sand",
-        color="#c8a84b",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        speed_mult=0.25,
-    ),
-    13: TileType(
-        id=13, name="ramp", label="Ramp",
-        color="#ff9800",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-    ),
-    14: TileType(
-        id=14, name="tnt", label="TNT",
-        color="#d32f2f",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        is_explosive=True,
-        non_repeating=True,
-    ),
-    15: TileType(
-        id=15, name="glass", label="Glass",
-        color="#aaddff",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-    ),
-    16: TileType(
-        id=16, name="glass_crack1", label="Glass C1",
-        color="#aaddff",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-    ),
-    17: TileType(
-        id=17, name="glass_crack2", label="Glass C2",
-        color="#aaddff",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-    ),
-    18: TileType(
-        id=18, name="sunflower", label="Sunflower",
-        color="#ffeb3b",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=True, slippery=False,
-        non_repeating=True,
-    ),
-    20: TileType(
-        id=20, name="sandworm_head", label="Worm H",
-        color="#8b4513",
-        tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    21: TileType(
-        id=21, name="sandworm_body", label="Worm B",
-        color="#a0522d",
-        tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    23: TileType(
-        id=23, name="rainbow_pad", label="Rainbow Pad",
-        color="#aaddff",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    24: TileType(
-        id=24, name="grow_mushroom", label="Mushroom",
-        color="#8bc34a",
-        tank_solid=False, bullet_solid=False, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    25: TileType(
-        id=25, name="auto_turret", label="Auto Turret",
-        color="#607d8b",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    26: TileType(
-        id=26, name="mushroom_crack2", label="Mush C2",
-        color="#8bc34a",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    27: TileType(
-        id=27, name="mushroom_crack1", label="Mush C1",
-        color="#8bc34a",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    28: TileType(
-        id=28, name="mushroom_box", label="Mush Box",
-        color="#8bc34a",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    29: TileType(
-        id=29, name="rainbow_crack2", label="Rainbow C2",
-        color="#ff69b4",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    30: TileType(
-        id=30, name="rainbow_crack1", label="Rainbow C1",
-        color="#ff69b4",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    31: TileType(
-        id=31, name="rainbow_box", label="Rainbow Box",
-        color="#ff69b4",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    32: TileType(
-        id=32, name="chick_pad", label="Chick",
-        color="#ffee58",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    33: TileType(
-        id=33, name="chick_crack2", label="Chick C2",
-        color="#ffee58",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    34: TileType(
-        id=34, name="chick_crack1", label="Chick C1",
-        color="#ffee58",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    35: TileType(
-        id=35, name="chick_box", label="Chick Box",
-        color="#ffee58",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    36: TileType(
-        id=36, name="special_tnt", label="Special TNT",
-        color="#d32f2f",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        is_explosive=True,
-        non_repeating=True,
-        explosion_radius=7,
-    ),
-    37: TileType(
-        id=37, name="money_pad", label="Money",
-        color="#FFD700",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    # NOTE: Money, Sun, and Mega Gun tiles (IDs 37-50) are timed powerups that spawn
-    # dynamically during gameplay. They should NEVER be manually placeable in the map editor.
-    38: TileType(
-        id=38, name="money_crack2", label="Money C2",
-        color="#FFD700",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    39: TileType(
-        id=39, name="money_crack1", label="Money C1",
-        color="#FFD700",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    40: TileType(
-        id=40, name="money_box", label="Money Box",
-        color="#FFD700",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    41: TileType(
-        id=41, name="golden_frame", label="Gold Frame",
-        color="#DAA520",
-        tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    42: TileType(
-        id=42, name="bone_frame", label="Bone Frame",
-        color="#F5F5DC",
-        tank_solid=True, bullet_solid=True, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    43: TileType(
-        id=43, name="sun_pad", label="Sun",
-        color="#FF8C00",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    44: TileType(
-        id=44, name="sun_crack2", label="Sun C2",
-        color="#FF8C00",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    45: TileType(
-        id=45, name="sun_crack1", label="Sun C1",
-        color="#FF8C00",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    46: TileType(
-        id=46, name="sun_box", label="Sun Box",
-        color="#FF8C00",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    47: TileType(
-        id=47, name="megagun_pad", label="Mega Gun",
-        color="#4A4A4A",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    48: TileType(
-        id=48, name="megagun_crack2", label="MegaG C2",
-        color="#4A4A4A",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    49: TileType(
-        id=49, name="megagun_crack1", label="MegaG C1",
-        color="#4A4A4A",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    50: TileType(
-        id=50, name="megagun_box", label="MegaG Box",
-        color="#4A4A4A",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    # -----------------------------------------------------------------------
-    # Letter Powerups (timed spawn only) — IDs 51–90
-    # Each letter has 4 tiles: pad, crack2, crack1, box
-    # -----------------------------------------------------------------------
-    # B — Banana (Big Banana impact)
-    51: TileType(
-        id=51, name="banana_pad", label="Banana Pad",
-        color="#FFE135",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    52: TileType(
-        id=52, name="banana_crack2", label="Banana C2",
-        color="#FFE135",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    53: TileType(
-        id=53, name="banana_crack1", label="Banana C1",
-        color="#FFE135",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    54: TileType(
-        id=54, name="banana_box", label="Banana Box",
-        color="#FFE135",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    # C — Clone
-    55: TileType(
-        id=55, name="clone_pad", label="Clone Pad",
-        color="#00CED1",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    56: TileType(
-        id=56, name="clone_crack2", label="Clone C2",
-        color="#00CED1",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    57: TileType(
-        id=57, name="clone_crack1", label="Clone C1",
-        color="#00CED1",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    58: TileType(
-        id=58, name="clone_box", label="Clone Box",
-        color="#00CED1",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    # F — Fireworks
-    59: TileType(
-        id=59, name="fireworks_pad", label="Fireworks Pad",
-        color="#FF1493",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    60: TileType(
-        id=60, name="fireworks_crack2", label="Fireworks C2",
-        color="#FF1493",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    61: TileType(
-        id=61, name="fireworks_crack1", label="Fireworks C1",
-        color="#FF1493",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    62: TileType(
-        id=62, name="fireworks_box", label="Fireworks Box",
-        color="#FF1493",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    # J — Jump
-    63: TileType(
-        id=63, name="jump_pad", label="Jump Pad",
-        color="#9370DB",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    64: TileType(
-        id=64, name="jump_crack2", label="Jump C2",
-        color="#9370DB",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    65: TileType(
-        id=65, name="jump_crack1", label="Jump C1",
-        color="#9370DB",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    66: TileType(
-        id=66, name="jump_box", label="Jump Box",
-        color="#9370DB",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    # R — Rainbow World
-    67: TileType(
-        id=67, name="rainbow_world_pad", label="Rainbow Pad",
-        color="#FF69B4",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    68: TileType(
-        id=68, name="rainbow_world_crack2", label="Rainbow C2",
-        color="#FF69B4",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    69: TileType(
-        id=69, name="rainbow_world_crack1", label="Rainbow C1",
-        color="#FF69B4",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    70: TileType(
-        id=70, name="rainbow_world_box", label="Rainbow Box",
-        color="#FF69B4",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    # A — Airplane
-    71: TileType(
-        id=71, name="airplane_pad", label="Airplane Pad",
-        color="#87CEEB",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    72: TileType(
-        id=72, name="airplane_crack2", label="Airplane C2",
-        color="#87CEEB",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    73: TileType(
-        id=73, name="airplane_crack1", label="Airplane C1",
-        color="#87CEEB",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    74: TileType(
-        id=74, name="airplane_box", label="Airplane Box",
-        color="#87CEEB",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    # M — Magnet
-    75: TileType(
-        id=75, name="magnet_pad", label="Magnet Pad",
-        color="#DC143C",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    76: TileType(
-        id=76, name="magnet_crack2", label="Magnet C2",
-        color="#DC143C",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    77: TileType(
-        id=77, name="magnet_crack1", label="Magnet C1",
-        color="#DC143C",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    78: TileType(
-        id=78, name="magnet_box", label="Magnet Box",
-        color="#DC143C",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    # S — Sahur (tum-tum runner)
-    79: TileType(
-        id=79, name="sahur_pad", label="Sahur Pad",
-        color="#FF8C00",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    80: TileType(
-        id=80, name="sahur_crack2", label="Sahur C2",
-        color="#FF8C00",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    81: TileType(
-        id=81, name="sahur_crack1", label="Sahur C1",
-        color="#FF8C00",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    82: TileType(
-        id=82, name="sahur_box", label="Sahur Box",
-        color="#FF8C00",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    # Z — Zzz (sleep)
-    83: TileType(
-        id=83, name="zzz_pad", label="Zzz Pad",
-        color="#9932CC",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    84: TileType(
-        id=84, name="zzz_crack2", label="Zzz C2",
-        color="#9932CC",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    85: TileType(
-        id=85, name="zzz_crack1", label="Zzz C1",
-        color="#9932CC",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    86: TileType(
-        id=86, name="zzz_box", label="Zzz Box",
-        color="#9932CC",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    # O — Octopus (base shield)
-    87: TileType(
-        id=87, name="octopus_pad", label="Octopus Pad",
-        color="#20B2AA",
-        tank_solid=False, bullet_solid=False, destructible=False, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    88: TileType(
-        id=88, name="octopus_crack2", label="Octopus C2",
-        color="#20B2AA",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    89: TileType(
-        id=89, name="octopus_crack1", label="Octopus C1",
-        color="#20B2AA",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-    90: TileType(
-        id=90, name="octopus_box", label="Octopus Box",
-        color="#20B2AA",
-        tank_solid=True, bullet_solid=True, destructible=True, transparent=False, slippery=False,
-        non_repeating=True,
-    ),
-}
+from .tile_definitions.builtin import build_builtin_registry
+
+TILE_REGISTRY: Dict[int, TileType] = build_builtin_registry()
 
 # ---------------------------------------------------------------------------
 # Tile ID constants and groups
@@ -688,33 +164,6 @@ OCTOPUS_CRACK1 = 89
 OCTOPUS_BOX = 90
 
 
-# Runtime / special tiles that must not appear in the construction palette (mirrors frontend TIMED + NON_MANUAL sets).
-CONSTRUCTION_EXCLUDED_TILE_IDS: frozenset[int] = frozenset(
-    {
-        BASE,
-        GLASS_CRACK1,
-        GLASS_CRACK2,
-        SANDWORM_HEAD,
-        SANDWORM_BODY,
-        RAINBOW_PAD,
-        MUSHROOM_PAD,
-        MUSHROOM_CRACK2,
-        MUSHROOM_CRACK1,
-        RAINBOW_CRACK2,
-        RAINBOW_CRACK1,
-        CHICK_PAD,
-        CHICK_CRACK2,
-        CHICK_CRACK1,
-        GOLDEN_FRAME,
-        BONE_FRAME,
-    }
-    | set(range(MONEY_PAD, MONEY_BOX + 1))
-    | set(range(SUN_PAD, SUN_BOX + 1))
-    | set(range(MEGAGUN_PAD, MEGAGUN_BOX + 1))
-    | set(range(BANANA_PAD, OCTOPUS_BOX + 1))
-)
-
-CONVEYOR_IDS = {CONVEYOR_UP, CONVEYOR_DOWN, CONVEYOR_LEFT, CONVEYOR_RIGHT}
 GLASS_IDS = {GLASS, GLASS_CRACK1, GLASS_CRACK2}
 MUSHROOM_BOX_IDS = {MUSHROOM_CRACK2, MUSHROOM_CRACK1, MUSHROOM_BOX}
 RAINBOW_BOX_IDS = {RAINBOW_CRACK2, RAINBOW_CRACK1, RAINBOW_BOX}
@@ -722,8 +171,6 @@ CHICK_BOX_IDS = {CHICK_CRACK2, CHICK_CRACK1, CHICK_BOX}
 MONEY_BOX_IDS = {MONEY_CRACK2, MONEY_CRACK1, MONEY_BOX}
 SUN_BOX_IDS = {SUN_CRACK2, SUN_CRACK1, SUN_BOX}
 MEGAGUN_BOX_IDS = {MEGAGUN_CRACK2, MEGAGUN_CRACK1, MEGAGUN_BOX}
-BIG_BOX_IDS = MUSHROOM_BOX_IDS | RAINBOW_BOX_IDS | CHICK_BOX_IDS | MONEY_BOX_IDS | SUN_BOX_IDS | MEGAGUN_BOX_IDS
-BIG_BOX_OR_PAD_IDS = BIG_BOX_IDS | {MUSHROOM_PAD, RAINBOW_PAD, CHICK_PAD, MONEY_PAD, SUN_PAD, MEGAGUN_PAD}
 
 GLASS_BOX_GROUPS = {
     "mushroom": (MUSHROOM_BOX, MUSHROOM_CRACK1, MUSHROOM_CRACK2, MUSHROOM_PAD),
@@ -756,36 +203,127 @@ SAHUR_BOX_IDS = {SAHUR_CRACK2, SAHUR_CRACK1, SAHUR_BOX}
 ZZZ_BOX_IDS = {ZZZ_CRACK2, ZZZ_CRACK1, ZZZ_BOX}
 OCTOPUS_BOX_IDS = {OCTOPUS_CRACK2, OCTOPUS_CRACK1, OCTOPUS_BOX}
 
-# All letter box IDs (for BIG_BOX_IDS union)
 LETTER_BOX_IDS = (
     BANANA_BOX_IDS | CLONE_BOX_IDS | FIREWORKS_BOX_IDS | JUMP_BOX_IDS |
     RAINBOW_WORLD_BOX_IDS | AIRPLANE_BOX_IDS | MAGNET_BOX_IDS | SAHUR_BOX_IDS |
     ZZZ_BOX_IDS | OCTOPUS_BOX_IDS
 )
 
-# All letter pad IDs
-LETTER_PAD_IDS = {
-    BANANA_PAD, CLONE_PAD, FIREWORKS_PAD, JUMP_PAD, RAINBOW_WORLD_PAD,
-    AIRPLANE_PAD, MAGNET_PAD, SAHUR_PAD, ZZZ_PAD, OCTOPUS_PAD
-}
+BIG_BOX_IDS = (
+    MUSHROOM_BOX_IDS | RAINBOW_BOX_IDS | CHICK_BOX_IDS | MONEY_BOX_IDS | SUN_BOX_IDS |
+    MEGAGUN_BOX_IDS | LETTER_BOX_IDS
+)
 
-# Update BIG_BOX_IDS to include letter boxes
-BIG_BOX_IDS = MUSHROOM_BOX_IDS | RAINBOW_BOX_IDS | CHICK_BOX_IDS | MONEY_BOX_IDS | SUN_BOX_IDS | MEGAGUN_BOX_IDS | LETTER_BOX_IDS
-BIG_BOX_OR_PAD_IDS = BIG_BOX_IDS | {MUSHROOM_PAD, RAINBOW_PAD, CHICK_PAD, MONEY_PAD, SUN_PAD, MEGAGUN_PAD} | LETTER_PAD_IDS
+# Populated by _finalize_tile_catalog() after custom tiles load.
+LETTER_PAD_IDS: frozenset[int] = frozenset()
+CONVEYOR_IDS: frozenset[int] = frozenset()
+LETTER_EFFECT_MAP: Dict[int, str] = {}
+CONTACT_DAMAGE_TILE_IDS: frozenset[int] = frozenset()
+CONVEYOR_FLOAT_DELTA: Dict[int, tuple[float, float]] = {}
+BIG_BOX_OR_PAD_IDS: frozenset[int] = frozenset()
+def _enrich_builtin_tiles() -> None:
+    """Apply engine/editor metadata to built-in registry entries (stable numeric IDs)."""
+    _toggle_rows: list[tuple[int, str, dict[str, Any] | None]] = [
+        (BRICK, "tile_brick", {"weight": 8}),
+        (STEEL, "tile_steel", {"weight": 3}),
+        (WATER, "tile_water", {"weight": 2}),
+        (FOREST, "tile_forest", {"weight": 3}),
+        (ICE, "tile_ice", {"weight": 2}),
+        (LAVA, "tile_lava", {"weight": 1}),
+        (CONVEYOR_UP, "tile_conveyor", {"weight": 1}),
+        (CONVEYOR_DOWN, "tile_conveyor", {"weight": 1}),
+        (CONVEYOR_LEFT, "tile_conveyor", {"weight": 1}),
+        (CONVEYOR_RIGHT, "tile_conveyor", {"weight": 1}),
+        (MUD, "tile_mud", {"weight": 1}),
+        (RAMP, "tile_ramp", {"weight": 1}),
+        (TNT, "tile_tnt", {"weight": 1}),
+        (GLASS, "tile_glass", {"weight": 1}),
+        (SUNFLOWER, "tile_sunflower", {"weight": 1}),
+        (AUTO_TURRET, "tile_turret", {"type": "turret_2x2"}),
+        (MUSHROOM_BOX, "tile_mushroom_box", {"type": "powerup_2x2"}),
+        (RAINBOW_BOX, "tile_rainbow_box", {"type": "powerup_2x2"}),
+        (CHICK_BOX, "tile_chick_box", {"type": "powerup_2x2"}),
+        (SPECIAL_TNT, "tile_spec_tnt", {"weight": 1}),
+        (MONEY_PAD, "tile_money", None),
+        (SUN_PAD, "tile_sun", None),
+        (MEGAGUN_PAD, "tile_megagun", None),
+        (BANANA_PAD, "tile_banana", None),
+        (CLONE_PAD, "tile_clone", None),
+        (FIREWORKS_PAD, "tile_fireworks", None),
+        (JUMP_PAD, "tile_jump", None),
+        (RAINBOW_WORLD_PAD, "tile_rainbow_world", None),
+        (AIRPLANE_PAD, "tile_airplane", None),
+        (MAGNET_PAD, "tile_magnet", None),
+        (SAHUR_PAD, "tile_sahur", None),
+        (ZZZ_PAD, "tile_zzz", None),
+        (OCTOPUS_PAD, "tile_octopus", None),
+    ]
+    for tid, key, gen in _toggle_rows:
+        if tid not in TILE_REGISTRY:
+            continue
+        TILE_REGISTRY[tid] = replace(
+            TILE_REGISTRY[tid],
+            settings_toggle_key=key,
+            random_gen=gen,
+        )
 
-# Map tile ID to letter effect name (for pickup handling)
-LETTER_EFFECT_MAP: Dict[int, str] = {
-    BANANA_PAD: "banana", BANANA_CRACK2: "banana", BANANA_CRACK1: "banana", BANANA_BOX: "banana",
-    CLONE_PAD: "clone", CLONE_CRACK2: "clone", CLONE_CRACK1: "clone", CLONE_BOX: "clone",
-    FIREWORKS_PAD: "fireworks", FIREWORKS_CRACK2: "fireworks", FIREWORKS_CRACK1: "fireworks", FIREWORKS_BOX: "fireworks",
-    JUMP_PAD: "jump", JUMP_CRACK2: "jump", JUMP_CRACK1: "jump", JUMP_BOX: "jump",
-    RAINBOW_WORLD_PAD: "rainbow_world", RAINBOW_WORLD_CRACK2: "rainbow_world", RAINBOW_WORLD_CRACK1: "rainbow_world", RAINBOW_WORLD_BOX: "rainbow_world",
-    AIRPLANE_PAD: "airplane", AIRPLANE_CRACK2: "airplane", AIRPLANE_CRACK1: "airplane", AIRPLANE_BOX: "airplane",
-    MAGNET_PAD: "magnet", MAGNET_CRACK2: "magnet", MAGNET_CRACK1: "magnet", MAGNET_BOX: "magnet",
-    SAHUR_PAD: "sahur", SAHUR_CRACK2: "sahur", SAHUR_CRACK1: "sahur", SAHUR_BOX: "sahur",
-    ZZZ_PAD: "zzz", ZZZ_CRACK2: "zzz", ZZZ_CRACK1: "zzz", ZZZ_BOX: "zzz",
-    OCTOPUS_PAD: "octopus", OCTOPUS_CRACK2: "octopus", OCTOPUS_CRACK1: "octopus", OCTOPUS_BOX: "octopus",
-}
+    TILE_REGISTRY[LAVA] = replace(
+        TILE_REGISTRY[LAVA],
+        contact_damage=True,
+        contact_damage_ticks_to_kill=120,
+        contact_damage_sound="fire",
+    )
+    TILE_REGISTRY[ICE] = replace(TILE_REGISTRY[ICE], ice_skate_sound=True)
+    TILE_REGISTRY[RAMP] = replace(
+        TILE_REGISTRY[RAMP],
+        ramp_airborne_ticks=45,
+        ramp_sound="unknown-3",
+    )
+    TILE_REGISTRY[CONVEYOR_UP] = replace(TILE_REGISTRY[CONVEYOR_UP], conveyor="up")
+    TILE_REGISTRY[CONVEYOR_DOWN] = replace(TILE_REGISTRY[CONVEYOR_DOWN], conveyor="down")
+    TILE_REGISTRY[CONVEYOR_LEFT] = replace(TILE_REGISTRY[CONVEYOR_LEFT], conveyor="left")
+    TILE_REGISTRY[CONVEYOR_RIGHT] = replace(TILE_REGISTRY[CONVEYOR_RIGHT], conveyor="right")
+
+    _letter_effects = (
+        "banana", "clone", "fireworks", "jump", "rainbow_world",
+        "airplane", "magnet", "sahur", "zzz", "octopus",
+    )
+    _glyphs = ("B", "C", "F", "J", "R", "A", "M", "S", "Z", "O")
+    for tid in range(BANANA_PAD, OCTOPUS_BOX + 1):
+        if tid not in TILE_REGISTRY:
+            continue
+        fam = (tid - BANANA_PAD) // 4
+        TILE_REGISTRY[tid] = replace(
+            TILE_REGISTRY[tid],
+            pickup_effect=_letter_effects[fam],
+            display_glyph=_glyphs[fam],
+            editor_placeable=False,
+            spawn_timing="timed",
+        )
+
+    for tid in range(MONEY_PAD, MEGAGUN_BOX + 1):
+        if tid not in TILE_REGISTRY:
+            continue
+        TILE_REGISTRY[tid] = replace(
+            TILE_REGISTRY[tid],
+            editor_placeable=False,
+            spawn_timing="timed",
+        )
+
+    _not_placeable = (
+        BASE, GLASS_CRACK1, GLASS_CRACK2, SANDWORM_HEAD, SANDWORM_BODY,
+        RAINBOW_PAD, MUSHROOM_PAD, MUSHROOM_CRACK2, MUSHROOM_CRACK1,
+        RAINBOW_CRACK2, RAINBOW_CRACK1, CHICK_PAD, CHICK_CRACK2, CHICK_CRACK1,
+        GOLDEN_FRAME, BONE_FRAME,
+    )
+    for tid in _not_placeable:
+        if tid not in TILE_REGISTRY:
+            continue
+        TILE_REGISTRY[tid] = replace(
+            TILE_REGISTRY[tid],
+            editor_placeable=False,
+            spawn_timing="never",
+        )
 
 
 def tile_type_to_dict(t: TileType) -> dict:
@@ -807,7 +345,7 @@ def tile_type_to_dict(t: TileType) -> dict:
         "extra_big": t.extra_big,
         "lossless_sprite": t.lossless_sprite,
         "explosion_radius": t.explosion_radius,
-        "is_system": t.is_system or t.id in CONSTRUCTION_EXCLUDED_TILE_IDS,
+        "is_system": t.is_system or not t.editor_placeable,
         "is_box": t.is_box,
         "partial_destructible": t.partial_destructible,
         "damage_target_id": t.damage_target_id,
@@ -815,7 +353,43 @@ def tile_type_to_dict(t: TileType) -> dict:
         "walkable": t.walkable,
         "mobile": t.mobile,
         "creature_affinity": t.creature_affinity,
+        "contact_damage": t.contact_damage,
+        "contact_damage_ticks_to_kill": t.contact_damage_ticks_to_kill,
+        "contact_damage_sound": t.contact_damage_sound,
+        "conveyor": t.conveyor,
+        "ramp_airborne_ticks": t.ramp_airborne_ticks,
+        "ramp_sound": t.ramp_sound,
+        "ice_skate_sound": t.ice_skate_sound,
+        "pickup_effect": t.pickup_effect,
+        "editor_placeable": t.editor_placeable,
+        "spawn_timing": t.spawn_timing,
+        "random_gen": t.random_gen,
+        "settings_toggle_key": t.settings_toggle_key,
+        "display_glyph": t.display_glyph,
     }
+
+
+def _finalize_tile_catalog() -> None:
+    """Wire derived catalog + unions that depend on LETTER_PAD_IDS."""
+    global LETTER_PAD_IDS, CONVEYOR_IDS, LETTER_EFFECT_MAP, CONTACT_DAMAGE_TILE_IDS
+    global CONVEYOR_FLOAT_DELTA, BIG_BOX_OR_PAD_IDS
+
+    from .tile_catalog import refresh_derived_tile_catalog
+
+    refresh_derived_tile_catalog()
+    from . import tile_catalog as _tc
+
+    LETTER_PAD_IDS = _tc.LETTER_PAD_IDS
+    CONVEYOR_IDS = _tc.CONVEYOR_IDS
+    LETTER_EFFECT_MAP = _tc.LETTER_EFFECT_MAP
+    CONTACT_DAMAGE_TILE_IDS = _tc.CONTACT_DAMAGE_TILE_IDS
+    CONVEYOR_FLOAT_DELTA = _tc.CONVEYOR_FLOAT_DELTA
+
+    BIG_BOX_OR_PAD_IDS = frozenset(
+        BIG_BOX_IDS
+        | {MUSHROOM_PAD, RAINBOW_PAD, CHICK_PAD, MONEY_PAD, SUN_PAD, MEGAGUN_PAD}
+        | set(LETTER_PAD_IDS)
+    )
 
 
 def get_tile(tile_id: int) -> TileType:
@@ -881,10 +455,32 @@ def load_custom_tiles() -> None:
                         "walkable": tile_data.get("walkable", False),
                         "mobile": tile_data.get("mobile", False),
                         "creature_affinity": _normalize_creature_affinity(tile_data.get("creature_affinity")),
+                        "contact_damage": tile_data.get("contact_damage", False),
+                        "contact_damage_ticks_to_kill": tile_data.get("contact_damage_ticks_to_kill"),
+                        "contact_damage_sound": tile_data.get("contact_damage_sound"),
+                        "conveyor": tile_data.get("conveyor"),
+                        "ramp_airborne_ticks": tile_data.get("ramp_airborne_ticks"),
+                        "ramp_sound": tile_data.get("ramp_sound"),
+                        "ice_skate_sound": tile_data.get("ice_skate_sound", False),
+                        "pickup_effect": tile_data.get("pickup_effect"),
+                        "editor_placeable": tile_data.get("editor_placeable", True),
+                        "spawn_timing": tile_data.get("spawn_timing", "manual"),
+                        "random_gen": tile_data.get("random_gen"),
+                        "settings_toggle_key": tile_data.get("settings_toggle_key"),
+                        "display_glyph": tile_data.get("display_glyph"),
                     }
                     TILE_REGISTRY[tile_id] = TileType(**kwargs)
         except Exception as e:
             print(f"Failed to load custom tiles: {e}")
 
+
+def reload_custom_tiles_from_disk() -> None:
+    """Reload maps/custom_tiles.json and rebuild derived catalog (API use)."""
+    load_custom_tiles()
+    _finalize_tile_catalog()
+
+
+_enrich_builtin_tiles()
 load_custom_tiles()
+_finalize_tile_catalog()
 

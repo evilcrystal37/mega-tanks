@@ -4,8 +4,10 @@
 
 import { Api } from "./api.js";
 import { SpriteAtlas } from "./spriteAtlas.js";
-import { CELL, GRID_H, GRID_W, TILE_GROUPS, TILE_TOGGLES, TIMED_TILE_IDS, NON_MANUAL_TILE_IDS } from "./constants.js";
+import { CELL, GRID_H, GRID_W, TILE_GROUPS, TILE_TOGGLES, syncTileCatalogFromApiTiles } from "./constants.js";
 import { drawSandTile, drawLavaTile, drawCustomTile, customTileSpanFromTile, resolveCustomMultiOrigin } from "./tileRenderer.js";
+import { drawTileCell } from "./tileDrawing.js";
+import { createEditorTileDrawBag } from "./tileDrawingCache.js";
 import { computeViewport, getCellZoom, resizeCanvas } from "./viewport.js";
 import { showConfirm } from "./confirmModal.js";
 
@@ -25,6 +27,16 @@ let lastPlacedRow = -1;
 let heldKeys = new Set();
 
 const _atlas = new SpriteAtlas();
+const _editorTileCache = new Map();
+let _editorDrawBag = null;
+
+function _getEditorDrawBag() {
+    if (!_editorDrawBag) {
+        _editorDrawBag = createEditorTileDrawBag(_atlas, _editorTileCache, () => tiles, () => grid);
+    }
+    return _editorDrawBag;
+}
+
 let _cell = CELL;
 
 // DOM
@@ -119,23 +131,25 @@ async function _loadTiles() {
         tiles = await Api.getTiles();
     } catch {
         tiles = [
-            { id: 0, label: "EMPTY", color: "#000000" },
-            { id: 1, label: "BRICK", color: "#a83800" },
-            { id: 2, label: "STEEL", color: "#808080" },
-            { id: 3, label: "WATER", color: "#1060d0" },
-            { id: 4, label: "FOREST", color: "#287800" },
-            { id: 5, label: "ICE", color: "#88d8f8" },
-            { id: 6, label: "BASE", color: "#f8d818" },
+            { id: 0, label: "EMPTY", color: "#000000", editor_placeable: true, is_system: false, settings_toggle_key: null, spawn_timing: "manual" },
+            { id: 1, label: "BRICK", color: "#a83800", editor_placeable: true, is_system: false, settings_toggle_key: "tile_brick", spawn_timing: "manual", random_gen: { weight: 8 } },
+            { id: 2, label: "STEEL", color: "#808080", editor_placeable: true, is_system: false, settings_toggle_key: "tile_steel", spawn_timing: "manual", random_gen: { weight: 3 } },
+            { id: 3, label: "WATER", color: "#1060d0", editor_placeable: true, is_system: false, settings_toggle_key: "tile_water", spawn_timing: "manual", random_gen: { weight: 2 } },
+            { id: 4, label: "FOREST", color: "#287800", editor_placeable: true, is_system: false, settings_toggle_key: "tile_forest", spawn_timing: "manual", random_gen: { weight: 3 } },
+            { id: 5, label: "ICE", color: "#88d8f8", editor_placeable: true, is_system: false, settings_toggle_key: "tile_ice", spawn_timing: "manual", random_gen: { weight: 2 } },
+            { id: 6, label: "BASE", color: "#f8d818", editor_placeable: false, is_system: true, settings_toggle_key: null, spawn_timing: "never" },
         ];
     }
-    // Block timed tiles (spawn dynamically) and other non-manual tiles
-    const blockedTiles = new Set([...TIMED_TILE_IDS, ...NON_MANUAL_TILE_IDS]);
+    const blockedTiles = new Set(tiles.filter((t) => t.editor_placeable === false).map((t) => t.id));
     const disabled = _getDisabledTileIds();
     tileIds = tiles.filter(t => !blockedTiles.has(t.id) && !disabled.has(t.id) && !t.is_system).map(t => t.id);
     // Put empty last so Brick remains the default when opening the editor
     tileIds.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
     tileIndex = 0;
     _snapCursorToBrush();
+    _editorDrawBag = null;
+    _editorTileCache.clear();
+    syncTileCatalogFromApiTiles(tiles);
 }
 
 function _currentTileId() {
@@ -287,475 +301,8 @@ function _render(ts = 0) {
 function _drawSandTile(ctx, dx, dy, ds) { drawSandTile(ctx, dx, dy, ds); }
 
 function _drawTileDetail(ctx, tid, x, y, sz) {
-    if (tid === 0) return; // Empty tile — nothing to draw
-    const dx = Math.round(x);
-    const dy = Math.round(y);
-    const ds = Math.round(sz);
-
-    const gridC = Math.round(x / sz);
-    const gridR = Math.round(y / sz);
-
-    if (tid >= 100) {
-        const tObj = tiles.find(t => t.id === tid);
-        const span = customTileSpanFromTile(tObj);
-
-        ctx.save();
-        if (span > 1) {
-            const { minR, minC } = resolveCustomMultiOrigin(grid, gridR, gridC, tid, span, GRID_H, GRID_W);
-            const centerX = (minC + span / 2) * ds;
-            const centerY = (minR + span / 2) * ds;
-            ctx.beginPath();
-            ctx.rect(dx, dy, ds, ds);
-            ctx.clip();
-            ctx.translate(centerX, centerY);
-            drawCustomTile(ctx, -(span / 2) * ds, -(span / 2) * ds, ds, tid, span);
-        } else {
-            drawCustomTile(ctx, dx, dy, ds, tid, 1);
-        }
-        ctx.restore();
-        return;
-    }
-
-    if (tid === 6 || tid === 14 || tid === 18 || tid === 25 || (tid >= 26 && tid <= 31) || (tid >= 33 && tid <= 36) || tid === 32) {
-        ctx.save();
-        const centerX = dx + (gridC % 2 === 0 ? ds : 0);
-        const centerY = dy + (gridR % 2 === 0 ? ds : 0);
-        ctx.beginPath();
-        // Base occupies 1 cell but draws 2×2 — use 2×2 clip so full sprite is visible
-        if (tid === 6) {
-            ctx.rect(centerX - ds, centerY - ds, ds * 2, ds * 2);
-        } else {
-            ctx.rect(dx, dy, ds, ds);
-        }
-        ctx.clip();
-        ctx.translate(centerX, centerY);
-
-        if (tid === 18) {
-            // Big Sunflower Emoji — always full brightness (no darkening)
-            ctx.globalAlpha = 1.0;
-            ctx.font = `${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("🌼", 0, ds * 0.1); // Slight offset for better centering
-        } else if (tid === 14) {
-            // Minecraft TNT look
-            // Background red
-            ctx.fillStyle = "#d32f2f";
-            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-            
-            // White band across the middle
-            ctx.fillStyle = "#eeeeee";
-            ctx.fillRect(-ds, -ds * 0.3, ds * 2, ds * 0.6);
-            
-            // TNT text in black on the white band
-            ctx.fillStyle = "#000000";
-            ctx.font = `bold ${Math.max(6, ds * 0.5)}px monospace`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("TNT", 0, 0);
-            
-            // Some subtle vertical lines to look like dynamite sticks
-            ctx.strokeStyle = "rgba(0,0,0,0.3)";
-            ctx.lineWidth = ds * 0.05;
-            ctx.beginPath();
-            for (let i = -0.6; i <= 0.6; i += 0.4) {
-                ctx.moveTo(ds * i, -ds);
-                ctx.lineTo(ds * i, -ds * 0.3);
-                ctx.moveTo(ds * i, ds * 0.3);
-                ctx.lineTo(ds * i, ds);
-            }
-            ctx.stroke();
-        } else if (tid === 36) {
-            // Special TNT — same as TNT but with a neon yellow pulsing glow border
-            ctx.fillStyle = "#d32f2f";
-            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-            ctx.fillStyle = "#eeeeee";
-            ctx.fillRect(-ds, -ds * 0.3, ds * 2, ds * 0.6);
-            ctx.fillStyle = "#000000";
-            ctx.font = `bold ${Math.max(6, ds * 0.5)}px monospace`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("TNT", 0, 0);
-            ctx.strokeStyle = "rgba(0,0,0,0.3)";
-            ctx.lineWidth = ds * 0.05;
-            ctx.beginPath();
-            for (let i = -0.6; i <= 0.6; i += 0.4) {
-                ctx.moveTo(ds * i, -ds);
-                ctx.lineTo(ds * i, -ds * 0.3);
-                ctx.moveTo(ds * i, ds * 0.3);
-                ctx.lineTo(ds * i, ds);
-            }
-            ctx.stroke();
-            // Neon yellow highlight border — layered strokes instead of shadowBlur (much cheaper)
-            const glowAlpha = 0.7 + Math.sin(Date.now() / 200) * 0.3;
-            for (const [lw, a] of [[ds*0.30, 0.18], [ds*0.22, 0.35], [ds*0.14, 0.65], [ds*0.08, glowAlpha]]) {
-                ctx.strokeStyle = `rgba(255, 224, 0, ${a})`;
-                ctx.lineWidth = lw;
-                ctx.strokeRect(-ds + lw/2, -ds + lw/2, ds*2 - lw, ds*2 - lw);
-            }
-        } else if (tid === 25) {
-            // Turret placement preview — sandbag ring + dome + prominent barrel (pointing up)
-            // Sandbag ring
-            const bagR = ds * 0.42;
-            for (let i = 0; i < 8; i++) {
-                const a = (i / 8) * Math.PI * 2;
-                const bx = Math.cos(a) * bagR;
-                const by = Math.sin(a) * bagR;
-                const bg = ctx.createRadialGradient(bx - ds*0.03, by - ds*0.03, ds*0.01, bx, by, ds*0.1);
-                bg.addColorStop(0, "#a89060"); bg.addColorStop(1, "#6b5030");
-                ctx.fillStyle = bg;
-                ctx.beginPath();
-                ctx.ellipse(bx, by, ds * 0.11, ds * 0.08, a, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            // Base plate
-            const bpg = ctx.createRadialGradient(-ds*0.06, -ds*0.06, ds*0.04, 0, 0, ds*0.33);
-            bpg.addColorStop(0, "#95918e"); bpg.addColorStop(0.7, "#706c69"); bpg.addColorStop(1, "#524f4c");
-            ctx.fillStyle = bpg;
-            ctx.beginPath(); ctx.arc(0, 0, ds * 0.33, 0, Math.PI * 2); ctx.fill();
-            // Dome
-            const dg = ctx.createRadialGradient(-ds*0.07, -ds*0.07, ds*0.02, 0, 0, ds*0.24);
-            dg.addColorStop(0, "#90a4ae"); dg.addColorStop(0.5, "#546e7a"); dg.addColorStop(1, "#2e4050");
-            ctx.fillStyle = dg;
-            ctx.beginPath(); ctx.arc(0, ds*0.04, ds * 0.23, 0, Math.PI * 2); ctx.fill();
-            // Sensor slit
-            const scanP = (Math.sin(Date.now() / 120) + 1) * 0.5;
-            ctx.fillStyle = "rgba(0,0,0,0.75)";
-            ctx.fillRect(-ds*0.13, ds*0.02, ds*0.26, ds*0.05);
-            ctx.fillStyle = `rgba(0,220,255,${0.4 + scanP * 0.4})`;
-            ctx.fillRect(-ds*0.13, ds*0.02, ds*0.26, ds*0.05);
-            // Mantlet
-            ctx.fillStyle = "#455a64";
-            ctx.fillRect(-ds*0.11, -ds*0.18, ds*0.22, ds*0.17);
-            // Barrel (prominent, points up)
-            const barrelGrad = ctx.createLinearGradient(-ds*0.07, 0, ds*0.07, 0);
-            barrelGrad.addColorStop(0, "#1c2b33"); barrelGrad.addColorStop(0.35, "#607d8b");
-            barrelGrad.addColorStop(0.65, "#455a64"); barrelGrad.addColorStop(1, "#1c2b33");
-            ctx.fillStyle = barrelGrad;
-            ctx.fillRect(-ds*0.07, -ds*0.95, ds*0.14, ds*0.77);
-            // Highlight stripe on barrel
-            ctx.fillStyle = "rgba(160,200,220,0.45)";
-            ctx.fillRect(-ds*0.05, -ds*0.95, ds*0.025, ds*0.77);
-            // Muzzle brake
-            ctx.fillStyle = "#263238";
-            ctx.fillRect(-ds*0.11, -ds*1.0, ds*0.22, ds*0.08);
-            ctx.fillStyle = "#000";
-            ctx.fillRect(-ds*0.085, -ds*0.98, ds*0.04, ds*0.055);
-            ctx.fillRect( ds*0.045, -ds*0.98, ds*0.04, ds*0.055);
-        } else if (tid >= 26 && tid <= 28) {
-            // Mushroom glass box — big-type, centered at (0,0)
-            ctx.fillStyle = "rgba(139, 195, 74, 0.15)";
-            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-            const cycle = (Date.now() % 2000) / 2000;
-            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
-            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
-            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
-            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.4)");
-            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
-            ctx.fillStyle = shineGrad;
-            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-            ctx.strokeStyle = "rgba(139, 195, 74, 0.7)";
-            ctx.lineWidth = 1;
-            ctx.strokeRect(-ds + 0.5, -ds + 0.5, ds * 2 - 1, ds * 2 - 1);
-            ctx.strokeStyle = "rgba(255,255,255,0.5)";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds); ctx.stroke();
-            ctx.strokeStyle = "rgba(0,0,0,0.15)";
-            ctx.beginPath();
-            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
-            const bounce = Math.sin(Date.now() / 200) * ds * 0.05;
-            ctx.fillStyle = "#f5f5dc";
-            ctx.fillRect(-ds * 0.12, ds * 0.1 + bounce, ds * 0.24, ds * 0.5);
-            ctx.fillStyle = "#e52521";
-            ctx.beginPath();
-            ctx.arc(0, ds * 0.1 + bounce, ds * 0.5, Math.PI, 0);
-            ctx.fill();
-            ctx.fillStyle = "#ffffff";
-            ctx.beginPath(); ctx.arc(-ds * 0.25, -ds * 0.1 + bounce, ds * 0.1, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(ds * 0.25, -ds * 0.1 + bounce, ds * 0.1, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(0, -ds * 0.35 + bounce, ds * 0.12, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = "rgba(255,255,255,0.9)";
-            ctx.lineWidth = 2.5;
-            ctx.beginPath();
-            if (tid <= 27) {
-                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
-            }
-            if (tid === 26) {
-                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
-                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
-            }
-            ctx.stroke();
-        } else if (tid >= 29 && tid <= 31) {
-            // Rainbow glass box — big-type, centered at (0,0)
-            ctx.fillStyle = "rgba(255, 105, 180, 0.15)";
-            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-            const cycle = ((Date.now() + 500) % 2000) / 2000;
-            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
-            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
-            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
-            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.4)");
-            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
-            ctx.fillStyle = shineGrad;
-            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-            ctx.strokeStyle = "rgba(255, 105, 180, 0.7)";
-            ctx.lineWidth = 1;
-            ctx.strokeRect(-ds + 0.5, -ds + 0.5, ds * 2 - 1, ds * 2 - 1);
-            ctx.strokeStyle = "rgba(255,255,255,0.5)";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds); ctx.stroke();
-            ctx.strokeStyle = "rgba(0,0,0,0.15)";
-            ctx.beginPath();
-            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
-            ctx.font = `${ds * 1.2}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("🌈", 0, ds * 0.05);
-            ctx.strokeStyle = "rgba(255,255,255,0.9)";
-            ctx.lineWidth = 2.5;
-            ctx.beginPath();
-            if (tid <= 30) {
-                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
-            }
-            if (tid === 29) {
-                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
-                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
-            }
-            ctx.stroke();
-        } else if (tid >= 33 && tid <= 35) {
-            // Chick glass box — yellow, big-type centered at (0,0)
-            ctx.fillStyle = "rgba(255, 238, 88, 0.15)";
-            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-            const cycle = ((Date.now() + 1000) % 2000) / 2000;
-            const shineX = (cycle * 2.5 - 0.75) * ds * 2 - ds;
-            const shineGrad = ctx.createLinearGradient(shineX, -ds, shineX + ds * 0.6, ds);
-            shineGrad.addColorStop(0, "rgba(255,255,255,0)");
-            shineGrad.addColorStop(0.5, "rgba(255,255,255,0.4)");
-            shineGrad.addColorStop(1, "rgba(255,255,255,0)");
-            ctx.fillStyle = shineGrad;
-            ctx.fillRect(-ds, -ds, ds * 2, ds * 2);
-            ctx.strokeStyle = "rgba(255, 238, 88, 0.7)";
-            ctx.lineWidth = 1;
-            ctx.strokeRect(-ds + 0.5, -ds + 0.5, ds * 2 - 1, ds * 2 - 1);
-            ctx.strokeStyle = "rgba(255,255,255,0.5)";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(-ds, ds); ctx.lineTo(-ds, -ds); ctx.lineTo(ds, -ds); ctx.stroke();
-            ctx.strokeStyle = "rgba(0,0,0,0.15)";
-            ctx.beginPath();
-            ctx.moveTo(ds, -ds); ctx.lineTo(ds, ds); ctx.lineTo(-ds, ds); ctx.stroke();
-            ctx.font = `${ds * 1.2}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("🐥", 0, ds * 0.05);
-            ctx.strokeStyle = "rgba(255,255,255,0.9)";
-            ctx.lineWidth = 2.5;
-            ctx.beginPath();
-            if (tid <= 34) {
-                ctx.moveTo(-ds * 0.4, -ds); ctx.lineTo(0, 0); ctx.lineTo(ds, -ds * 0.4);
-            }
-            if (tid === 33) {
-                ctx.moveTo(0, 0); ctx.lineTo(ds * 0.7, ds * 0.7);
-                ctx.moveTo(-ds, ds * 0.3); ctx.lineTo(-ds * 0.2, 0);
-            }
-            ctx.stroke();
-        } else if (tid === 32) {
-            ctx.font = `${ds * 1.5}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText("🐥", 0, ds * 0.1);
-        } else if (tid === 6) {
-            // Base eagle — big-type (2×2)
-            _atlas.draw(ctx, "base.heart.alive", -ds, -ds, ds * 2, ds * 2);
-        }
-
-        ctx.restore();
-        return;
-    }
-
-    if (tid === 7) {
-        drawLavaTile(ctx, dx, dy, ds);
-        return;
-    }
-    if (tid === 37) {
-        ctx.font = `${ds * 0.8}px "Segoe UI Emoji", sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("💰", dx + ds / 2, dy + ds / 2);
-        return;
-    }
-    if (tid === 43) {
-        ctx.font = `${ds * 0.8}px "Segoe UI Emoji", sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("☀️", dx + ds / 2, dy + ds / 2);
-        return;
-    }
-    if (tid === 47) {
-        ctx.font = `${ds * 0.8}px "Segoe UI Emoji", sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("🔫", dx + ds / 2, dy + ds / 2);
-        return;
-    }
-
-    if (tid >= 8 && tid <= 11) {
-        ctx.fillStyle = "#333333";
-        ctx.fillRect(dx, dy, ds, ds);
-        ctx.fillStyle = "#aaaaaa";
-        ctx.font = `${Math.max(8, ds * 0.6)}px monospace`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        let arrow = "";
-        if (tid === 8) arrow = "↑";
-        else if (tid === 9) arrow = "↓";
-        else if (tid === 10) arrow = "←";
-        else if (tid === 11) arrow = "→";
-        
-        const offset = (Date.now() / 30) % ds;
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(dx, dy, ds, ds);
-        ctx.clip();
-        if (tid === 8) {
-            ctx.fillText(arrow, dx + ds / 2, dy + ds / 2 + ds * 0.05 - offset);
-            ctx.fillText(arrow, dx + ds / 2, dy + ds / 2 + ds * 0.05 - offset + ds);
-        } else if (tid === 9) {
-            ctx.fillText(arrow, dx + ds / 2, dy + ds / 2 + ds * 0.05 + offset);
-            ctx.fillText(arrow, dx + ds / 2, dy + ds / 2 + ds * 0.05 + offset - ds);
-        } else if (tid === 10) {
-            ctx.fillText(arrow, dx + ds / 2 - offset, dy + ds / 2 + ds * 0.05);
-            ctx.fillText(arrow, dx + ds / 2 - offset + ds, dy + ds / 2 + ds * 0.05);
-        } else if (tid === 11) {
-            ctx.fillText(arrow, dx + ds / 2 + offset, dy + ds / 2 + ds * 0.05);
-            ctx.fillText(arrow, dx + ds / 2 + offset - ds, dy + ds / 2 + ds * 0.05);
-        }
-        ctx.restore();
-        return;
-    }
-
-    if (tid === 1) {
-        // cattle-bity bricks are 16x16 sub-tiles; compose a full tile from 4 distinct quarters (no flip to avoid misalignment).
-        const half = Math.floor(ds / 2);
-        _atlas.draw(ctx, "terrain.brick.1", dx, dy, half, half);
-        _atlas.draw(ctx, "terrain.brick.2", dx + half, dy, ds - half, half);
-        _atlas.draw(ctx, "terrain.brick.2", dx, dy + half, half, ds - half);
-        _atlas.draw(ctx, "terrain.brick.1", dx + half, dy + half, ds - half, ds - half);
-        return;
-    }
-
-    if (tid === 12) {
-        _drawSandTile(ctx, dx, dy, ds);
-        return;
-    }
-
-    if (tid === 13) {
-        // Jumping tile / Spring
-        ctx.fillStyle = "#222222";
-        ctx.fillRect(dx, dy, ds, ds);
-
-        const bob = Math.sin(Date.now() / 150) * ds * 0.15;
-        
-        // Base plate
-        ctx.fillStyle = "#555555";
-        ctx.fillRect(dx + ds * 0.1, dy + ds * 0.8, ds * 0.8, ds * 0.15);
-        
-        // Spring coils
-        ctx.strokeStyle = "#aaaaaa";
-        ctx.lineWidth = ds * 0.12;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        
-        const startY = dy + ds * 0.8;
-        const endY = dy + ds * 0.3 + bob;
-        const coils = 3;
-        const step = (startY - endY) / coils;
-        
-        ctx.beginPath();
-        ctx.moveTo(dx + ds * 0.5, startY);
-        for (let i = 0; i < coils; i++) {
-            const y = startY - i * step;
-            const nextY = y - step;
-            if (i % 2 === 0) {
-                ctx.lineTo(dx + ds * 0.8, y - step * 0.5);
-                ctx.lineTo(dx + ds * 0.2, nextY);
-            } else {
-                ctx.lineTo(dx + ds * 0.2, y - step * 0.5);
-                ctx.lineTo(dx + ds * 0.8, nextY);
-            }
-        }
-        ctx.lineTo(dx + ds * 0.5, endY);
-        ctx.stroke();
-        
-        // Top platform
-        ctx.fillStyle = "#ff3333";
-        ctx.fillRect(dx + ds * 0.15, endY - ds * 0.15, ds * 0.7, ds * 0.15);
-        ctx.strokeStyle = "#cc0000";
-        ctx.lineWidth = ds * 0.05;
-        ctx.strokeRect(dx + ds * 0.15, endY - ds * 0.15, ds * 0.7, ds * 0.15);
-        return;
-    }
-
-
-    if (tid >= 15 && tid <= 17) {
-        // Glass
-        ctx.fillStyle = "rgba(170, 221, 255, 0.4)";
-        ctx.fillRect(dx, dy, ds, ds);
-        
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-        ctx.lineWidth = Math.max(1, ds * 0.05);
-        ctx.strokeRect(dx + 1, dy + 1, ds - 2, ds - 2);
-
-        // Highlight
-        ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-        ctx.beginPath();
-        ctx.moveTo(dx + ds * 0.1, dy + ds * 0.1);
-        ctx.lineTo(dx + ds * 0.4, dy + ds * 0.1);
-        ctx.lineTo(dx + ds * 0.1, dy + ds * 0.4);
-        ctx.fill();
-
-        // Cracks
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-        ctx.lineWidth = Math.max(1, ds * 0.04);
-        ctx.beginPath();
-        if (tid >= 16) {
-            // First crack
-            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
-            ctx.lineTo(dx + ds * 0.2, dy + ds * 0.2);
-            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
-            ctx.lineTo(dx + ds * 0.8, dy + ds * 0.3);
-            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
-            ctx.lineTo(dx + ds * 0.4, dy + ds * 0.8);
-        }
-        if (tid >= 17) {
-            // More cracks
-            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
-            ctx.lineTo(dx + ds * 0.9, dy + ds * 0.8);
-            ctx.moveTo(dx + ds * 0.5, dy + ds * 0.5);
-            ctx.lineTo(dx + ds * 0.1, dy + ds * 0.7);
-            ctx.moveTo(dx + ds * 0.2, dy + ds * 0.2);
-            ctx.lineTo(dx + ds * 0.4, dy + ds * 0.1);
-            ctx.moveTo(dx + ds * 0.4, dy + ds * 0.8);
-            ctx.lineTo(dx + ds * 0.6, dy + ds * 0.9);
-        }
-        ctx.stroke();
-        return;
-    }
-
-    let spriteId = null;
-    if (tid === 2) spriteId = "terrain.steel";
-    else if (tid === 3) spriteId = (Math.floor(Date.now() / 400) % 2 === 0) ? "terrain.water.1" : "terrain.water.2";
-    else if (tid === 4) spriteId = "terrain.jungle";
-    else if (tid === 5) spriteId = "terrain.ice";
-
-    if (spriteId && _atlas.draw(ctx, spriteId, dx, dy, ds, ds)) {
-        return;
-    }
-
-    const fallback = tiles.find(t => t.id === tid)?.color || "#333";
-    ctx.fillStyle = fallback;
-    ctx.fillRect(dx, dy, ds, ds);
+    if (tid === 0) return;
+    drawTileCell(ctx, _getEditorDrawBag(), tid, x, y, sz);
 }
 
 // ── Validation ────────────────────────────────────────────────────────
@@ -1362,7 +909,7 @@ export function renderTilePreview(ctx, tileId, canvasSize) {
 export function refreshTileFilter() {
     // Block timed tiles (spawn dynamically during gameplay) and other non-manual tiles.
     // Timed tiles must never be manually placeable in the editor - they have spawn timers and lifespans.
-    const blockedTiles = new Set([...TIMED_TILE_IDS, ...NON_MANUAL_TILE_IDS]);
+    const blockedTiles = new Set(tiles.filter((t) => t.editor_placeable === false).map((t) => t.id));
     const disabled = _getDisabledTileIds();
     tileIds = tiles.filter(t => !blockedTiles.has(t.id) && !disabled.has(t.id)).map(t => t.id);
     tileIds.sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from .game_engine import GameEngine
 
 from .map_model import GRID_WIDTH, GRID_HEIGHT
-from .tile_registry import LAVA, BONE_FRAME, BASE, GOLDEN_FRAME, get_tile
+from .tile_registry import BONE_FRAME, BASE, GOLDEN_FRAME, get_tile
 
 # Balance constants
 NORMAL_HP = 3
@@ -111,7 +111,7 @@ class SkeletonController:
             (r, c)
             for r in range(GRID_HEIGHT)
             for c in range(GRID_WIDTH)
-            if engine.grid[r][c] == LAVA
+            if get_tile(engine.grid[r][c]).contact_damage
         ]
         if not lava_tiles:
             return
@@ -233,7 +233,7 @@ class SkeletonController:
         for r in range(r1, r2):
             for c in range(c1, c2):
                 tid = engine.grid[r][c]
-                if ignore_lava and tid == LAVA:
+                if ignore_lava and get_tile(tid).contact_damage:
                     continue
                 tile = get_tile(tid)
                 if tile.tank_solid and not tile.walkable:

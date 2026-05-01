@@ -6,7 +6,7 @@
 
 import { initEditor, focusEditor, blurEditor, setEditorUIModeActive, refreshMapList, getCurrentMapName, resizeEditor, saveMapAs, launchWithFilteredGrid, refreshTileFilter, applyDisabledTilesToCurrentGrid, renderTilePreview } from "./editor.js";
 import { gameRenderer } from "./game.js";
-import { TILE_TOGGLES } from "./constants.js";
+import { TILE_TOGGLES, syncTileCatalogFromApiTiles } from "./constants.js";
 import { Api } from "./api.js";
 import { clearCustomTileCache } from "./tileRenderer.js";
 import { GamepadController, GAMEPAD_ACTIONS, formatGamepadMapping } from "./gamepadController.js";
@@ -557,6 +557,24 @@ function _fillSpriteFormFromTile(t, opts = {}) {
     document.getElementById("ct-color").value = col;
     document.getElementById("ct-color-hex").value = col;
 
+    const pct = document.getElementById("ct-preset");
+    if (pct) pct.value = "";
+    if (!fromStock && t.id >= 100) {
+        _ctBehaviorExtras = {
+            contact_damage: !!t.contact_damage,
+            contact_damage_ticks_to_kill: t.contact_damage_ticks_to_kill ?? null,
+            contact_damage_sound: t.contact_damage_sound ?? null,
+            conveyor: t.conveyor ?? null,
+            ramp_airborne_ticks: t.ramp_airborne_ticks ?? null,
+            ramp_sound: t.ramp_sound ?? null,
+            ice_skate_sound: !!t.ice_skate_sound,
+            editor_placeable: t.editor_placeable !== false,
+            spawn_timing: t.spawn_timing || "manual",
+        };
+    } else {
+        _ctBehaviorExtras = {};
+    }
+
     document.getElementById("ct-template").value = "";
     _ctUpdateExplosiveRow();
 
@@ -571,6 +589,98 @@ function _fillSpriteFormFromTile(t, opts = {}) {
     } else {
         updatePreview();
     }
+}
+
+function _applyCustomTilePreset(key) {
+    const setChk = (id, v) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = v;
+    };
+    _ctBehaviorExtras = {};
+    if (!key) return;
+
+    if (key === "solid") {
+        setChk("ct-tanksolid", true);
+        setChk("ct-bulletsolid", true);
+        setChk("ct-destructible", true);
+        setChk("ct-transparent", false);
+        setChk("ct-slippery", false);
+        setChk("ct-walkable", false);
+        setChk("ct-explosive", false);
+        _ctBehaviorExtras = {
+            contact_damage: false,
+            contact_damage_ticks_to_kill: null,
+            contact_damage_sound: null,
+            conveyor: null,
+            ramp_airborne_ticks: null,
+            ramp_sound: null,
+            ice_skate_sound: false,
+            editor_placeable: true,
+            spawn_timing: "manual",
+        };
+    } else if (key === "lava") {
+        setChk("ct-tanksolid", false);
+        setChk("ct-bulletsolid", false);
+        setChk("ct-destructible", false);
+        setChk("ct-slippery", false);
+        _ctBehaviorExtras = {
+            contact_damage: true,
+            contact_damage_ticks_to_kill: 120,
+            contact_damage_sound: "fire",
+            conveyor: null,
+            ramp_airborne_ticks: null,
+            ramp_sound: null,
+            ice_skate_sound: false,
+            editor_placeable: true,
+            spawn_timing: "manual",
+        };
+    } else if (key === "conveyor_right") {
+        setChk("ct-tanksolid", false);
+        setChk("ct-bulletsolid", false);
+        setChk("ct-destructible", false);
+        setChk("ct-slippery", false);
+        _ctBehaviorExtras = {
+            contact_damage: false,
+            contact_damage_ticks_to_kill: null,
+            contact_damage_sound: null,
+            conveyor: "right",
+            ramp_airborne_ticks: null,
+            ramp_sound: null,
+            ice_skate_sound: false,
+            editor_placeable: true,
+            spawn_timing: "manual",
+        };
+    } else if (key === "ice") {
+        setChk("ct-tanksolid", false);
+        setChk("ct-bulletsolid", false);
+        setChk("ct-destructible", false);
+        setChk("ct-slippery", true);
+        _ctBehaviorExtras = {
+            contact_damage: false,
+            conveyor: null,
+            ramp_airborne_ticks: null,
+            ramp_sound: null,
+            ice_skate_sound: true,
+            editor_placeable: true,
+            spawn_timing: "manual",
+        };
+    } else if (key === "ramp") {
+        setChk("ct-tanksolid", false);
+        setChk("ct-bulletsolid", false);
+        setChk("ct-destructible", false);
+        setChk("ct-slippery", false);
+        _ctBehaviorExtras = {
+            contact_damage: false,
+            conveyor: null,
+            ramp_airborne_ticks: 45,
+            ramp_sound: "unknown-3",
+            ice_skate_sound: false,
+            editor_placeable: true,
+            spawn_timing: "manual",
+        };
+    }
+    _ctUpdateExplosiveRow();
+    updatePreview();
 }
 
 function _openSpriteEditorFromStockTemplate(fullTile) {
@@ -670,8 +780,10 @@ async function buildTileSettingsUI() {
     _previewCtxs = [];
 
     let tilesById = new Map();
+    let tiles = [];
     try {
-        const tiles = await Api.getTiles();
+        tiles = await Api.getTiles();
+        syncTileCatalogFromApiTiles(tiles);
         tilesById = new Map(tiles.map(t => [t.id, t]));
     } catch (e) {
         console.error("Failed to load tiles for settings:", e);
@@ -721,6 +833,8 @@ let loadedImg = null;
 let ctCtx = null;
 let ctPreview = null;
 let ctFile = null;
+/** Extra engine fields merged into custom tile JSON (from presets). */
+let _ctBehaviorExtras = {};
 
 function updatePreview() {
     if (!ctCtx || !ctPreview) return;
@@ -1318,6 +1432,10 @@ async function init() {
         _ctUpdateExplosiveRow();
     });
 
+    document.getElementById("ct-preset")?.addEventListener("change", e => {
+        _applyCustomTilePreset(e.target.value);
+    });
+
     document.getElementById("ct-template").addEventListener("change", async (e) => {
         const id = e.target.value;
         if (!id) return;
@@ -1390,6 +1508,7 @@ async function init() {
             is_explosive,
             explosion_radius,
             speed_mult,
+            ..._ctBehaviorExtras,
         };
 
         const formData = new FormData();
