@@ -1,12 +1,12 @@
-# Graph Report - mega-tanks  (2026-05-01)
+# Graph Report - mega-tanks  (2026-09-07)
 
 ## Corpus Check
-- 60 files · ~75,370 words
+- 60 files · ~77,509 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1013 nodes · 3112 edges · 31 communities detected
-- Extraction: 46% EXTRACTED · 54% INFERRED · 0% AMBIGUOUS · INFERRED: 1689 edges (avg confidence: 0.53)
+- 1015 nodes · 3118 edges · 32 communities detected
+- Extraction: 46% EXTRACTED · 54% INFERRED · 0% AMBIGUOUS · INFERRED: 1690 edges (avg confidence: 0.53)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -34,13 +34,14 @@
 - [[_COMMUNITY_Community 21|Community 21]]
 - [[_COMMUNITY_Community 22|Community 22]]
 - [[_COMMUNITY_Community 23|Community 23]]
-- [[_COMMUNITY_Community 27|Community 27]]
+- [[_COMMUNITY_Community 24|Community 24]]
 - [[_COMMUNITY_Community 28|Community 28]]
-- [[_COMMUNITY_Community 30|Community 30]]
+- [[_COMMUNITY_Community 29|Community 29]]
 - [[_COMMUNITY_Community 31|Community 31]]
 - [[_COMMUNITY_Community 32|Community 32]]
 - [[_COMMUNITY_Community 33|Community 33]]
 - [[_COMMUNITY_Community 34|Community 34]]
+- [[_COMMUNITY_Community 35|Community 35]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `Map` - 239 edges
@@ -70,11 +71,11 @@
 
 ### Community 0 - "Community 0"
 Cohesion: 0.05
-Nodes (107): AIController, Bullet, BulletManager, Advance bullet position by one tick., EnemySpawner, ExplosionManager, C — Clone: Spawn clone tank that replays player inputs with delay., Tick airplane effects. (+99 more)
+Nodes (108): AIController, Bullet, BulletManager, Advance bullet position by one tick., EnemySpawner, ExplosionManager, C — Clone: Spawn clone tank that replays player inputs with delay., Tick airplane effects. (+100 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.02
-Nodes (63): ABC, bullet.py — Bullet entity for Battle Tanks., can_big_tank_crush(), Collision helpers extracted from GameEngine., Shared check used by movement/collision paths., GameEngine, Destroys any destructible blocks directly under the tank to allow spawning/movem, Tick clone effect: replay player inputs with delay. (+55 more)
+Cohesion: 0.03
+Nodes (67): ABC, can_big_tank_crush(), Shared check used by movement/collision paths., GameEngine, AABB collision check., Destroys any destructible blocks directly under the tank to allow spawning/movem, Check if a timed tile type is enabled in tile settings., Tick clone effect: replay player inputs with delay. (+59 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.04
@@ -82,15 +83,15 @@ Nodes (73): generate_new_map(), Generate a new map using procedural algorithms. 
 
 ### Community 3 - "Community 3"
 Cohesion: 0.04
-Nodes (61): syncTileCatalogFromApiTiles(), _applyBrush(), applyDisabledTilesToCurrentGrid(), _bindEvents(), blurEditor(), _brushSpan(), _clearExtraBigFootprint(), colorDistance() (+53 more)
+Nodes (63): syncTileCatalogFromApiTiles(), _applyBrush(), applyDisabledTilesToCurrentGrid(), _bindEvents(), blurEditor(), _brushSpan(), _clearExtraBigFootprint(), colorDistance() (+55 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.04
-Nodes (79): convert_image_to_new_map(), create_map(), GameSettings, get_map(), get_maps(), get_tile_definitions(), ImageToMapPayload, MapGenerationPayload (+71 more)
+Nodes (80): convert_image_to_new_map(), create_map(), GameSettings, get_map(), get_maps(), get_tile_definitions(), ImageToMapPayload, MapGenerationPayload (+72 more)
 
 ### Community 5 - "Community 5"
-Cohesion: 0.03
-Nodes (62): AI subsystem extracted from GameEngine., delete_custom_tile(), _ext_sprites_dir(), get_tiles(), _project_root(), Return all tile type definitions for the frontend palette (full TileType fields), upload_custom_tile(), Bullet subsystem extracted from GameEngine. (+54 more)
+Cohesion: 0.04
+Nodes (55): AI subsystem extracted from GameEngine., delete_custom_tile(), _ext_sprites_dir(), get_tiles(), _project_root(), Return all tile type definitions for the frontend palette (full TileType fields), upload_custom_tile(), Bullet subsystem extracted from GameEngine. (+47 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.08
@@ -162,33 +163,37 @@ Nodes (1): E2E test configuration. Requires: pip install playwright && playwrigh
 
 ### Community 23 - "Community 23"
 Cohesion: 1.0
-Nodes (1): Split built-in tile table data; see builtin.build_builtin_registry.
+Nodes (1): Initialize the input recorder.          Args:             max_frames: Maximum nu
 
-### Community 27 - "Community 27"
+### Community 24 - "Community 24"
 Cohesion: 1.0
-Nodes (1): Number of frames currently stored.
+Nodes (1): Split built-in tile table data; see builtin.build_builtin_registry.
 
 ### Community 28 - "Community 28"
 Cohesion: 1.0
-Nodes (1): Total ticks recorded since creation/clear.
+Nodes (1): Number of frames currently stored.
 
-### Community 30 - "Community 30"
+### Community 29 - "Community 29"
 Cohesion: 1.0
-Nodes (1): Serialize a TileType for API responses (full field set).
+Nodes (1): Total ticks recorded since creation/clear.
 
 ### Community 31 - "Community 31"
 Cohesion: 1.0
-Nodes (1): Return a TileType by ID, defaulting to empty if unknown.
+Nodes (1): Serialize a TileType for API responses (full field set).
 
 ### Community 32 - "Community 32"
 Cohesion: 1.0
-Nodes (1): Return all tile types sorted by ID (for palette rendering).
+Nodes (1): Return a TileType by ID, defaulting to empty if unknown.
 
 ### Community 33 - "Community 33"
 Cohesion: 1.0
-Nodes (1): Load custom tiles from maps/custom_tiles.json and re-register them.
+Nodes (1): Return all tile types sorted by ID (for palette rendering).
 
 ### Community 34 - "Community 34"
+Cohesion: 1.0
+Nodes (1): Load custom tiles from maps/custom_tiles.json and re-register them.
+
+### Community 35 - "Community 35"
 Cohesion: 1.0
 Nodes (1): # NOTE: Money, Sun, and Mega Gun tiles (IDs 37-50) are timed powerups that spawn
 
@@ -211,32 +216,34 @@ Nodes (1): # NOTE: Money, Sun, and Mega Gun tiles (IDs 37-50) are timed powerups
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 22`** (3 nodes): `base_url()`, `E2E test configuration. Requires: pip install playwright && playwright install c`, `conftest.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 23`** (2 nodes): `__init__.py`, `Split built-in tile table data; see builtin.build_builtin_registry.`
+- **Thin community `Community 23`** (2 nodes): `.__init__()`, `Initialize the input recorder.          Args:             max_frames: Maximum nu`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 27`** (1 nodes): `Number of frames currently stored.`
+- **Thin community `Community 24`** (2 nodes): `__init__.py`, `Split built-in tile table data; see builtin.build_builtin_registry.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 28`** (1 nodes): `Total ticks recorded since creation/clear.`
+- **Thin community `Community 28`** (1 nodes): `Number of frames currently stored.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 30`** (1 nodes): `Serialize a TileType for API responses (full field set).`
+- **Thin community `Community 29`** (1 nodes): `Total ticks recorded since creation/clear.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 31`** (1 nodes): `Return a TileType by ID, defaulting to empty if unknown.`
+- **Thin community `Community 31`** (1 nodes): `Serialize a TileType for API responses (full field set).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 32`** (1 nodes): `Return all tile types sorted by ID (for palette rendering).`
+- **Thin community `Community 32`** (1 nodes): `Return a TileType by ID, defaulting to empty if unknown.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 33`** (1 nodes): `Load custom tiles from maps/custom_tiles.json and re-register them.`
+- **Thin community `Community 33`** (1 nodes): `Return all tile types sorted by ID (for palette rendering).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 34`** (1 nodes): `# NOTE: Money, Sun, and Mega Gun tiles (IDs 37-50) are timed powerups that spawn`
+- **Thin community `Community 34`** (1 nodes): `Load custom tiles from maps/custom_tiles.json and re-register them.`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 35`** (1 nodes): `# NOTE: Money, Sun, and Mega Gun tiles (IDs 37-50) are timed powerups that spawn`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `Map` connect `Community 4` to `Community 0`, `Community 1`, `Community 2`, `Community 5`, `Community 10`, `Community 11`, `Community 14`?**
-  _High betweenness centrality (0.220) - this node is a cross-community bridge._
+  _High betweenness centrality (0.216) - this node is a cross-community bridge._
 - **Why does `GameEngine` connect `Community 1` to `Community 0`, `Community 2`, `Community 4`, `Community 5`, `Community 10`?**
-  _High betweenness centrality (0.150) - this node is a cross-community bridge._
-- **Why does `SkeletonController` connect `Community 0` to `Community 1`, `Community 5`?**
-  _High betweenness centrality (0.027) - this node is a cross-community bridge._
+  _High betweenness centrality (0.148) - this node is a cross-community bridge._
+- **Why does `MobileTileController` connect `Community 0` to `Community 1`, `Community 5`?**
+  _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **Are the 231 inferred relationships involving `Map` (e.g. with `map_store.py — Filesystem-based map persistence (JSON files in maps/).` and `Persist a Map to disk. Returns the path written.`) actually correct?**
   _`Map` has 231 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 100 inferred relationships involving `GameEngine` (e.g. with `BulletManager` and `Bullet subsystem extracted from GameEngine.`) actually correct?**

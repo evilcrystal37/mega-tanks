@@ -1,9 +1,8 @@
 /**
  * Shared map tile drawing (editor + in-game). Uses a context bag for caches/atlas.
  */
-import { GRID_H, GRID_W } from "./constants.js";
 import { drawGlassBoxShine } from "./tileDrawingCache.js";
-import { drawSandTile, drawLavaTile, drawCustomTile, customTileSpanFromTile, resolveCustomMultiOrigin } from "./tileRenderer.js";
+import { drawSandTile, drawLavaTile, drawCustomTile, drawCustomSubCell, customTileSpanFromTile } from "./tileRenderer.js";
 
 function _drawSandTile(ctx, dx, dy, ds) { drawSandTile(ctx, dx, dy, ds); }
 
@@ -55,26 +54,25 @@ export function drawTileCell(ctx, bag, tid, x, y, sz) {
         const tObj = bag.tilesMap && bag.tilesMap[tid];
         const span = customTileSpanFromTile(tObj);
 
-        ctx.save();
         if (span > 1) {
             const mobileAnchor = bag.mobileAnchorMap?.[`${gridR},${gridC}`];
-            const { minR, minC } = mobileAnchor ?? (bag.grid
-                ? resolveCustomMultiOrigin(bag.grid, gridR, gridC, tid, span, GRID_H, GRID_W)
-                : {
-                    minR: gridR - (gridR % span),
-                    minC: gridC - (gridC % span),
-                });
-            const centerX = (minC + span / 2) * ds;
-            const centerY = (minR + span / 2) * ds;
-            ctx.beginPath();
-            ctx.rect(dx, dy, ds, ds);
-            ctx.clip();
-            ctx.translate(centerX, centerY);
-            drawCustomTile(ctx, -(span / 2) * ds, -(span / 2) * ds, ds, tid, span);
+            // Use grid-aligned snap directly — avoids expensive flood-fill BFS
+            const { minR, minC } = mobileAnchor ?? {
+                minR: gridR - (gridR % span),
+                minC: gridC - (gridC % span),
+            };
+            // Draw sub-cell directly — no save/clip/translate overhead
+            const subR = gridR - minR;
+            const subC = gridC - minC;
+            if (subR >= 0 && subR < span && subC >= 0 && subC < span) {
+                drawCustomSubCell(ctx, dx, dy, ds, tid, span, subR, subC);
+            } else {
+                drawCustomTile(ctx, dx, dy, ds, tid, span);
+            }
         } else {
+            // Single-cell custom tile — no clip/translate needed, skip save/restore
             drawCustomTile(ctx, dx, dy, ds, tid, 1);
         }
-        ctx.restore();
         return;
     }
 

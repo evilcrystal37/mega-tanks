@@ -163,8 +163,45 @@ export function drawLavaTile(ctx, dx, dy, ds) {
 
 const customTileCache = new Map();
 
+// Animation frame caching — computes frame index once per 200ms bucket per tile type
+let _animBucketId = -1;
+let _animFrames = {};  // { [tid]: currentFrame }
+
+/**
+ * Get the current animation frame for a custom tile, cached per time bucket.
+ * Date.now() is called at most once per frame (when the bucket changes).
+ */
+function _getAnimFrame(tid, frameCount) {
+    const bucket = Math.floor(Date.now() / 200);
+    if (bucket !== _animBucketId) {
+        _animBucketId = bucket;
+        _animFrames = {};
+    }
+    let f = _animFrames[tid];
+    if (f === undefined) {
+        f = bucket % frameCount;
+        _animFrames[tid] = f;
+    }
+    return f;
+}
+
+/** Pre-rendered animation frame canvases, one per tid per frame index. */
+const _animFrameCache = new Map(); // key: "{tid}_{frameIdx}" -> canvas
+
 export function clearCustomTileCache(tid) {
     customTileCache.delete(tid);
+    // Also clear pre-rendered frames for this tid
+    for (const key of _animFrameCache.keys()) {
+        if (key.startsWith(`${tid}_`)) {
+            _animFrameCache.delete(key);
+        }
+    }
+    // Also clear sub-cell cache for this tid
+    for (const key of _subCellCache.keys()) {
+        if (key.startsWith(`${tid}_`)) {
+            _subCellCache.delete(key);
+        }
+    }
 }
 
 const _ORTH4 = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -272,18 +309,34 @@ export function drawCustomTile(ctx, dx, dy, ds, tid, span = 1) {
             ctx.imageSmoothingQuality = "low";
         }
         const frameSize = img.height;
-        let sourceX = 0;
+        const dest = ds * span;
         
         // If width > height, it's an animation strip (horizontal)
         if (img.width > frameSize) {
             const frameCount = Math.floor(img.width / frameSize);
-            const frameDuration = 200; // ms per frame
-            const currentFrame = Math.floor(Date.now() / frameDuration) % frameCount;
-            sourceX = currentFrame * frameSize;
+            const currentFrame = _getAnimFrame(tid, frameCount);
+            
+            // Use pre-rendered frame if available, otherwise render and cache
+            const cacheKey = `${tid}_${currentFrame}`;
+            let frameCanvas = _animFrameCache.get(cacheKey);
+            if (!frameCanvas) {
+                if (typeof OffscreenCanvas !== 'undefined') {
+                    frameCanvas = new OffscreenCanvas(frameSize, frameSize);
+                } else {
+                    frameCanvas = document.createElement('canvas');
+                    frameCanvas.width = frameSize;
+                    frameCanvas.height = frameSize;
+                }
+                const fctx = frameCanvas.getContext('2d');
+                fctx.imageSmoothingEnabled = false;
+                fctx.drawImage(img, currentFrame * frameSize, 0, frameSize, frameSize, 0, 0, frameSize, frameSize);
+                _animFrameCache.set(cacheKey, frameCanvas);
+            }
+            
+            ctx.drawImage(frameCanvas, 0, 0, frameSize, frameSize, dx, dy, dest, dest);
+        } else {
+            ctx.drawImage(img, 0, 0, frameSize, frameSize, dx, dy, dest, dest);
         }
-        
-        const dest = ds * span;
-        ctx.drawImage(img, sourceX, 0, frameSize, frameSize, dx, dy, dest, dest);
     } else if (!img._failed) {
         // Fallback loading state
         ctx.fillStyle = "rgba(255, 0, 255, 0.5)"; // Magenta placeholder for loading custom tiles
@@ -295,4 +348,78 @@ export function drawCustomTile(ctx, dx, dy, ds, tid, span = 1) {
         const dest = ds * span;
         ctx.fillRect(dx, dy, dest, dest);
     }
+}
+
+/**
+ * Pre-rendered sub-cell cache for multi-span tiles (span > 1).
+ * Key: "{tid}_{frameIdx}_{subR}_{subC}" -> OffscreenCanvas
+ */
+const _subCellCache = new Map();
+
+/**
+ * Draw a single cell of a multi-span custom tile, using pre-rendered sub-cells
+ * to avoid ctx.save/clip/translate/restore overhead.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} dx - destination x in pixels
+ * @param {number} dy - destination y in pixels
+ * @param {number} ds - cell size in pixels
+ * @param {number} tid - tile ID
+ * @param {number} span - 2 or 4 (sprite covers span×span cells)
+ * @param {number} subR - row index within the span block (0..span-1)
+ * @param {number} subC - col index within the span block (0..span-1)
+ */
+export function drawCustomSubCell(ctx, dx, dy, ds, tid, span, subR, subC) {
+    if (span <= 1) {
+        drawCustomTile(ctx, dx, dy, ds, tid, 1);
+        return;
+    }
+    
+    let img = customTileCache.get(tid);
+    if (img === undefined) {
+        drawCustomTile(ctx, dx, dy, ds, tid, span);
+        return;
+    }
+    
+    if (!img._loaded) {
+        drawCustomTile(ctx, dx, dy, ds, tid, span);
+        return;
+    }
+    
+    ctx.imageSmoothingEnabled = false;
+    if (ctx.imageSmoothingQuality !== undefined) {
+        ctx.imageSmoothingQuality = "low";
+    }
+    
+    const frameSize = img.height;
+    const cellSrc = frameSize / span;
+    
+    // Determine current animation frame
+    let currentFrame = 0;
+    if (img.width > frameSize) {
+        const frameCount = Math.floor(img.width / frameSize);
+        currentFrame = _getAnimFrame(tid, frameCount);
+    }
+    
+    const cacheKey = `${tid}_${currentFrame}_${subR}_${subC}`;
+    let subCanvas = _subCellCache.get(cacheKey);
+    if (!subCanvas) {
+        if (typeof OffscreenCanvas !== 'undefined') {
+            subCanvas = new OffscreenCanvas(ds, ds);
+        } else {
+            subCanvas = document.createElement('canvas');
+            subCanvas.width = ds;
+            subCanvas.height = ds;
+        }
+        const sctx = subCanvas.getContext('2d');
+        sctx.imageSmoothingEnabled = false;
+        
+        const srcX = currentFrame * frameSize + subC * cellSrc;
+        const srcY = subR * cellSrc;
+        sctx.drawImage(img, srcX, srcY, cellSrc, cellSrc, 0, 0, ds, ds);
+        
+        _subCellCache.set(cacheKey, subCanvas);
+    }
+    
+    ctx.drawImage(subCanvas, dx, dy);
 }

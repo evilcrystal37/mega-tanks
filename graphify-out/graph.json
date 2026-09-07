@@ -328,10 +328,19 @@
       "norm_label": "drawlavatile()"
     },
     {
+      "label": "_getAnimFrame()",
+      "file_type": "code",
+      "source_file": "frontend/tileRenderer.js",
+      "source_location": "L174",
+      "id": "frontend_tilerenderer_getanimframe",
+      "community": 3,
+      "norm_label": "_getanimframe()"
+    },
+    {
       "label": "clearCustomTileCache()",
       "file_type": "code",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L166",
+      "source_location": "L191",
       "id": "frontend_tilerenderer_clearcustomtilecache",
       "community": 3,
       "norm_label": "clearcustomtilecache()"
@@ -340,7 +349,7 @@
       "label": "findSameTileComponent()",
       "file_type": "code",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L175",
+      "source_location": "L212",
       "id": "frontend_tilerenderer_findsametilecomponent",
       "community": 3,
       "norm_label": "findsametilecomponent()"
@@ -349,7 +358,7 @@
       "label": "customMultiTileAnchor()",
       "file_type": "code",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L202",
+      "source_location": "L239",
       "id": "frontend_tilerenderer_custommultitileanchor",
       "community": 3,
       "norm_label": "custommultitileanchor()"
@@ -358,7 +367,7 @@
       "label": "resolveCustomMultiOrigin()",
       "file_type": "code",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L231",
+      "source_location": "L268",
       "id": "frontend_tilerenderer_resolvecustommultiorigin",
       "community": 3,
       "norm_label": "resolvecustommultiorigin()"
@@ -367,7 +376,7 @@
       "label": "customTileSpanFromTile()",
       "file_type": "code",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L242",
+      "source_location": "L279",
       "id": "frontend_tilerenderer_customtilespanfromtile",
       "community": 3,
       "norm_label": "customtilespanfromtile()"
@@ -376,10 +385,19 @@
       "label": "drawCustomTile()",
       "file_type": "code",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L253",
+      "source_location": "L290",
       "id": "frontend_tilerenderer_drawcustomtile",
       "community": 3,
       "norm_label": "drawcustomtile()"
+    },
+    {
+      "label": "drawCustomSubCell()",
+      "file_type": "code",
+      "source_file": "frontend/tileRenderer.js",
+      "source_location": "L372",
+      "id": "frontend_tilerenderer_drawcustomsubcell",
+      "community": 3,
+      "norm_label": "drawcustomsubcell()"
     },
     {
       "label": "gameState.js",
@@ -547,7 +565,7 @@
       "label": "_drawSandTile()",
       "file_type": "code",
       "source_file": "frontend/tileDrawing.js",
-      "source_location": "L8",
+      "source_location": "L7",
       "id": "frontend_tiledrawing_drawsandtile",
       "community": 3,
       "norm_label": "_drawsandtile()"
@@ -556,7 +574,7 @@
       "label": "createPlayDrawBag()",
       "file_type": "code",
       "source_file": "frontend/tileDrawing.js",
-      "source_location": "L23",
+      "source_location": "L22",
       "id": "frontend_tiledrawing_createplaydrawbag",
       "community": 3,
       "norm_label": "createplaydrawbag()"
@@ -565,7 +583,7 @@
       "label": "drawTileCell()",
       "file_type": "code",
       "source_file": "frontend/tileDrawing.js",
-      "source_location": "L47",
+      "source_location": "L46",
       "id": "frontend_tiledrawing_drawtilecell",
       "community": 3,
       "norm_label": "drawtilecell()"
@@ -2340,7 +2358,7 @@
       "source_file": "tests/__init__.py",
       "source_location": "L1",
       "id": "tests_init_py",
-      "community": 24,
+      "community": 25,
       "norm_label": "__init__.py"
     },
     {
@@ -2412,7 +2430,7 @@
       "source_file": "tests/e2e/__init__.py",
       "source_location": "L1",
       "id": "tests_e2e_init_py",
-      "community": 25,
+      "community": 26,
       "norm_label": "__init__.py"
     },
     {
@@ -2799,7 +2817,7 @@
       "source_file": "backend/tile_floor_effects.py",
       "source_location": "L1",
       "id": "backend_tile_floor_effects_py",
-      "community": 1,
+      "community": 5,
       "norm_label": "tile_floor_effects.py"
     },
     {
@@ -2825,7 +2843,7 @@
       "file_type": "rationale",
       "source_file": "backend/tile_floor_effects.py",
       "source_location": "L1",
-      "community": 1,
+      "community": 5,
       "norm_label": "tank\u2013floor tile interactions extracted from gameengine (hazards, conveyors, pad",
       "id": "backend_tile_floor_effects_rationale_1"
     },
@@ -2898,7 +2916,7 @@
       "source_file": "backend/tile_registry.py",
       "source_location": "L395",
       "id": "backend_tile_registry_get_tile",
-      "community": 5,
+      "community": 1,
       "norm_label": "get_tile()"
     },
     {
@@ -2978,7 +2996,7 @@
       "file_type": "rationale",
       "source_file": "backend/tile_registry.py",
       "source_location": "L396",
-      "community": 5,
+      "community": 1,
       "norm_label": "return a tiletype by id, defaulting to empty if unknown.",
       "id": "backend_tile_registry_rationale_396"
     },
@@ -3015,7 +3033,7 @@
       "source_file": "backend/__init__.py",
       "source_location": "L1",
       "id": "backend_init_py",
-      "community": 26,
+      "community": 27,
       "norm_label": "__init__.py"
     },
     {
@@ -3591,7 +3609,7 @@
       "source_file": "backend/collision.py",
       "source_location": "L1",
       "id": "backend_collision_py",
-      "community": 1,
+      "community": 5,
       "norm_label": "collision.py"
     },
     {
@@ -3608,7 +3626,7 @@
       "file_type": "rationale",
       "source_file": "backend/collision.py",
       "source_location": "L1",
-      "community": 1,
+      "community": 5,
       "norm_label": "collision helpers extracted from gameengine.",
       "id": "backend_collision_rationale_1"
     },
@@ -3645,7 +3663,7 @@
       "source_file": "backend/game_engine.py",
       "source_location": "L95",
       "id": "backend_game_engine_gameengine_init",
-      "community": 0,
+      "community": 1,
       "norm_label": ".__init__()"
     },
     {
@@ -4257,7 +4275,7 @@
       "source_file": "backend/game_engine.py",
       "source_location": "L1792",
       "id": "backend_game_engine_gameengine_can_move_to",
-      "community": 0,
+      "community": 1,
       "norm_label": "._can_move_to()"
     },
     {
@@ -4428,7 +4446,7 @@
       "source_file": "backend/game_engine.py",
       "source_location": "L2857",
       "id": "backend_game_engine_gameengine_check_end_conditions",
-      "community": 0,
+      "community": 1,
       "norm_label": "._check_end_conditions()"
     },
     {
@@ -4499,7 +4517,7 @@
       "file_type": "rationale",
       "source_file": "backend/game_engine.py",
       "source_location": "L333",
-      "community": 0,
+      "community": 1,
       "norm_label": "check if a timed tile type is enabled in tile settings.",
       "id": "backend_game_engine_rationale_333"
     },
@@ -4751,7 +4769,7 @@
       "file_type": "rationale",
       "source_file": "backend/game_engine.py",
       "source_location": "L1793",
-      "community": 0,
+      "community": 1,
       "norm_label": "aabb collision check.",
       "id": "backend_game_engine_rationale_1793"
     },
@@ -4869,7 +4887,7 @@
       "source_file": "backend/mobile_tile_controller.py",
       "source_location": "L31",
       "id": "backend_mobile_tile_controller_new_entity_id",
-      "community": 5,
+      "community": 1,
       "norm_label": "_new_entity_id()"
     },
     {
@@ -4896,7 +4914,7 @@
       "source_file": "backend/mobile_tile_controller.py",
       "source_location": "L43",
       "id": "backend_mobile_tile_controller_mobiletilecontroller_init_from_grid",
-      "community": 5,
+      "community": 1,
       "norm_label": ".init_from_grid()"
     },
     {
@@ -4914,7 +4932,7 @@
       "source_file": "backend/mobile_tile_controller.py",
       "source_location": "L93",
       "id": "backend_mobile_tile_controller_mobiletilecontroller_on_partial_custom_damage",
-      "community": 1,
+      "community": 0,
       "norm_label": ".on_partial_custom_damage()"
     },
     {
@@ -4932,7 +4950,7 @@
       "source_file": "backend/mobile_tile_controller.py",
       "source_location": "L112",
       "id": "backend_mobile_tile_controller_mobiletilecontroller_entity_by_id",
-      "community": 1,
+      "community": 0,
       "norm_label": "._entity_by_id()"
     },
     {
@@ -5066,7 +5084,7 @@
       "file_type": "rationale",
       "source_file": "backend/mobile_tile_controller.py",
       "source_location": "L44",
-      "community": 5,
+      "community": 1,
       "norm_label": "call once after map load. finds connected components per mobile tile id.",
       "id": "backend_mobile_tile_controller_rationale_44"
     },
@@ -5084,7 +5102,7 @@
       "file_type": "rationale",
       "source_file": "backend/mobile_tile_controller.py",
       "source_location": "L94",
-      "community": 1,
+      "community": 0,
       "norm_label": "mobile + partial_destructible: destroy the whole footprint.",
       "id": "backend_mobile_tile_controller_rationale_94"
     },
@@ -5535,7 +5553,7 @@
       "source_file": "backend/mode_registry.py",
       "source_location": "L75",
       "id": "backend_mode_registry_get_mode",
-      "community": 0,
+      "community": 1,
       "norm_label": "get_mode()"
     },
     {
@@ -5706,7 +5724,7 @@
       "source_file": "backend/map_model.py",
       "source_location": "L84",
       "id": "backend_map_model_map_find_base",
-      "community": 5,
+      "community": 4,
       "norm_label": ".find_base()"
     },
     {
@@ -5768,7 +5786,7 @@
       "file_type": "rationale",
       "source_file": "backend/map_model.py",
       "source_location": "L85",
-      "community": 5,
+      "community": 4,
       "norm_label": "return (row, col) of the base tile, or none.",
       "id": "backend_map_model_rationale_85"
     },
@@ -5805,7 +5823,7 @@
       "source_file": "backend/powerup_manager.py",
       "source_location": "L62",
       "id": "backend_powerup_manager_powerupmanager_tick",
-      "community": 0,
+      "community": 1,
       "norm_label": ".tick()"
     },
     {
@@ -5814,7 +5832,7 @@
       "source_file": "backend/powerup_manager.py",
       "source_location": "L72",
       "id": "backend_powerup_manager_powerupmanager_tick_letter_boxes",
-      "community": 0,
+      "community": 1,
       "norm_label": "._tick_letter_boxes()"
     },
     {
@@ -5823,7 +5841,7 @@
       "source_file": "backend/powerup_manager.py",
       "source_location": "L95",
       "id": "backend_powerup_manager_powerupmanager_spawn_letter_box",
-      "community": 0,
+      "community": 1,
       "norm_label": "._spawn_letter_box()"
     },
     {
@@ -5840,7 +5858,7 @@
       "file_type": "rationale",
       "source_file": "backend/powerup_manager.py",
       "source_location": "L73",
-      "community": 0,
+      "community": 1,
       "norm_label": "handle letter box spawning, ttl, and cleanup.",
       "id": "backend_powerup_manager_rationale_73"
     },
@@ -5849,7 +5867,7 @@
       "file_type": "rationale",
       "source_file": "backend/powerup_manager.py",
       "source_location": "L96",
-      "community": 0,
+      "community": 1,
       "norm_label": "spawn a random letter box at a valid 2x2 empty spot.",
       "id": "backend_powerup_manager_rationale_96"
     },
@@ -5859,7 +5877,7 @@
       "source_file": "backend/tank.py",
       "source_location": "L1",
       "id": "backend_tank_py",
-      "community": 1,
+      "community": 5,
       "norm_label": "tank.py"
     },
     {
@@ -5939,7 +5957,7 @@
       "file_type": "rationale",
       "source_file": "backend/tank.py",
       "source_location": "L1",
-      "community": 1,
+      "community": 5,
       "norm_label": "tank.py \u2014 player and enemy tank entities for battle tanks.",
       "id": "backend_tank_rationale_1"
     },
@@ -6642,7 +6660,7 @@
       "source_file": "backend/input_recorder.py",
       "source_location": "L30",
       "id": "backend_input_recorder_inputrecorder_init",
-      "community": 1,
+      "community": 23,
       "norm_label": ".__init__()"
     },
     {
@@ -6731,7 +6749,7 @@
       "file_type": "rationale",
       "source_file": "backend/input_recorder.py",
       "source_location": "L31",
-      "community": 1,
+      "community": 23,
       "norm_label": "initialize the input recorder.          args:             max_frames: maximum nu",
       "id": "backend_input_recorder_rationale_31"
     },
@@ -6767,7 +6785,7 @@
       "file_type": "rationale",
       "source_file": "backend/input_recorder.py",
       "source_location": "L82",
-      "community": 27,
+      "community": 28,
       "norm_label": "number of frames currently stored.",
       "id": "backend_input_recorder_rationale_82"
     },
@@ -6776,7 +6794,7 @@
       "file_type": "rationale",
       "source_file": "backend/input_recorder.py",
       "source_location": "L87",
-      "community": 28,
+      "community": 29,
       "norm_label": "total ticks recorded since creation/clear.",
       "id": "backend_input_recorder_rationale_87"
     },
@@ -7191,7 +7209,7 @@
       "source_file": "backend/bullet.py",
       "source_location": "L1",
       "id": "backend_bullet_py",
-      "community": 1,
+      "community": 5,
       "norm_label": "bullet.py"
     },
     {
@@ -7226,7 +7244,7 @@
       "file_type": "rationale",
       "source_file": "backend/bullet.py",
       "source_location": "L1",
-      "community": 1,
+      "community": 5,
       "norm_label": "bullet.py \u2014 bullet entity for battle tanks.",
       "id": "backend_bullet_rationale_1"
     },
@@ -7425,7 +7443,7 @@
       "source_file": "backend/tests/__init__.py",
       "source_location": "L1",
       "id": "backend_tests_init_py",
-      "community": 29,
+      "community": 30,
       "norm_label": "__init__.py"
     },
     {
@@ -7434,7 +7452,7 @@
       "source_file": "backend/tests/test_tile_registry.py",
       "source_location": "L1",
       "id": "backend_tests_test_tile_registry_py",
-      "community": 5,
+      "community": 1,
       "norm_label": "test_tile_registry.py"
     },
     {
@@ -7452,7 +7470,7 @@
       "source_file": "backend/tests/test_tile_registry.py",
       "source_location": "L13",
       "id": "tests_test_tile_registry_test_get_known_tile",
-      "community": 5,
+      "community": 1,
       "norm_label": "test_get_known_tile()"
     },
     {
@@ -7461,7 +7479,7 @@
       "source_file": "backend/tests/test_tile_registry.py",
       "source_location": "L21",
       "id": "tests_test_tile_registry_test_base_tile_is_base",
-      "community": 5,
+      "community": 1,
       "norm_label": "test_base_tile_is_base()"
     },
     {
@@ -7470,7 +7488,7 @@
       "source_file": "backend/tests/test_tile_registry.py",
       "source_location": "L27",
       "id": "tests_test_tile_registry_test_ice_is_slippery",
-      "community": 5,
+      "community": 1,
       "norm_label": "test_ice_is_slippery()"
     },
     {
@@ -7479,7 +7497,7 @@
       "source_file": "backend/tests/test_tile_registry.py",
       "source_location": "L33",
       "id": "tests_test_tile_registry_test_unknown_tile_defaults_to_empty",
-      "community": 5,
+      "community": 1,
       "norm_label": "test_unknown_tile_defaults_to_empty()"
     },
     {
@@ -7488,7 +7506,7 @@
       "source_file": "backend/tests/test_tile_registry.py",
       "source_location": "L38",
       "id": "tests_test_tile_registry_test_tile_type_to_dict_has_all_dataclass_fields",
-      "community": 5,
+      "community": 1,
       "norm_label": "test_tile_type_to_dict_has_all_dataclass_fields()"
     },
     {
@@ -7496,7 +7514,7 @@
       "file_type": "rationale",
       "source_file": "backend/tests/test_tile_registry.py",
       "source_location": "L1",
-      "community": 5,
+      "community": 1,
       "norm_label": "test_tile_registry.py \u2014 tests for tile registry.",
       "id": "tests_test_tile_registry_rationale_1"
     },
@@ -7668,7 +7686,7 @@
       "source_file": "backend/tests/test_letter_powerups.py",
       "source_location": "L110",
       "id": "tests_test_letter_powerups_testinputrecorder",
-      "community": 1,
+      "community": 0,
       "norm_label": "testinputrecorder"
     },
     {
@@ -7677,7 +7695,7 @@
       "source_file": "backend/tests/test_letter_powerups.py",
       "source_location": "L113",
       "id": "tests_test_letter_powerups_testinputrecorder_test_record_and_replay",
-      "community": 1,
+      "community": 0,
       "norm_label": ".test_record_and_replay()"
     },
     {
@@ -7686,7 +7704,7 @@
       "source_file": "backend/tests/test_letter_powerups.py",
       "source_location": "L133",
       "id": "tests_test_letter_powerups_testinputrecorder_test_empty_buffer",
-      "community": 1,
+      "community": 0,
       "norm_label": ".test_empty_buffer()"
     },
     {
@@ -7695,7 +7713,7 @@
       "source_file": "backend/tests/test_letter_powerups.py",
       "source_location": "L140",
       "id": "tests_test_letter_powerups_testinputrecorder_test_clear",
-      "community": 1,
+      "community": 0,
       "norm_label": ".test_clear()"
     },
     {
@@ -7901,7 +7919,7 @@
       "file_type": "rationale",
       "source_file": "backend/tests/test_letter_powerups.py",
       "source_location": "L111",
-      "community": 1,
+      "community": 0,
       "norm_label": "test the input recorder for clone effect.",
       "id": "tests_test_letter_powerups_rationale_111"
     },
@@ -7910,7 +7928,7 @@
       "file_type": "rationale",
       "source_file": "backend/tests/test_letter_powerups.py",
       "source_location": "L114",
-      "community": 1,
+      "community": 0,
       "norm_label": "test recording and retrieving inputs with delay.",
       "id": "tests_test_letter_powerups_rationale_114"
     },
@@ -7919,7 +7937,7 @@
       "file_type": "rationale",
       "source_file": "backend/tests/test_letter_powerups.py",
       "source_location": "L134",
-      "community": 1,
+      "community": 0,
       "norm_label": "test retrieving from empty buffer returns defaults.",
       "id": "tests_test_letter_powerups_rationale_134"
     },
@@ -7928,7 +7946,7 @@
       "file_type": "rationale",
       "source_file": "backend/tests/test_letter_powerups.py",
       "source_location": "L141",
-      "community": 1,
+      "community": 0,
       "norm_label": "test clearing the buffer.",
       "id": "tests_test_letter_powerups_rationale_141"
     },
@@ -8649,7 +8667,7 @@
       "source_file": "backend/tile_definitions/__init__.py",
       "source_location": "L1",
       "id": "backend_tile_definitions_init_py",
-      "community": 23,
+      "community": 24,
       "norm_label": "__init__.py"
     },
     {
@@ -8657,7 +8675,7 @@
       "file_type": "rationale",
       "source_file": "backend/tile_definitions/__init__.py",
       "source_location": "L1",
-      "community": 23,
+      "community": 24,
       "norm_label": "split built-in tile table data; see builtin.build_builtin_registry.",
       "id": "tile_definitions_init_rationale_1"
     },
@@ -8702,7 +8720,7 @@
       "file_type": "rationale",
       "source_file": "backend/tile_registry.py",
       "source_location": "L792",
-      "community": 30,
+      "community": 31,
       "norm_label": "serialize a tiletype for api responses (full field set).",
       "id": "backend_tile_registry_rationale_792"
     },
@@ -8711,7 +8729,7 @@
       "file_type": "rationale",
       "source_file": "backend/tile_registry.py",
       "source_location": "L822",
-      "community": 31,
+      "community": 32,
       "norm_label": "return a tiletype by id, defaulting to empty if unknown.",
       "id": "backend_tile_registry_rationale_822"
     },
@@ -8720,7 +8738,7 @@
       "file_type": "rationale",
       "source_file": "backend/tile_registry.py",
       "source_location": "L827",
-      "community": 32,
+      "community": 33,
       "norm_label": "return all tile types sorted by id (for palette rendering).",
       "id": "backend_tile_registry_rationale_827"
     },
@@ -8729,7 +8747,7 @@
       "file_type": "rationale",
       "source_file": "backend/tile_registry.py",
       "source_location": "L843",
-      "community": 33,
+      "community": 34,
       "norm_label": "load custom tiles from maps/custom_tiles.json and re-register them.",
       "id": "backend_tile_registry_rationale_843"
     },
@@ -8738,7 +8756,7 @@
       "file_type": "rationale",
       "source_file": "backend/tile_registry.py",
       "source_location": "L259",
-      "community": 34,
+      "community": 35,
       "norm_label": "# note: money, sun, and mega gun tiles (ids 37-50) are timed powerups that spawn",
       "id": "backend_tile_registry_rationale_259"
     },
@@ -9942,7 +9960,19 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L166",
+      "source_location": "L174",
+      "weight": 1.0,
+      "_src": "frontend_tilerenderer_js",
+      "_tgt": "frontend_tilerenderer_getanimframe",
+      "source": "frontend_tilerenderer_js",
+      "target": "frontend_tilerenderer_getanimframe",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "frontend/tileRenderer.js",
+      "source_location": "L191",
       "weight": 1.0,
       "_src": "frontend_tilerenderer_js",
       "_tgt": "frontend_tilerenderer_clearcustomtilecache",
@@ -9954,7 +9984,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L175",
+      "source_location": "L212",
       "weight": 1.0,
       "_src": "frontend_tilerenderer_js",
       "_tgt": "frontend_tilerenderer_findsametilecomponent",
@@ -9966,7 +9996,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L202",
+      "source_location": "L239",
       "weight": 1.0,
       "_src": "frontend_tilerenderer_js",
       "_tgt": "frontend_tilerenderer_custommultitileanchor",
@@ -9978,7 +10008,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L231",
+      "source_location": "L268",
       "weight": 1.0,
       "_src": "frontend_tilerenderer_js",
       "_tgt": "frontend_tilerenderer_resolvecustommultiorigin",
@@ -9990,7 +10020,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L242",
+      "source_location": "L279",
       "weight": 1.0,
       "_src": "frontend_tilerenderer_js",
       "_tgt": "frontend_tilerenderer_customtilespanfromtile",
@@ -10002,12 +10032,24 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L253",
+      "source_location": "L290",
       "weight": 1.0,
       "_src": "frontend_tilerenderer_js",
       "_tgt": "frontend_tilerenderer_drawcustomtile",
       "source": "frontend_tilerenderer_js",
       "target": "frontend_tilerenderer_drawcustomtile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "frontend/tileRenderer.js",
+      "source_location": "L372",
+      "weight": 1.0,
+      "_src": "frontend_tilerenderer_js",
+      "_tgt": "frontend_tilerenderer_drawcustomsubcell",
+      "source": "frontend_tilerenderer_js",
+      "target": "frontend_tilerenderer_drawcustomsubcell",
       "confidence_score": 1.0
     },
     {
@@ -10062,7 +10104,31 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L205",
+      "source_location": "L317",
+      "weight": 1.0,
+      "_src": "frontend_tilerenderer_drawcustomtile",
+      "_tgt": "frontend_tilerenderer_getanimframe",
+      "source": "frontend_tilerenderer_getanimframe",
+      "target": "frontend_tilerenderer_drawcustomtile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "frontend/tileRenderer.js",
+      "source_location": "L401",
+      "weight": 1.0,
+      "_src": "frontend_tilerenderer_drawcustomsubcell",
+      "_tgt": "frontend_tilerenderer_getanimframe",
+      "source": "frontend_tilerenderer_getanimframe",
+      "target": "frontend_tilerenderer_drawcustomsubcell",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "frontend/tileRenderer.js",
+      "source_location": "L242",
       "weight": 1.0,
       "_src": "frontend_tilerenderer_custommultitileanchor",
       "_tgt": "frontend_tilerenderer_findsametilecomponent",
@@ -10074,25 +10140,13 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "frontend/tileRenderer.js",
-      "source_location": "L233",
+      "source_location": "L270",
       "weight": 1.0,
       "_src": "frontend_tilerenderer_resolvecustommultiorigin",
       "_tgt": "frontend_tilerenderer_custommultitileanchor",
       "source": "frontend_tilerenderer_custommultitileanchor",
       "target": "frontend_tilerenderer_resolvecustommultiorigin",
       "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "confidence": "INFERRED",
-      "confidence_score": 0.8,
-      "source_file": "frontend/tileDrawing.js",
-      "source_location": "L62",
-      "weight": 1.0,
-      "_src": "frontend_tilerenderer_resolvecustommultiorigin",
-      "_tgt": "frontend_tiledrawing_drawtilecell",
-      "source": "frontend_tilerenderer_resolvecustommultiorigin",
-      "target": "frontend_tiledrawing_drawtilecell"
     },
     {
       "relation": "calls",
@@ -10105,6 +10159,18 @@
       "_tgt": "frontend_editor_clearextrabigfootprint",
       "source": "frontend_tilerenderer_resolvecustommultiorigin",
       "target": "frontend_editor_clearextrabigfootprint"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "frontend/tileDrawing.js",
+      "source_location": "L62",
+      "weight": 1.0,
+      "_src": "frontend_tilerenderer_resolvecustommultiorigin",
+      "_tgt": "frontend_tiledrawing_drawtilecell",
+      "source": "frontend_tilerenderer_resolvecustommultiorigin",
+      "target": "frontend_tiledrawing_drawtilecell"
     },
     {
       "relation": "calls",
@@ -10180,6 +10246,18 @@
     },
     {
       "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "frontend/tileRenderer.js",
+      "source_location": "L374",
+      "weight": 1.0,
+      "_src": "frontend_tilerenderer_drawcustomsubcell",
+      "_tgt": "frontend_tilerenderer_drawcustomtile",
+      "source": "frontend_tilerenderer_drawcustomtile",
+      "target": "frontend_tilerenderer_drawcustomsubcell",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "frontend/tileDrawing.js",
@@ -10213,6 +10291,18 @@
       "_tgt": "frontend_editor_drawtiledetail",
       "source": "frontend_tilerenderer_drawcustomtile",
       "target": "frontend_editor_drawtiledetail"
+    },
+    {
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "frontend/tileDrawing.js",
+      "source_location": "L68",
+      "weight": 1.0,
+      "_src": "frontend_tiledrawing_drawtilecell",
+      "_tgt": "frontend_tilerenderer_drawcustomsubcell",
+      "source": "frontend_tilerenderer_drawcustomsubcell",
+      "target": "frontend_tiledrawing_drawtilecell"
     },
     {
       "relation": "contains",
@@ -10434,7 +10524,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/tileDrawing.js",
-      "source_location": "L8",
+      "source_location": "L7",
       "weight": 1.0,
       "_src": "frontend_tiledrawing_js",
       "_tgt": "frontend_tiledrawing_drawsandtile",
@@ -10446,7 +10536,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/tileDrawing.js",
-      "source_location": "L23",
+      "source_location": "L22",
       "weight": 1.0,
       "_src": "frontend_tiledrawing_js",
       "_tgt": "frontend_tiledrawing_createplaydrawbag",
@@ -10458,7 +10548,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "frontend/tileDrawing.js",
-      "source_location": "L47",
+      "source_location": "L46",
       "weight": 1.0,
       "_src": "frontend_tiledrawing_js",
       "_tgt": "frontend_tiledrawing_drawtilecell",
@@ -10470,7 +10560,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "frontend/tileDrawing.js",
-      "source_location": "L321",
+      "source_location": "L319",
       "weight": 1.0,
       "_src": "frontend_tiledrawing_drawtilecell",
       "_tgt": "frontend_tiledrawing_drawsandtile",
