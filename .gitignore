@@ -32,6 +32,9 @@ Thumbs.db
 # Uploaded custom tile PNGs (kept under ext_sprites/; see ext_sprites/.gitkeep)
 ext_sprites/*.png
 
+# User-generated map saves, autosave, and custom tile definitions
+maps/
+
 # keep graph outputs, skip heavy/local-only files
 # optional: commit for shared extraction speed, skip to keep repo small
 graphify-out/cache/
